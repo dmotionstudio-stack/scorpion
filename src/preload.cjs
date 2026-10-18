@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('kenzo', {
   addDocuments: invoke('docs:add'),
   removeDocument: invoke('docs:remove'),
 
+  listMemories: invoke('memory:list'),
+  addMemory: invoke('memory:add'),
+  updateMemory: invoke('memory:update'),
+  deleteMemory: invoke('memory:delete'),
+  clearMemories: invoke('memory:clear'),
+
   onChatEvent: on('chat:event'),
   onModelStatus: on('model:status'),
   onDownload: on('model:download'),

@@ -12,6 +12,8 @@ const DEFAULT_SETTINGS = {
   temperature: 0.6,
   autoApprove: false, // run write/exec tools without asking
   planMode: false, // read-only: hide every mutating tool from the model
+  memoryEnabled: true, // saved memories + remember/forget tools
+  recallEnabled: true, // bring back relevant snippets from other chats
   systemPrompt: '',
 };
 

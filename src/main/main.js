@@ -6,7 +6,8 @@ import * as store from './store.js';
 import * as models from './models.js';
 import * as engine from './engine.js';
 import * as rag from './rag.js';
-import { buildFunctions, buildSystemPrompt, withDocumentContext } from './agent.js';
+import * as memory from './memory.js';
+import { buildFunctions, buildSystemPrompt, withDocumentContext, withConversationRecall } from './agent.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, '..', '..');
@@ -19,6 +20,9 @@ const VENDOR = {
 protocol.registerSchemesAsPrivileged([
   { scheme: 'kenzo', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
+
+// Portable/test mode: keep all data (models, chats, memory) in a chosen folder.
+if (process.env.KENZO_DATA_DIR) app.setPath('userData', path.resolve(process.env.KENZO_DATA_DIR));
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -96,6 +100,7 @@ async function state() {
     catalog: models.CATALOG,
     threads: store.listThreads(),
     documents: rag.listDocuments(),
+    memories: memory.listMemories(),
     supportedDocs: rag.SUPPORTED_EXTENSIONS,
     engine: await engine.engineInfo().catch((e) => ({ error: e.message })),
     platform: process.platform,
@@ -178,11 +183,14 @@ async function chatSend({ threadId, text }) {
     thread.history = await engine.runTurn({
       threadId,
       history: thread.history,
-      systemPrompt: buildSystemPrompt(settings, { docNames: rag.listDocuments().map((d) => d.name) }),
-      text: await withDocumentContext(text, searcher),
+      systemPrompt: buildSystemPrompt(settings, {
+        docNames: rag.listDocuments().map((d) => d.name),
+        memoryBlock: settings.memoryEnabled ? memory.memoryPromptBlock() : '',
+      }),
+      text: await withDocumentContext(settings.memoryEnabled && settings.recallEnabled ? withConversationRecall(text, memory, threadId) : text, searcher),
       temperature: settings.temperature,
       signal: controller.signal,
-      functions: buildFunctions({ settings, rag: searcher, emit, requestApproval, signal: controller.signal, streamedText: () => streamed }),
+      functions: buildFunctions({ settings, rag: searcher, memory, threadId, emit, requestApproval, signal: controller.signal, streamedText: () => streamed }),
       onText: (delta) => { streamed += delta; emit({ type: 'text', delta }); },
       onThought: (delta) => emit({ type: 'thought', delta }),
     });
@@ -192,6 +200,7 @@ async function chatSend({ threadId, text }) {
   } finally {
     running.delete(threadId);
     store.saveThread(thread);
+    memory.invalidateRecall();
     send('chat:event', { threadId, type: 'done', error: assistant.error, stopped: assistant.stopped, title: thread.title });
   }
   return { ok: !assistant.error };
@@ -243,7 +252,7 @@ function registerIpc() {
 
   h('thread:create', () => store.createThread());
   h('thread:get', (id) => store.getThread(id));
-  h('thread:delete', (id) => { running.get(id)?.abort(); store.deleteThread(id); });
+  h('thread:delete', (id) => { running.get(id)?.abort(); store.deleteThread(id); memory.invalidateRecall(); });
   h('thread:rename', ({ id, title }) => { const t = store.getThread(id); if (t) { t.title = String(title).slice(0, 80); store.saveThread(t); } });
 
   h('chat:send', chatSend);
@@ -267,6 +276,12 @@ function registerIpc() {
     return { added, errors };
   });
   h('docs:remove', (id) => rag.removeDocument(id));
+
+  h('memory:list', () => memory.listMemories());
+  h('memory:add', (text) => memory.addMemory(text, 'user').memory);
+  h('memory:update', ({ id, text }) => memory.updateMemory(id, text));
+  h('memory:delete', (id) => memory.deleteMemory(id));
+  h('memory:clear', () => memory.clearMemories());
 }
 
 app.whenReady().then(() => {

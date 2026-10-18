@@ -10,6 +10,7 @@ account, or an internet connection to chat.
   you turn on Auto-approve.
 - **Multi-step planning**: for bigger tasks the agent writes a plan, then updates it
   live as it works. Plan mode is read-only: it explores and plans but can't change anything.
+- **Memory across chats**: Kenzo saves lasting facts about you, such as your name, preferences and projects, and knows them in every new chat. Ask it to forget something, or view, edit and delete memories on the Memory page. It also recalls relevant parts of earlier conversations, and you can turn either feature off in Settings.
 - **Chat with documents**: you add PDF, Word or text files. Kenzo indexes them on your
   machine and the agent searches them and names its sources.
 - **Private by design**: Kenzo stores data only in your OS app-data folder, makes no
@@ -89,6 +90,10 @@ npm test
 
 ```bash
 node scripts/e2e-agent.mjs path/to/chat.gguf path/to/embed.gguf
+```
+
+```bash
+node scripts/e2e-memory.mjs path/to/chat.gguf
 ```
 
 ## Security model

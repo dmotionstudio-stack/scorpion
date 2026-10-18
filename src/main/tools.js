@@ -185,6 +185,47 @@ export const TOOLS = {
     },
   },
 
+  remember: {
+    access: 'memory',
+    description: 'Save lasting facts about the user or their work to long-term memory so you know them in future chats (name, job, preferences, projects, decisions). Split into separate short facts, one per list item, each a full sentence that names the user, e.g. ["The user\'s name is Ana.", "Ana is a teacher."]. Never save secrets like passwords.',
+    params: { type: 'object', properties: { facts: { type: 'array', items: { type: 'string' } } } },
+    run({ facts }, { memory, onMemory }) {
+      const out = [];
+      for (const fact of [].concat(facts || [])) {
+        if (/\b(password|passcode|api[ _-]?key|secret|token|pin)\b/i.test(fact)) {
+          out.push(`Not saved (looks like a secret, tell the user secrets are not stored): ${fact}`);
+          continue;
+        }
+        const { memory: m, duplicate } = memory.addMemory(fact, 'agent');
+        out.push(duplicate ? `Already remembered: ${m.text}` : `Remembered: ${m.text}`);
+      }
+      onMemory?.();
+      return out.join('\n') || 'Nothing to remember.';
+    },
+  },
+
+  forget: {
+    access: 'memory',
+    description: 'Remove a saved memory when the user asks you to forget something or a remembered fact is no longer true. Pass the memory text (copy it from your memory list). If it also contained facts that are still true, call remember with those afterwards.',
+    params: { type: 'object', properties: { memory: { type: 'string' } } },
+    run({ memory: query }, { memory, onMemory }) {
+      const removed = memory.forgetMemory(query);
+      onMemory?.();
+      return removed ? `Forgot: ${removed.text}` : 'No matching memory found. Nothing was removed.';
+    },
+  },
+
+  search_past_chats: {
+    access: 'read',
+    description: 'Search the user\'s earlier conversations with you by keywords, e.g. when they say "like we discussed" or ask what they told you before.',
+    params: { type: 'object', properties: { query: { type: 'string' } } },
+    run({ query }, { memory, threadId }) {
+      const hits = memory.searchConversations(query, { k: 6, excludeThreadId: threadId });
+      if (!hits.length) return 'No earlier conversations matched.';
+      return hits.map((h, i) => `[${i + 1}] chat "${h.title}" (${new Date(h.at).toLocaleDateString()}) — ${h.role === 'user' ? 'user' : 'Kenzo'}:\n${h.text}`).join('\n\n');
+    },
+  },
+
   update_plan: {
     access: 'plan',
     description: 'Create or update your step-by-step plan for a multi-step task. Send the whole list every time; mark each step "pending", "in_progress" or "done". Keep exactly one step in_progress while working.',

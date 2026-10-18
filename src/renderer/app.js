@@ -4,7 +4,7 @@ import DOMPurify from '/vendor/purify.js';
 const api = window.kenzo;
 const $ = (sel) => document.querySelector(sel);
 const S = {
-  settings: {}, models: [], catalog: [], threads: [], documents: [], engine: {},
+  settings: {}, models: [], catalog: [], threads: [], documents: [], memories: [], engine: {},
   thread: null, running: new Set(), pending: new Map(), downloads: {}, modelStatus: null, view: 'chat',
 };
 
@@ -39,7 +39,7 @@ function renderThreads() {
 
 function setView(view) {
   S.view = view;
-  for (const v of ['chat', 'models', 'docs', 'settings']) $(`#view-${v}`).classList.toggle('hidden', v !== view);
+  for (const v of ['chat', 'models', 'docs', 'memory', 'settings']) $(`#view-${v}`).classList.toggle('hidden', v !== view);
   document.querySelectorAll('.navbtn').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
 }
 
@@ -60,6 +60,7 @@ function renderTopbar() {
 
 // ---------- messages ----------
 const STATUS = { running: '⏳ running', ok: '✓ done', error: '✕ failed' };
+const TOOL_LABEL = { remember: '🧷 remembered', forget: '🧷 forgot', search_past_chats: '🔎 past chats', search_documents: '🔎 documents' };
 
 function renderPlanSteps(steps) {
   const mark = { done: '✓', in_progress: '▶', pending: '○' };
@@ -74,7 +75,7 @@ function renderBlocks(msg, live) {
     else if (b.type === 'plan') parts.push(`<div class="plan-block"><div class="title">PLAN</div>${renderPlanSteps(b.steps)}</div>`);
     else if (b.type === 'tool') {
       const approval = S.pending.get(b.id);
-      parts.push(`<details class="tool ${b.status}"><summary><span class="name">${esc(b.name)}</span><span class="sum">${esc(b.summary)}</span><span class="st">${approval ? '⏸ waiting' : STATUS[b.status] || ''}</span></summary>${b.output ? `<pre>${esc(b.output)}</pre>` : ''}</details>`);
+      parts.push(`<details class="tool ${b.status}"><summary><span class="name">${esc(TOOL_LABEL[b.name] || b.name)}</span><span class="sum">${esc(b.summary)}</span><span class="st">${approval ? '⏸ waiting' : STATUS[b.status] || ''}</span></summary>${b.output ? `<pre>${esc(b.output)}</pre>` : ''}</details>`);
       if (approval) {
         const detail = b.name === 'write_file' ? b.args.content : b.name === 'edit_file' ? `- ${b.args.find}\n+ ${b.args.replace}` : b.summary;
         parts.push(`<div class="approval"><strong>${b.access === 'exec' ? 'Run this command?' : 'Allow this change?'}</strong>
@@ -177,17 +178,36 @@ function renderDocs() {
     || `<div class="muted">No documents yet.${S.settings.embedModel ? '' : ' First download “Nomic Embed” in Models.'}</div>`;
 }
 
+// ---------- memory page ----------
+function renderMemory() {
+  const list = [...S.memories].reverse();
+  $('#memory-list').innerHTML = list.map((m) => `<div class="memory" data-id="${m.id}">
+      <div class="text" contenteditable="true" spellcheck="false" title="Click to edit">${esc(m.text)}</div>
+      <span class="meta" title="${new Date(m.createdAt).toLocaleString()}">${m.source === 'agent' ? 'learned in chat' : 'added by you'}</span>
+      <button data-delmem="${m.id}" title="Delete memory">✕</button></div>`).join('')
+    || '<div class="muted">Nothing remembered yet. Tell Kenzo about yourself in a chat, or add a memory above.</div>';
+  $('#clear-memory').classList.toggle('hidden', !list.length);
+}
+
+async function reloadMemories() {
+  S.memories = await api.listMemories();
+  renderMemory();
+}
+
 // ---------- settings page ----------
 function renderSettings() {
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
   $('#ctx-size').value = String(S.settings.contextSize);
   $('#temperature').value = S.settings.temperature;
   $('#temp-val').textContent = S.settings.temperature;
+  $('#memory-enabled').checked = !!S.settings.memoryEnabled;
+  $('#recall-enabled').checked = !!S.settings.recallEnabled;
+  $('#recall-enabled').disabled = !S.settings.memoryEnabled;
   if (document.activeElement !== $('#system-prompt')) $('#system-prompt').value = S.settings.systemPrompt || '';
 }
 
 function renderAll() {
-  renderThreads(); renderTopbar(); renderModels(); renderDocs(); renderSettings(); renderMessages();
+  renderThreads(); renderTopbar(); renderModels(); renderDocs(); renderMemory(); renderSettings(); renderMessages();
 }
 
 // ---------- actions ----------
@@ -227,6 +247,7 @@ async function sendMessage(text) {
 
 function applyChatEvent(ev) {
   if (ev.type === 'approval') { S.pending.set(ev.id, ev); }
+  if (ev.type === 'memory') { reloadMemories(); return; }
   if (ev.type === 'done') {
     S.running.delete(ev.threadId);
     for (const [id, p] of S.pending) if (p.threadId === ev.threadId) S.pending.delete(id);
@@ -347,6 +368,38 @@ function wire() {
     const id = e.target.dataset.deldoc;
     if (id) { await api.removeDocument(id); refresh(); }
   };
+
+  $('#memory-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const text = $('#memory-input').value.trim();
+    if (!text) return;
+    await api.addMemory(text);
+    $('#memory-input').value = '';
+    reloadMemories();
+  };
+  $('#memory-list').onclick = async (e) => {
+    const id = e.target.dataset.delmem;
+    if (id) { await api.deleteMemory(id); reloadMemories(); }
+  };
+  $('#memory-list').addEventListener('focusout', async (e) => {
+    const row = e.target.closest('.memory');
+    if (!row || !e.target.classList.contains('text')) return;
+    const text = e.target.innerText.trim();
+    const m = S.memories.find((x) => x.id === row.dataset.id);
+    if (!m || text === m.text) return;
+    if (!text) await api.deleteMemory(m.id); else await api.updateMemory({ id: m.id, text });
+    reloadMemories();
+  });
+  $('#memory-list').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.classList.contains('text')) { e.preventDefault(); e.target.blur(); }
+  });
+  $('#clear-memory').onclick = async () => {
+    if (!confirm('Delete everything Kenzo remembers about you? Past chats are not deleted.')) return;
+    await api.clearMemories();
+    reloadMemories();
+  };
+  $('#memory-enabled').onchange = (e) => setSetting({ memoryEnabled: e.target.checked });
+  $('#recall-enabled').onchange = (e) => setSetting({ recallEnabled: e.target.checked });
 
   $('#ctx-size').onchange = (e) => setSetting({ contextSize: Number(e.target.value) });
   $('#temperature').oninput = (e) => { $('#temp-val').textContent = e.target.value; };

@@ -16,7 +16,14 @@ const AGENT_RULES = `You can act through tools. Rules:
 - If a tool fails, read the error, fix the cause and try again (at most twice), or explain the problem to the user.
 - When finished, reply with a short summary of what you did.`;
 
-export function buildSystemPrompt(settings, { docNames }) {
+const MEMORY_RULES = `You have long-term memory across chats.
+- When the user tells you something lasting about themselves or their work (name, job, preferences, projects, goals, decisions), call remember with each fact as a separate list item. Also when they say "remember that…".
+- When they ask you to forget something, or a remembered fact changed, call forget. If that memory also held other facts that are still true, call remember again with just those.
+- Memory only changes through these tools. Never say you remembered or forgot something unless you called the tool in this turn.
+- Don't save trivia from a single task, and never save passwords or other secrets.
+- If they refer to an earlier conversation, use search_past_chats.`;
+
+export function buildSystemPrompt(settings, { docNames, memoryBlock = '' }) {
   const parts = [settings.systemPrompt?.trim() || BASE_PROMPT];
   parts.push(`Today is ${new Date().toDateString()}. Operating system: ${os.type()} ${os.release()}.`);
   if (settings.workspace) {
@@ -30,6 +37,10 @@ export function buildSystemPrompt(settings, { docNames }) {
   }
   if (docNames.length) {
     parts.push(`The user has imported these documents: ${docNames.slice(0, 40).join(', ')}. Use search_documents to answer questions about them and cite the document name.`);
+  }
+  if (settings.memoryEnabled) {
+    parts.push(MEMORY_RULES);
+    if (memoryBlock) parts.push(memoryBlock);
   }
   return parts.join('\n\n');
 }
@@ -46,7 +57,23 @@ export async function withDocumentContext(text, rag) {
   return `Possibly relevant passages from my documents (cite the document name if you use them):\n\n${passages}\n\n---\n\n${text}`;
 }
 
+// Same idea for past chats: attach strong keyword matches from other threads.
+// Explicit "remember/forget" requests also get a nudge, because small models
+// otherwise sometimes just *say* they forgot without calling the tool.
+const FORGET_RE = /\b(forget|don'?t remember|stop remembering|remove (that|it) from (your )?memory|no longer true)\b/i;
+const REMEMBER_RE = /\b(remember (that|this|my|i)|keep in mind|note that|don'?t forget)\b/i;
+
+export function withConversationRecall(text, memory, threadId) {
+  const block = memory?.recallBlock(text, threadId);
+  let out = block ? `${block}\n\n---\n\n${text}` : text;
+  if (FORGET_RE.test(text) && !/don'?t forget/i.test(text)) out += '\n\n(Kenzo note: to forget, you must call the forget tool now.)';
+  else if (REMEMBER_RE.test(text)) out += '\n\n(Kenzo note: to remember this, you must call the remember tool now.)';
+  return out;
+}
+
 function summarizeArgs(name, args) {
+  if (name === 'remember') return [].concat(args.facts || []).join(' · ');
+  if (name === 'forget') return args.memory;
   if (name === 'run_command') return args.command;
   if (name === 'write_file') return `${args.path} (${(args.content || '').length} chars)`;
   if (name === 'edit_file') return args.path;
@@ -64,11 +91,12 @@ export function findLastCodeBlock(text) {
 }
 
 export function buildFunctions(ctx) {
-  const { settings, rag, emit, requestApproval, signal, streamedText } = ctx;
+  const { settings, rag, emit, requestApproval, signal, streamedText, memory, threadId } = ctx;
   const lastCodeBlock = () => findLastCodeBlock(streamedText?.() ?? '');
   const available = Object.entries(TOOLS).filter(([name, tool]) => {
     if (name === 'search_documents') return rag.hasDocuments();
     if (tool.access === 'plan') return true;
+    if (tool.access === 'memory' || name === 'search_past_chats') return Boolean(settings.memoryEnabled && memory);
     if (!settings.workspace) return false;
     if (settings.planMode && (tool.access === 'write' || tool.access === 'exec')) return false;
     return true;
@@ -106,6 +134,9 @@ export function buildFunctions(ctx) {
             rag,
             signal,
             onPlan: (steps) => emit({ type: 'plan', steps }),
+            memory,
+            threadId,
+            onMemory: () => emit({ type: 'memory' }),
           });
           const output = typeof result === 'string' ? result : JSON.stringify(result, null, 1);
           emit({ type: 'tool-result', id, ok: true, output });
