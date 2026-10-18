@@ -1,6 +1,7 @@
 // The only module that touches llama.cpp. Loads GGUF models in-process via
 // node-llama-cpp's prebuilt binaries (Metal on macOS, CUDA/Vulkan/CPU on Windows),
 // so inference needs no server, no port and no network.
+import os from 'node:os';
 import path from 'node:path';
 import { getLlama, LlamaChatSession, LlamaLogLevel } from 'node-llama-cpp';
 
@@ -14,12 +15,43 @@ async function ensureLlama() {
   return llama;
 }
 
+// What this computer has, for "fits on this PC" hints. Dedicated video memory
+// is what makes a model fast; shared (unified) memory on integrated graphics
+// helps, but runs much closer to CPU speed.
+let hardware = null;
+export async function hardwareInfo() {
+  if (hardware) return hardware;
+  const l = await ensureLlama();
+  const vram = l.gpu ? await l.getVramState().catch(() => null) : null;
+  const total = vram?.total ?? 0;
+  const unified = vram?.unifiedSize ?? 0;
+  hardware = {
+    gpu: l.gpu || 'cpu',
+    dedicatedVram: Math.max(0, total - unified),
+    sharedVram: unified,
+    ram: os.totalmem(),
+  };
+  return hardware;
+}
+
+// Rough fit for a model file: ~15% over its size for weights plus ~0.6 GB for
+// an 8k context and buffers. Matches what was measured on a 4 GB RTX 3050 Ti.
+export function modelFit(bytes, hw) {
+  if (!hw || !bytes) return null;
+  const need = bytes * 1.15 + 0.6 * 1024 ** 3;
+  if (hw.dedicatedVram && need <= hw.dedicatedVram) return 'fast';
+  if (!hw.dedicatedVram && hw.sharedVram && need <= hw.sharedVram * 0.5) return 'ok';
+  if (bytes * 1.2 + 1024 ** 3 <= hw.ram * 0.6) return 'slow';
+  return 'too-big';
+}
+
 export async function engineInfo() {
   const l = await ensureLlama();
   return {
     gpu: l.gpu || 'cpu',
     maxToolChars: chat.context ? Math.max(3000, chat.context.contextSize) : null,
     contextSize: chat.context?.contextSize ?? null,
+    flashAttention: chat.context ? chat.context.flashAttention : null,
     gpuLayers: chat.model ? chat.model.gpuLayers : null,
     totalLayers: chat.model ? chat.model.fileInsights.totalLayers : null,
     parallelHelpers: chat.context ? chat.context.totalSequences > 1 : null,
@@ -57,18 +89,27 @@ export async function loadChatModel(modelPath, { contextSize = 8192, gpuLayers: 
   // A second sequence lets a helper agent run while the main chat waits on it,
   // but each sequence costs a full context of memory. The main chat's context
   // matters more, so keep 2 sequences only if the main one still gets (almost)
-  // the full size; otherwise helpers borrow a temporary context when needed.
+  // the full size; otherwise helpers borrow the main sequence when needed.
   // node-llama-cpp's memory estimate can be off on shared-memory GPUs, so also
   // step down on allocation failure.
-  try {
-    const two = await chat.model.createContext({ sequences: 2, contextSize: { min: 2048, max: contextSize } });
-    if (two.contextSize >= contextSize * 0.9) chat.context = two;
-    else await two.dispose();
-  } catch { /* fall through to a single sequence */ }
+  // Flash attention measured 15-20% faster prompt reading and ~7% faster
+  // generation here, with less memory; it's dropped if a context won't build.
+  let fa = chat.model.flashAttentionSupported && !process.env.SCORPION_NO_FLASH_ATTENTION;
+  // Two full contexts never fit on small cards; trying costs seconds of
+  // failed allocations, so only try with 8 GB or more of video memory.
+  const hw = await hardwareInfo();
+  if (hw.dedicatedVram >= 8 * 1024 ** 3) {
+    try {
+      const two = await chat.model.createContext({ sequences: 2, contextSize: { min: 2048, max: contextSize }, flashAttention: fa });
+      if (two.contextSize >= contextSize * 0.9) chat.context = two;
+      else await two.dispose();
+    } catch { /* fall through to a single sequence */ }
+  }
   for (let size = contextSize; !chat.context; size = Math.floor(size / 2)) {
     try {
-      chat.context = await chat.model.createContext({ contextSize: { min: Math.min(2048, size), max: size } });
+      chat.context = await chat.model.createContext({ contextSize: { min: Math.min(2048, size), max: size }, flashAttention: fa });
     } catch (err) {
+      if (fa) { fa = false; size *= 2; continue; } // retry this size without flash attention
       if (size <= 2048) { await disposeChat(); throw err; }
     }
   }

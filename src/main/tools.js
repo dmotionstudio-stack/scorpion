@@ -213,7 +213,7 @@ export const TOOLS = {
   // in its reply just before calling the tool (the "whole file" edit format).
   write_file: {
     access: 'write',
-    description: 'Create or overwrite a file. FIRST write the complete file content in a fenced code block (```lang ... ```) in your reply, THEN call write_file with the path. The last code block you wrote is saved.',
+    description: 'Create or overwrite a file. First write the full content in a ``` code block in your reply, then call this with the path; the newest code block is saved.',
     params: { type: 'object', properties: { path: { type: 'string' } } },
     prepare(args, { lastCodeBlock, lastCodeLang }) {
       const content = lastCodeBlock?.();
@@ -271,7 +271,7 @@ export const TOOLS = {
 
   search_documents: {
     access: 'read',
-    description: 'Search the user\'s imported documents (PDF, Word, text) for passages relevant to a question. Cite the document name in your answer.',
+    description: 'Search the user\'s imported documents; cite the document name.',
     params: { type: 'object', properties: { query: { type: 'string' } } },
     async run({ query }, { rag }) {
       const hits = await rag.search(query, 6);
@@ -282,7 +282,7 @@ export const TOOLS = {
 
   move_file: {
     access: 'write',
-    description: 'Move or rename a file or folder inside the workspace. Creates the destination folder if needed. Will not overwrite an existing file.',
+    description: 'Move or rename a file or folder in the workspace (never overwrites).',
     params: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } } },
     run({ from, to }, { workspace }) {
       const src = resolveInside(workspace, from);
@@ -297,7 +297,7 @@ export const TOOLS = {
 
   run_code: {
     access: 'exec',
-    description: 'Run a program and return its output. FIRST write the complete program in a fenced code block in your reply, THEN call run_code with the language ("javascript" always works; "python" only if Python is installed). Use it for calculations, data processing and checking your work. Runs in the workspace folder (or a temporary folder if none is set). 60 second limit.',
+    description: 'Run a program and return its output (60 s limit). First write it in a ``` code block, then call this. "javascript" always works; "python" only if installed.',
     params: { type: 'object', properties: { language: { enum: ['javascript', 'python'] } } },
     prepare(args, { lastCodeBlock }) {
       const code = lastCodeBlock?.();
@@ -330,7 +330,7 @@ export const TOOLS = {
 
   calculator: {
     access: 'read',
-    description: 'Evaluate a math expression exactly, e.g. "(1250 * 0.07) / 12" or "sqrt(2)^3". Supports + - * / % ^, parentheses, pi, e, sqrt, abs, round, floor, ceil, log, ln, sin, cos, tan, min, max. Use it instead of doing arithmetic in your head.',
+    description: 'Exact math, e.g. "(1250*0.07)/12" or "sqrt(2)^3". Use it instead of mental arithmetic.',
     params: { type: 'object', properties: { expression: { type: 'string' } } },
     run({ expression }) {
       const v = evaluate(expression);
@@ -341,7 +341,7 @@ export const TOOLS = {
 
   read_spreadsheet: {
     access: 'read',
-    description: 'Read a spreadsheet (.xlsx, .csv, .tsv) in the workspace: columns, the first 30 rows, and totals/averages of numeric columns. Use sheet "" for the first sheet.',
+    description: 'Summarize a .xlsx/.csv/.tsv in the workspace: columns, first 30 rows, numeric totals. sheet "" = first sheet.',
     params: { type: 'object', properties: { path: { type: 'string' }, sheet: { type: 'string' } } },
     async run({ path: p, sheet }, { workspace }) {
       const file = resolveInside(workspace, p);
@@ -363,7 +363,7 @@ export const TOOLS = {
 
   remember: {
     access: 'memory',
-    description: 'Save lasting facts about the user or their work to long-term memory so you know them in future chats (name, job, preferences, projects, decisions). Split into separate short facts, one per list item, each a full sentence that names the user, e.g. ["The user\'s name is Ana.", "Ana is a teacher."]. Never save secrets like passwords.',
+    description: 'Save lasting facts about the user for future chats. One short full-sentence fact per item, e.g. ["The user is called Ana."]. Never secrets.',
     params: { type: 'object', properties: { facts: { type: 'array', items: { type: 'string' } } } },
     run({ facts }, { memory, onMemory }) {
       const out = [];
@@ -382,7 +382,7 @@ export const TOOLS = {
 
   forget: {
     access: 'memory',
-    description: 'Remove a saved memory when the user asks you to forget something or a remembered fact is no longer true. Pass the memory text (copy it from your memory list). If it also contained facts that are still true, call remember with those afterwards.',
+    description: 'Remove a saved memory (pass its text) when asked to forget, or when a fact changed.',
     params: { type: 'object', properties: { memory: { type: 'string' } } },
     run({ memory: query }, { memory, onMemory }) {
       const removed = memory.forgetMemory(query);
@@ -393,7 +393,7 @@ export const TOOLS = {
 
   search_past_chats: {
     access: 'read',
-    description: 'Search the user\'s earlier conversations with you by keywords, e.g. when they say "like we discussed" or ask what they told you before.',
+    description: 'Search earlier conversations by keywords. Use it whenever the user refers to something said before; never guess what was said.',
     params: { type: 'object', properties: { query: { type: 'string' } } },
     run({ query }, { memory, threadId }) {
       const hits = memory.searchConversations(query, { k: 6, excludeThreadId: threadId });
@@ -404,7 +404,7 @@ export const TOOLS = {
 
   update_plan: {
     access: 'plan',
-    description: 'Create or update your step-by-step plan for a multi-step task. Send the whole list every time; mark each step "pending", "in_progress" or "done". Keep exactly one step in_progress while working.',
+    description: 'Create or update your step plan. Send the whole list each time; status is pending, in_progress or done.',
     params: {
       type: 'object',
       properties: {

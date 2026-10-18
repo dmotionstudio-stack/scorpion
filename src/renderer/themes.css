@@ -118,3 +118,9 @@ html.glass-css[data-theme] body {
 .theme-preview .content i { display: block; height: 6px; border-radius: 3px; }
 .theme-card .label { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; font-size: 13px; font-weight: 600; background: var(--panel); }
 .theme-card .label small { font-weight: 400; color: var(--muted); }
+
+/* model fit tags on the Models page */
+.tag.fit-fast { background: color-mix(in srgb, #3fb950 22%, transparent); color: var(--text); }
+.tag.fit-ok { background: color-mix(in srgb, #58a6ff 22%, transparent); color: var(--text); }
+.tag.fit-slow { background: color-mix(in srgb, #f0a830 24%, transparent); color: var(--text); }
+.tag.fit-big { background: color-mix(in srgb, #f85149 24%, transparent); color: var(--text); }

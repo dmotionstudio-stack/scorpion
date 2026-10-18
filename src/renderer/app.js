@@ -242,14 +242,22 @@ function scheduleRender() {
 }
 
 // ---------- models page ----------
+const FIT = {
+  fast: ['fit-fast', '⚡ Fast here', 'Fits entirely in the graphics memory of this PC.'],
+  ok: ['fit-ok', '✓ Runs here', 'Fits in shared graphics memory.'],
+  slow: ['fit-slow', '🐢 Slower here', 'Too big for the graphics card, so part of it runs on the CPU.'],
+  'too-big': ['fit-big', '⛔ Too big', 'Likely too large for the memory of this PC.'],
+};
+const fitTag = (fit) => (FIT[fit] ? `<span class="tag ${FIT[fit][0]}" title="${FIT[fit][2]}">${FIT[fit][1]}</span>` : '');
+
 function renderModels() {
   const e = S.engine || {};
-  $('#engine-info').innerHTML = e.error ? `<span class="err">Engine error: ${esc(e.error)}</span>` : `Hardware acceleration: <strong>${esc(e.gpu === 'cpu' ? 'CPU only' : String(e.gpu).toUpperCase())}</strong>${e.totalLayers ? ` · ${e.gpuLayers} of ${e.totalLayers} layers on GPU · ${e.contextSize} token context` : ''}`;
+  $('#engine-info').innerHTML = e.error ? `<span class="err">Engine error: ${esc(e.error)}</span>` : `Hardware acceleration: <strong>${esc(e.gpu === 'cpu' ? 'CPU only' : String(e.gpu).toUpperCase())}</strong>${e.totalLayers ? ` · ${e.gpuLayers} of ${e.totalLayers} layers on GPU · ${e.contextSize} token context${e.flashAttention ? ' · flash attention' : ''}` : ''}${S.hardware?.dedicatedVram ? ` · ${gb(S.hardware.dedicatedVram)} graphics memory` : ''}`;
   $('#local-models').innerHTML = S.models.map((m) => {
     const selected = m.path === S.settings.chatModel || m.path === S.settings.embedModel;
     return `<div class="card ${selected ? 'selected' : ''}">
       <div class="title">${esc(m.name)}</div>
-      <div><span class="tag">${m.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${gb(m.bytes)}</span><span class="tag">${m.source}</span>${selected ? '<span class="tag on">in use</span>' : ''}</div>
+      <div><span class="tag">${m.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${gb(m.bytes)}</span><span class="tag">${m.source}</span>${fitTag(m.fit)}${selected ? '<span class="tag on">in use</span>' : ''}</div>
       <div class="row">${selected ? '' : `<button class="btn small primary" data-use="${esc(m.path)}" data-kind="${m.kind}">Use</button>`}
       ${m.source === 'library' ? `<button class="btn small" data-delmodel="${esc(m.path)}">Delete</button>` : ''}</div>${m.source === 'ollama' ? '<div class="muted small">Shared with Ollama. Used in place, never copied or deleted.</div>' : ''}</div>`;
   }).join('') || '<div class="muted">No models yet. Download one below or import a .gguf file.</div>';
@@ -261,7 +269,7 @@ function renderModels() {
     const d = S.downloads[c.id];
     const pct = d?.totalSize ? Math.round((d.downloadedSize / d.totalSize) * 100) : 0;
     return `<div class="card"><div class="title">${esc(c.name)}</div>
-      <div><span class="tag">${c.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${esc(c.size)}</span></div>
+      <div><span class="tag">${c.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${esc(c.size)}</span>${fitTag(c.fit)}</div>
       <div class="muted small">${esc(c.note)}</div>
       ${have.has(file) ? '<div class="small" style="color:var(--accent)">✓ Installed</div>'
         : d ? `<div class="progress"><div style="width:${pct}%"></div></div><div class="row"><span class="small muted">${pct}% of ${d.totalSize ? gb(d.totalSize) : '…'}</span><button class="btn small" data-cancel="${c.id}">Cancel</button></div>`

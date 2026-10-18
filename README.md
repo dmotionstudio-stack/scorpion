@@ -96,9 +96,25 @@ and choose *Open*. To remove these warnings you need a code-signing certificate.
 llama.cpp binaries come prebuilt, and Scorpion picks one automatically:
 
 - macOS: Metal (Apple Silicon)
-- Windows: CUDA (NVIDIA), Vulkan (AMD, Intel, NVIDIA), or CPU
+- Windows: Vulkan (NVIDIA, AMD and Intel graphics) or CPU
 
-The active backend is shown on the Models page.
+The Windows build ships without the CUDA libraries (about 545 MB): Vulkan
+already drives NVIDIA cards, and the installer is 121 MB instead of 392 MB.
+Flash attention is on wherever the model supports it.
+
+The Models page shows the active backend, how many layers are on the GPU,
+and a tag on every model: ⚡ fast here (fits in graphics memory), 🐢 slower
+here (part runs on the CPU), or ⛔ too big.
+
+### Speed tips
+
+- Pick a model tagged ⚡. On a 4 GB laptop GPU, Qwen3 4B Instruct writes about
+  45 tokens/second; an 8-bit 4B model that doesn't fit managed about 6.
+- "Thinking" models write hidden reasoning before every answer, so they feel
+  much slower to start.
+- `node scripts/bench.mjs <model.gguf>` measures speed on your machine, and
+  `node scripts/prompt-size.mjs <model.gguf>` shows how much every new chat
+  has to read before answering.
 
 ## Tests
 

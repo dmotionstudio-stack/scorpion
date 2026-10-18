@@ -69,3 +69,17 @@ test('data from the old Kenzo folder moves to Scorpion once, with model paths up
   assert.ok(fs.existsSync(path.join(newDir, 'threads', 't.json')));
   assert.equal(store.migrateFromKenzo(newDir, oldDir), false); // only once
 });
+
+test('recall brings back the reply to a matching earlier question', () => {
+  const t = store.createThread();
+  t.title = 'Kitten';
+  t.messages.push(
+    { role: 'user', text: 'Suggest three names for my new orange kitten.' },
+    { role: 'assistant', blocks: [{ type: 'text', text: 'How about Toro, Marmalade or Sunbeam?' }] },
+  );
+  store.saveThread(t);
+  memory.invalidateRecall();
+  const block = memory.recallBlock('Which names did you suggest for my orange kitten earlier?', 'another-thread');
+  assert.match(block, /Suggest three names/);
+  assert.match(block, /\[I replied\]\nHow about Toro, Marmalade or Sunbeam\?/);
+});

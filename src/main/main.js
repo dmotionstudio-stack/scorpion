@@ -187,11 +187,19 @@ function scheduleView() {
   return scheduler.listSchedules().map((s) => ({ ...s, nextRunAt: scheduler.nextRunAt(s) }));
 }
 
+const parseSize = (s) => {
+  const m = /([\d.]+)\s*(GB|MB)/i.exec(s || '');
+  return m ? Number(m[1]) * 1024 ** (m[2].toUpperCase() === 'GB' ? 3 : 2) : 0;
+};
+
 async function state() {
+  const hw = await engine.hardwareInfo().catch(() => null);
+  const fit = (kind, bytes) => (kind === 'chat' ? engine.modelFit(bytes, hw) : null);
   return {
     settings: store.getSettings(),
-    models: models.listLocalModels(modelEnv()),
-    catalog: models.CATALOG,
+    hardware: hw,
+    models: models.listLocalModels(modelEnv()).map((m) => ({ ...m, fit: fit(m.kind, m.bytes) })),
+    catalog: models.CATALOG.map((c) => ({ ...c, fit: fit(c.kind, parseSize(c.size)) })),
     threads: store.listThreads(),
     documents: rag.listDocuments(),
     memories: memory.listMemories(),

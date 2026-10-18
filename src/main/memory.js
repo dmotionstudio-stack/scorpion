@@ -101,14 +101,19 @@ function buildIndex() {
   for (const { id } of listThreads()) {
     const t = getThread(id);
     if (!t) continue;
-    for (const m of t.messages || []) {
+    const msgs = t.messages || [];
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i];
       const text = messageText(m).trim();
       if (!text) continue;
       const tokens = tokenize(text);
       if (!tokens.length) continue;
       const tf = new Map();
       for (const w of tokens) tf.set(w, (tf.get(w) || 0) + 1);
-      docs.push({ threadId: t.id, title: t.title, role: m.role, text, len: tokens.length, tf, at: m.createdAt || t.updatedAt });
+      // Keep the reply to each question: "what did you suggest earlier?" matches
+      // the question's words, but the answer is what the user actually wants.
+      const reply = m.role === 'user' && msgs[i + 1]?.role === 'assistant' ? messageText(msgs[i + 1]).trim() : '';
+      docs.push({ threadId: t.id, title: t.title, role: m.role, text, reply, len: tokens.length, tf, at: m.createdAt || t.updatedAt });
     }
   }
   const df = new Map();
@@ -141,7 +146,7 @@ export function searchConversations(query, { k = 5, excludeThreadId = null } = {
   return scored
     .sort((x, y) => y.score - x.score)
     .slice(0, k)
-    .map(({ threadId, title, role, text, score, matched, coverage, at }) => ({ threadId, title, role, text: text.slice(0, 700), score, matched, coverage, at }));
+    .map(({ threadId, title, role, text, reply, score, matched, coverage, at }) => ({ threadId, title, role, text: text.slice(0, 700), reply: (reply || '').slice(0, 900), score, matched, coverage, at }));
 }
 
 // Recall is only attached when most of the query's meaningful words match
@@ -155,6 +160,6 @@ export function recallBlock(query, threadId) {
     .filter((h) => h.coverage >= MIN_RECALL_COVERAGE && h.matched >= needed);
   if (!hits.length) return '';
   return `From my earlier conversations with you (may be relevant):\n\n${hits
-    .map((h) => `[chat "${h.title}" · ${h.role === 'user' ? 'you said' : 'I said'}]\n${h.text}`)
+    .map((h) => `[chat "${h.title}" · ${h.role === 'user' ? 'you said' : 'I said'}]\n${h.text}${h.reply ? `\n[I replied]\n${h.reply}` : ''}`)
     .join('\n\n')}`;
 }

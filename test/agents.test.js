@@ -99,7 +99,7 @@ test('system prompts use agent instructions and list teammates', () => {
   const settings = { ...store.getSettings(), memoryEnabled: true };
   const p = buildSystemPrompt(settings, { docNames: [], agent: agents.getAgent('coder') });
   assert.match(p, /You are Coder/);
-  assert.match(p, /- Reviewer:/);
+  assert.match(p, /Specialists: .*Reviewer/);
   const helper = buildSystemPrompt(settings, { docNames: [], agent: agents.getAgent('reviewer'), isHelper: true });
   assert.match(helper, /Another agent asked you/);
   assert.doesNotMatch(helper, /ask_agent|long-term memory/);
@@ -244,4 +244,15 @@ test('hard compaction also trims the most recent long reply', async () => {
   assert.ok(out[1].response[0].length < 500);
   const soft = compactHistory([{ type: 'user', text: 'plan it' }, { type: 'model', response: ['p'.repeat(6000)] }]);
   assert.equal(soft[1].response[0].length, 6000);
+});
+
+test('model fit labels match what was measured on a 4 GB GPU / 32 GB RAM laptop', async () => {
+  const { modelFit } = await import('../src/main/engine.js');
+  const GB = 1024 ** 3;
+  const hw = { dedicatedVram: 4 * GB, sharedVram: 16 * GB, ram: 32 * GB };
+  assert.equal(modelFit(2.33 * GB, hw), 'fast'); // Qwen3 4B Q4: 37/37 layers on GPU, 44 tok/s
+  assert.equal(modelFit(4.3 * GB, hw), 'slow'); // tev1:4b Q8: 16/34 layers, 5.5 tok/s
+  assert.equal(modelFit(16.8 * GB, hw), 'too-big');
+  assert.equal(modelFit(1.5 * GB, { dedicatedVram: 0, sharedVram: 8 * GB, ram: 16 * GB }), 'ok');
+  assert.equal(modelFit(2.3 * GB, { dedicatedVram: 0, sharedVram: 0, ram: 8 * GB }), 'slow');
 });

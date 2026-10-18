@@ -37,7 +37,16 @@
     "files": [
       "src/**/*",
       "package.json",
-      "!**/*.map"
+      "!**/*.map",
+      "!node_modules/@node-llama-cpp/win-x64-cuda/**",
+      "!node_modules/@node-llama-cpp/win-x64-cuda-ext/**",
+      "!node_modules/@node-llama-cpp/win-arm64/**",
+      "!node_modules/@node-llama-cpp/linux-*/**",
+      "!node_modules/node-llama-cpp/llama/gitRelease.bundle",
+      "!node_modules/**/*.md"
+    ],
+    "electronLanguages": [
+      "en-US"
     ],
     "extraResources": [
       {

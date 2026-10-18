@@ -2,7 +2,7 @@
 
 Jan is Apache-2.0 licensed (Copyright Menlo Research). Scorpion contains **no Jan
 source code**; it re-implements the ideas below in its own Electron/Node code.
-The shallow clone used for study lives in `_reference/jan` (not shipped).
+It was studied from a shallow clone of github.com/janhq/jan (not kept or shipped).
 
 ## 1. Jan's shape
 
