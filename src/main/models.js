@@ -187,3 +187,15 @@ export function deleteModel(file) {
   if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('Only library models can be deleted');
   fs.rmSync(file, { force: true });
 }
+
+// Best default chat model for this computer. Models that fit in graphics
+// memory come first (known recommended ones, then the largest that fits, as
+// bigger is usually smarter); then the smallest of the rest, so a weak PC
+// still starts with something usable. `fit(bytes)` comes from engine.modelFit.
+const FIT_ORDER = { fast: 0, ok: 1, slow: 2, 'too-big': 3 };
+export function pickDefaultChatModel(list, fit) {
+  const chat = list.filter((m) => m.kind === 'chat').map((m) => ({ m, f: FIT_ORDER[fit(m.bytes)] ?? 2, rank: catalogRank(m) }));
+  chat.sort((a, b) => a.f - b.f
+    || (a.f <= 1 ? a.rank - b.rank || b.m.bytes - a.m.bytes : a.m.bytes - b.m.bytes));
+  return chat[0]?.m ?? null;
+}

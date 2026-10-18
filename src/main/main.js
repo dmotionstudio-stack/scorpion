@@ -217,12 +217,16 @@ async function state() {
 
 // Pick sensible defaults the first time: a bundled/downloaded model is used
 // automatically so a preloaded offline install works with zero clicks.
-function autoSelectModels() {
+async function autoSelectModels() {
   const s = store.getSettings();
   const local = models.listLocalModels(modelEnv());
   const exists = (p) => p && fs.existsSync(p);
   const patch = {};
-  if (!exists(s.chatModel)) patch.chatModel = local.find((m) => m.kind === 'chat')?.path ?? null;
+  if (!exists(s.chatModel)) {
+    // Pick what runs well on this machine, not just the first file found.
+    const hw = await engine.hardwareInfo().catch(() => null);
+    patch.chatModel = models.pickDefaultChatModel(local, (bytes) => engine.modelFit(bytes, hw))?.path ?? null;
+  }
   if (!exists(s.embedModel)) patch.embedModel = local.find((m) => m.kind === 'embedding')?.path ?? null;
   if (Object.keys(patch).length) store.updateSettings(patch);
 }
@@ -498,9 +502,9 @@ function ensureTrayHint() {
   if (scheduler.hasEnabledSchedules()) ensureTray();
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   store.initStore(app.getPath('userData'));
-  autoSelectModels();
+  await autoSelectModels();
   serveApp();
   registerIpc();
   createWindow();

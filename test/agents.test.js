@@ -256,3 +256,27 @@ test('model fit labels match what was measured on a 4 GB GPU / 32 GB RAM laptop'
   assert.equal(modelFit(1.5 * GB, { dedicatedVram: 0, sharedVram: 8 * GB, ram: 16 * GB }), 'ok');
   assert.equal(modelFit(2.3 * GB, { dedicatedVram: 0, sharedVram: 0, ram: 8 * GB }), 'slow');
 });
+
+test('first start picks the best model that fits this PC, not the first file found', async () => {
+  const { pickDefaultChatModel } = await import('../src/main/models.js');
+  const { modelFit } = await import('../src/main/engine.js');
+  const GB = 1024 ** 3;
+  const hw = { dedicatedVram: 4 * GB, sharedVram: 16 * GB, ram: 32 * GB };
+  const fit = (b) => modelFit(b, hw);
+  const ollamaOnly = [
+    { name: 'gemma4:12b', kind: 'chat', bytes: 6.9 * GB },
+    { name: 'pplx-decider:latest', kind: 'chat', bytes: 15.4 * GB },
+    { name: 'qwen3.5:4b', kind: 'chat', bytes: 2.5 * GB },
+    { name: 'qwen3.8:27b', kind: 'chat', bytes: 15.7 * GB },
+    { name: 'tev1:4b', kind: 'chat', bytes: 4.3 * GB },
+    { name: 'nomic-embed', kind: 'embedding', bytes: 0.14 * GB },
+  ];
+  assert.equal(pickDefaultChatModel(ollamaOnly, fit).name, 'qwen3.5:4b');
+  // A recommended catalog model wins among those that fit.
+  const withCatalog = [...ollamaOnly, { name: 'Qwen3-4B-Instruct-2507-Q4_K_M', kind: 'chat', bytes: 2.3 * GB }];
+  assert.equal(pickDefaultChatModel(withCatalog, fit).name, 'Qwen3-4B-Instruct-2507-Q4_K_M');
+  // Nothing fits the GPU (CPU-only PC): smallest usable model.
+  const cpu = (b) => modelFit(b, { dedicatedVram: 0, sharedVram: 0, ram: 16 * GB });
+  assert.equal(pickDefaultChatModel(ollamaOnly, cpu).name, 'qwen3.5:4b');
+  assert.equal(pickDefaultChatModel([], fit), null);
+});
