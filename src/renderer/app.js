@@ -2,17 +2,17 @@ import { marked } from '/vendor/marked.js';
 import DOMPurify from '/vendor/purify.js';
 import { applyEvent } from '/shared/events.js';
 
-const api = window.kenzo;
+const api = window.scorpion;
 const $ = (sel) => document.querySelector(sel);
 const S = {
   settings: {}, models: [], catalog: [], threads: [], documents: [], memories: [], agents: [], tools: [], schedules: [], engine: {},
   thread: null, running: new Set(), pending: new Map(), downloads: {}, modelStatus: null, view: 'chat',
-  newChatAgent: 'kenzo', newChatMode: savedMode(), editingAgent: null, editingSchedule: null,
+  newChatAgent: 'scorpion', newChatMode: savedMode(), editingAgent: null, editingSchedule: null,
 };
 function savedMode() {
-  try { const m = localStorage.getItem('kenzo.mode'); return ['chat', 'plan', 'build'].includes(m) ? m : 'build'; } catch { return 'build'; }
+  try { const m = localStorage.getItem('scorpion.mode'); return ['chat', 'plan', 'build'].includes(m) ? m : 'build'; } catch { return 'build'; }
 }
-const agentById = (id) => S.agents.find((a) => a.id === id) || S.agents[0] || { id: 'kenzo', name: 'Kenzo', icon: '✨' };
+const agentById = (id) => S.agents.find((a) => a.id === id) || S.agents[0] || { id: 'scorpion', name: 'Scorpion', icon: '✨' };
 const VIEWS = ['chat', 'models', 'docs', 'memory', 'agents', 'schedules', 'settings'];
 
 // ---------- helpers ----------
@@ -63,7 +63,7 @@ function renderTopbar() {
   $('#workspace-chip').title = S.settings.workspace || 'Choose a folder the agent can work in';
   $('#auto-approve').checked = !!S.settings.autoApprove;
   renderModes();
-  const current = S.thread?.agentId || (S.thread ? 'kenzo' : S.newChatAgent);
+  const current = S.thread?.agentId || (S.thread ? 'scorpion' : S.newChatAgent);
   $('#agent-picker').innerHTML = S.agents.map((a) => `<option value="${esc(a.id)}"${a.id === current ? ' selected' : ''}>${esc(a.icon)} ${esc(a.name)}</option>`).join('');
   $('#agent-picker').title = agentById(current).description || '';
 }
@@ -97,8 +97,8 @@ function renderModelSwitch() {
 // Modes are per chat; a chat that hasn't been created yet uses the composer's choice.
 const MODE_HINTS = {
   chat: 'Just talking. No files or commands.',
-  plan: 'Read-only. Kenzo explores and writes a plan.',
-  build: 'Kenzo builds it: writes files, runs and fixes them.',
+  plan: 'Read-only. Scorpion explores and writes a plan.',
+  build: 'Scorpion builds it: writes files, runs and fixes them.',
 };
 function currentMode() {
   return S.thread?.mode || S.newChatMode;
@@ -122,7 +122,7 @@ function buildPlanMessage() {
 async function setMode(mode) {
   if (S.thread && S.running.has(S.thread.id)) { toast('Wait for the current answer to finish.'); return; }
   S.newChatMode = mode;
-  try { localStorage.setItem('kenzo.mode', mode); } catch { /* storage unavailable */ }
+  try { localStorage.setItem('scorpion.mode', mode); } catch { /* storage unavailable */ }
   if (S.thread) S.thread = { ...S.thread, ...(await api.setThreadMode({ id: S.thread.id, mode })) };
   renderModes();
   renderMessages(true);
@@ -191,7 +191,7 @@ function renderBlocks(msg, live) {
 function messageHtml(m, i, msgs) {
   if (m.role === 'user') return `<div class="msg user"><div class="bubble">${esc(m.text)}</div></div>`;
   const live = S.running.has(S.thread.id) && i === msgs.length - 1;
-  const a = agentById(m.agentId || S.thread.agentId || 'kenzo');
+  const a = agentById(m.agentId || S.thread.agentId || 'scorpion');
   const modeTag = m.mode && m.mode !== 'build' ? ` <span class="mode-tag">${m.mode === 'plan' ? '📝 plan' : '💬 chat'}</span>` : '';
   // After a plan is written in Plan mode, offer to build it in one click.
   const offerBuild = !live && i === msgs.length - 1 && m.mode === 'plan' && (m.blocks || []).some((b) => b.type === 'plan');
@@ -285,7 +285,7 @@ function renderMemory() {
       <div class="text" contenteditable="true" spellcheck="false" title="Click to edit">${esc(m.text)}</div>
       <span class="meta" title="${new Date(m.createdAt).toLocaleString()}">${m.source === 'agent' ? 'learned in chat' : 'added by you'}</span>
       <button data-delmem="${m.id}" title="Delete memory">✕</button></div>`).join('')
-    || '<div class="muted">Nothing remembered yet. Tell Kenzo about yourself in a chat, or add a memory above.</div>';
+    || '<div class="muted">Nothing remembered yet. Tell Scorpion about yourself in a chat, or add a memory above.</div>';
   $('#clear-memory').classList.toggle('hidden', !list.length);
 }
 
@@ -381,7 +381,7 @@ function renderScheduleEditor() {
   if (!s) return;
   $('#schedule-editor-title').textContent = s.id ? `Edit ${s.name}` : 'New scheduled agent';
   $('#se-name').value = s.name || '';
-  $('#se-agent').innerHTML = S.agents.map((a) => `<option value="${esc(a.id)}"${a.id === (s.agentId || 'kenzo') ? ' selected' : ''}>${esc(a.icon)} ${esc(a.name)}</option>`).join('');
+  $('#se-agent').innerHTML = S.agents.map((a) => `<option value="${esc(a.id)}"${a.id === (s.agentId || 'scorpion') ? ' selected' : ''}>${esc(a.icon)} ${esc(a.name)}</option>`).join('');
   $('#se-prompt').value = s.prompt || '';
   const t = s.trigger || { type: 'daily', time: '08:00' };
   $('#se-trigger').value = t.type;
@@ -434,13 +434,38 @@ function renderSettings() {
   $('#glass').value = S.settings.glass === 'off' ? 'off' : 'auto';
   $('#glass-hint').textContent = S.nativeGlass
     ? 'Uses your system\'s real glass effect: the desktop shows through, blurred.'
-    : 'Your system has no native glass effect, so Kenzo draws a frosted look itself.';
+    : 'Your system has no native glass effect, so Scorpion draws a frosted look itself.';
   $('#temperature').value = S.settings.temperature;
   $('#temp-val').textContent = S.settings.temperature;
   $('#memory-enabled').checked = !!S.settings.memoryEnabled;
   $('#recall-enabled').checked = !!S.settings.recallEnabled;
   $('#recall-enabled').disabled = !S.settings.memoryEnabled;
   if (document.activeElement !== $('#system-prompt')) $('#system-prompt').value = S.settings.systemPrompt || '';
+}
+
+// Theme palettes for the picker previews (the real colours live in themes.css).
+const THEMES = [
+  { id: 'classic', name: 'Classic', note: 'yellow & black', bg: '#0e0d0b', side: '#161512', accent: '#f5c518', text: '#f2eee2' },
+  { id: 'hellfire', name: 'Hellfire', note: 'fire orange', bg: '#0f0807', side: '#170d0b', accent: '#ff6a1a', text: '#f7ece6' },
+  { id: 'bloodmoon', name: 'Blood Moon', note: 'crimson', bg: '#0d0709', side: '#160b0f', accent: '#e0243c', text: '#f5e9ec' },
+  { id: 'smoke', name: 'Smoke', note: 'steel & amber', bg: '#101214', side: '#171a1d', accent: '#f0a830', text: '#e8ecef' },
+  { id: 'molten', name: 'Molten', note: 'bronze & copper', bg: '#100c08', side: '#18120c', accent: '#e08a32', text: '#f4ece2' },
+  { id: 'bone', name: 'Bone', note: 'light', bg: '#f3eee3', side: '#fbf8f1', accent: '#d4a20f', text: '#1d1a14' },
+];
+
+function applyTheme() {
+  const theme = THEMES.some((t) => t.id === S.settings.theme) ? S.settings.theme : 'classic';
+  document.documentElement.dataset.theme = theme;
+}
+
+function renderThemePicker() {
+  const current = document.documentElement.dataset.theme;
+  $('#theme-grid').innerHTML = THEMES.map((t) => `<button class="theme-card${t.id === current ? ' active' : ''}" data-theme-id="${t.id}" type="button" aria-pressed="${t.id === current}">
+      <div class="theme-preview" style="background:${t.bg}">
+        <div class="side" style="background:${t.side}"><i style="background:${t.accent}"></i><i style="background:${t.text}"></i><i style="background:${t.text}"></i></div>
+        <div class="content"><i style="background:${t.text};opacity:.35;width:80%"></i><i style="background:${t.text};opacity:.35;width:55%"></i><i style="background:${t.accent};width:35%;align-self:flex-end"></i></div>
+      </div>
+      <div class="label">${t.name}<small>${t.note}</small></div></button>`).join('');
 }
 
 function applyGlass() {
@@ -450,7 +475,9 @@ function applyGlass() {
 }
 
 function renderAll() {
+  applyTheme();
   applyGlass();
+  renderThemePicker();
   renderThreads(); renderTopbar(); renderModels(); renderDocs(); renderMemory(); renderAgents(); renderSchedules(); renderSettings(); renderMessages();
 }
 
@@ -649,7 +676,7 @@ function wire() {
     if (e.key === 'Enter' && e.target.classList.contains('text')) { e.preventDefault(); e.target.blur(); }
   });
   $('#clear-memory').onclick = async () => {
-    if (!confirm('Delete everything Kenzo remembers about you? Past chats are not deleted.')) return;
+    if (!confirm('Delete everything Scorpion remembers about you? Past chats are not deleted.')) return;
     await api.clearMemories();
     reloadMemories();
   };
@@ -657,6 +684,14 @@ function wire() {
   $('#recall-enabled').onchange = (e) => setSetting({ recallEnabled: e.target.checked });
 
   $('#ctx-size').onchange = (e) => setSetting({ contextSize: Number(e.target.value) });
+  $('#theme-grid').onclick = async (e) => {
+    const card = e.target.closest('[data-theme-id]');
+    if (!card) return;
+    S.settings.theme = card.dataset.themeId;
+    applyTheme();
+    renderThemePicker();
+    await setSetting({ theme: card.dataset.themeId });
+  };
   $('#glass').onchange = async (e) => {
     await setSetting({ glass: e.target.value });
     S.glass = (await api.state()).glass;
@@ -685,7 +720,7 @@ function wire() {
     else if (d.dupAgent) { const a = agentById(d.dupAgent); S.editingAgent = { ...a, id: undefined, builtin: false, name: `${a.name} copy` }; renderAgentEditor(); $('#ae-name').focus(); }
     else if (d.editAgent) { S.editingAgent = structuredClone(agentById(d.editAgent)); renderAgentEditor(); }
     else if (d.delAgent) {
-      if (!confirm(`Delete the agent "${agentById(d.delAgent).name}"? Chats that use it switch to Kenzo.`)) return;
+      if (!confirm(`Delete the agent "${agentById(d.delAgent).name}"? Chats that use it switch to Scorpion.`)) return;
       await api.deleteAgent(d.delAgent); refresh();
     }
   };
@@ -698,7 +733,7 @@ function wire() {
     try { await api.saveAgent(readAgentEditor()); S.editingAgent = null; toast('Agent saved.'); refresh(); } catch (err) { toast(errText(err)); }
   };
 
-  $('#new-schedule').onclick = () => { S.editingSchedule = { agentId: 'kenzo', trigger: { type: 'daily', time: '08:00' } }; renderScheduleEditor(); $('#se-name').focus(); };
+  $('#new-schedule').onclick = () => { S.editingSchedule = { agentId: 'scorpion', trigger: { type: 'daily', time: '08:00' } }; renderScheduleEditor(); $('#se-name').focus(); };
   $('#se-trigger').onchange = showTriggerFields;
   $('#se-pick-folder').onclick = async () => { const f = await api.chooseFolder(); if (f) { $('#se-folder').textContent = f; $('#se-folder').dataset.path = f; } };
   $('#se-pick-workspace').onclick = async () => { const f = await api.chooseFolder(); if (f) { $('#se-workspace').textContent = f; $('#se-workspace').dataset.path = f; } };

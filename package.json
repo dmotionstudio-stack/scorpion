@@ -1,11 +1,11 @@
 {
-  "name": "kenzo",
-  "productName": "Kenzo",
+  "name": "scorpion",
+  "productName": "Scorpion",
   "version": "0.1.0",
   "description": "Offline AI assistant and agent. Runs local GGUF models with llama.cpp - no API key, no internet.",
   "type": "module",
   "main": "src/main/main.js",
-  "author": "Kenzo",
+  "author": "Scorpion",
   "license": "Apache-2.0",
   "scripts": {
     "postinstall": "node node_modules/electron/install.js",
@@ -29,8 +29,8 @@
     "electron-builder": "26.15.3"
   },
   "build": {
-    "appId": "app.kenzo.desktop",
-    "productName": "Kenzo",
+    "appId": "app.scorpion.desktop",
+    "productName": "Scorpion",
     "directories": {
       "output": "release"
     },

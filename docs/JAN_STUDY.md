@@ -1,12 +1,12 @@
-# Studying Jan (janhq/jan) — what Kenzo borrows
+# Studying Jan (janhq/jan) — what Scorpion borrows
 
-Jan is Apache-2.0 licensed (Copyright Menlo Research). Kenzo contains **no Jan
+Jan is Apache-2.0 licensed (Copyright Menlo Research). Scorpion contains **no Jan
 source code**; it re-implements the ideas below in its own Electron/Node code.
 The shallow clone used for study lives in `_reference/jan` (not shipped).
 
 ## 1. Jan's shape
 
-| Layer | Jan | Kenzo equivalent |
+| Layer | Jan | Scorpion equivalent |
 |---|---|---|
 | Desktop shell | Tauri 2 (Rust) — `src-tauri/` | Electron (Node) — `src/main/` |
 | UI | React + Vite — `web-app/` | Vanilla JS, no build step — `src/renderer/` |
@@ -23,21 +23,21 @@ The shallow clone used for study lives in `_reference/jan` (not shipped).
 ## 2. Lessons taken from Jan
 
 1. **Keep the engine behind one interface.** Jan's extensions all talk to an
-   abstract engine; swapping llama.cpp ↔ MLX is a config change. Kenzo's
+   abstract engine; swapping llama.cpp ↔ MLX is a config change. Scorpion's
    `engine.js` is the only file that imports `node-llama-cpp`.
 2. **Deny wins, mutations need consent.** Jan's gate classifies tools and
    blocks mutations in plan mode at the dispatcher — not just in the prompt.
-   Kenzo does the same: plan mode removes write/exec tools from the list the
+   Scorpion does the same: plan mode removes write/exec tools from the list the
    model is even shown.
 3. **Confine the agent to a root.** Every path is resolved and checked against
    the workspace before any fs call.
 4. **Chunk by characters with overlap**, store vectors next to their source
    file id + order so citations can point back to the file.
 5. **Offline means "no network at runtime"**, not "no model file". Jan still
-   needs a GGUF on disk. Kenzo supports three offline paths: bundle the model
+   needs a GGUF on disk. Scorpion supports three offline paths: bundle the model
    in the installer, import a file you copied over, or download once.
 
-## 3. What Kenzo deliberately skips (for now)
+## 3. What Scorpion deliberately skips (for now)
 
 MCP servers, subagents, context compaction, MLX backend, remote providers,
 mobile builds. All are visible in Jan's tree if we want them later

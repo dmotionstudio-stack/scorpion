@@ -46,7 +46,7 @@ jobs:
         run: npx electron-builder ${{ matrix.target }} --publish never
       - uses: actions/upload-artifact@v4
         with:
-          name: kenzo-${{ matrix.os }}
+          name: scorpion-${{ matrix.os }}
           path: |
             release/*.exe
             release/*.dmg

@@ -10,7 +10,7 @@ import { listAgents, findAgentByName, agentAllows } from './agents.js';
 const NO_WORKSPACE_TOOLS = new Set(['calculator', 'run_code', 'update_plan']);
 const MAX_HELPER_OUTPUT = 6000;
 
-const BASE_PROMPT = `You are Kenzo, a helpful AI assistant and agent running fully offline on the user's own computer.
+const BASE_PROMPT = `You are Scorpion, a helpful AI assistant and agent running fully offline on the user's own computer.
 Be accurate and concise. Use Markdown for formatting and fenced code blocks for code.`;
 
 const AGENT_RULES = `You can act through tools. Rules:
@@ -53,7 +53,7 @@ const TEAM_RULES = `You can hand a self-contained subtask to a specialist agent 
 
 export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent = null, isHelper = false }) {
   const intro = agent?.instructions?.trim()
-    ? `${agent.instructions.trim()}\nYou run fully offline on the user's own computer as part of Kenzo. Use Markdown, and fenced code blocks for code.`
+    ? `${agent.instructions.trim()}\nYou run fully offline on the user's own computer as part of Scorpion. Use Markdown, and fenced code blocks for code.`
     : settings.systemPrompt?.trim() || BASE_PROMPT;
   const parts = [intro];
   if (isHelper) parts.push('Another agent asked you to do the task below. Complete it fully with your tools, then reply with the result only: concise, factual and self-contained.');
@@ -77,7 +77,7 @@ export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent 
     if (memoryBlock) parts.push(memoryBlock);
   }
   if (!isHelper && mode !== 'chat' && (!agent || agentAllows(agent, 'ask_agent'))) {
-    const others = listAgents().filter((a) => a.id !== (agent?.id || 'kenzo') && a.id !== 'kenzo');
+    const others = listAgents().filter((a) => a.id !== (agent?.id || 'scorpion') && a.id !== 'scorpion');
     parts.push(`${TEAM_RULES}\nAvailable specialists:\n${others.map((a) => `- ${a.name}: ${a.description}`).join('\n')}`);
   }
   return parts.join('\n\n');
@@ -104,8 +104,8 @@ const REMEMBER_RE = /\b(remember (that|this|my|i)|keep in mind|note that|don'?t 
 export function withConversationRecall(text, memory, threadId) {
   const block = memory?.recallBlock(text, threadId);
   let out = block ? `${block}\n\n---\n\n${text}` : text;
-  if (FORGET_RE.test(text) && !/don'?t forget/i.test(text)) out += '\n\n(Kenzo note: to forget, you must call the forget tool now.)';
-  else if (REMEMBER_RE.test(text)) out += '\n\n(Kenzo note: to remember this, you must call the remember tool now.)';
+  if (FORGET_RE.test(text) && !/don'?t forget/i.test(text)) out += '\n\n(Scorpion note: to forget, you must call the forget tool now.)';
+  else if (REMEMBER_RE.test(text)) out += '\n\n(Scorpion note: to remember this, you must call the remember tool now.)';
   return out;
 }
 
@@ -224,7 +224,7 @@ export function buildFunctions(ctx) {
   // Delegation: run a specialist on its own context sequence, then hand its
   // answer back as this tool's result. Helpers can't delegate further.
   if (!isHelper && runHelper && modeOf(settings) !== 'chat' && (!agent || agentAllows(agent, 'ask_agent'))) {
-    const helpers = listAgents().filter((a) => a.id !== (agent?.id || 'kenzo') && a.id !== 'kenzo');
+    const helpers = listAgents().filter((a) => a.id !== (agent?.id || 'scorpion') && a.id !== 'scorpion');
     if (helpers.length) {
       functions.ask_agent = defineChatSessionFunction({
         description: 'Give a self-contained subtask to a specialist agent and get its result back. Put every detail it needs in "task".',

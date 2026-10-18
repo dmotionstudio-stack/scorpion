@@ -11,8 +11,8 @@ import { evaluate } from '../src/main/calc.js';
 import { buildFunctions, buildSystemPrompt } from '../src/main/agent.js';
 import { applyEvent, findTool } from '../src/shared/events.js';
 
-store.initStore(fs.mkdtempSync(path.join(os.tmpdir(), 'kenzo-agents-')));
-const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'kenzo-agents-ws-'));
+store.initStore(fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-agents-')));
+const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-agents-ws-'));
 const ctx = { workspace: ws };
 
 test('calculator evaluates safely', () => {
@@ -73,7 +73,7 @@ test('custom agents can be saved, edited and deleted; built-ins are protected', 
   assert.equal(agents.findAgentByName('tutor').id, a.id);
   assert.throws(() => agents.saveAgent({ id: 'coder', name: 'X' }), /Built-in/);
   agents.deleteAgent(a.id);
-  assert.equal(agents.getAgent(a.id).id, 'kenzo'); // falls back to the general agent
+  assert.equal(agents.getAgent(a.id).id, 'scorpion'); // falls back to the general agent
 });
 
 test('each agent only gets its own tools; helpers cannot delegate', () => {
@@ -84,7 +84,7 @@ test('each agent only gets its own tools; helpers cannot delegate', () => {
 
   const reviewer = names(agents.getAgent('reviewer'));
   assert.deepEqual(reviewer, ['ask_agent', 'calculator', 'list_files', 'read_document', 'read_file', 'run_code', 'search_files'].filter((n) => n !== 'ask_agent').sort());
-  assert.ok(names(agents.getAgent('kenzo')).includes('ask_agent'));
+  assert.ok(names(agents.getAgent('scorpion')).includes('ask_agent'));
   assert.ok(!names(agents.getAgent('coder'), { isHelper: true }).includes('ask_agent'));
   assert.ok(!names(agents.getAgent('researcher')).includes('write_file'));
   // Plan mode strips anything that changes files or runs programs.
@@ -148,7 +148,7 @@ test('JSON files with a byte-order mark still load', () => {
 
 test('Ollama models are discovered from manifests and used in place', async () => {
   const { scanOllama } = await import('../src/main/models.js');
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kenzo-ollama-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-ollama-'));
   const dig = (n) => `sha256:${n.padStart(64, '0')}`;
   const blob = (d) => path.join(root, 'blobs', d.replace(':', '-'));
   fs.mkdirSync(path.join(root, 'blobs'), { recursive: true });
@@ -171,7 +171,7 @@ test('Ollama models are discovered from manifests and used in place', async () =
 test('chat, plan and build modes offer the right tools and instructions', () => {
   const settings = { ...store.getSettings(), workspace: ws, memoryEnabled: true };
   const rag = { hasDocuments: () => false };
-  const base = { rag, memory: {}, emit() {}, requestApproval: async () => true, runHelper: async () => 'x', agent: agents.getAgent('kenzo') };
+  const base = { rag, memory: {}, emit() {}, requestApproval: async () => true, runHelper: async () => 'x', agent: agents.getAgent('scorpion') };
   const tools = (mode) => Object.keys(buildFunctions({ ...base, settings: { ...settings, mode } }));
 
   const chat = tools('chat');

@@ -1,7 +1,7 @@
 // Multi-agent check with a real local model:
 //   node scripts/e2e-team.mjs <chat.gguf>
 // 1. Data Analyst reads a CSV and computes exact totals.
-// 2. Kenzo writes code, then delegates a review to the Reviewer agent.
+// 2. Scorpion writes code, then delegates a review to the Reviewer agent.
 // 3. A scheduled, read-only folder agent reports on files and can't change them.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -13,7 +13,7 @@ import * as scheduler from '../src/main/scheduler.js';
 import { buildFunctions, buildSystemPrompt } from '../src/main/agent.js';
 
 const [chatModel] = process.argv.slice(2);
-const data = fs.mkdtempSync(path.join(os.tmpdir(), 'kenzo-team-'));
+const data = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-team-'));
 const ws = path.join(data, 'ws');
 fs.mkdirSync(ws);
 store.initStore(data);
@@ -46,7 +46,7 @@ async function turn(label, agentId, text, { workspace = ws, approve = async () =
     }),
     onText: (d) => { streamed += d; },
   });
-  console.log(`KENZO (${((Date.now() - t0) / 1000).toFixed(0)}s): ${streamed.trim().slice(0, 700)}`);
+  console.log(`SCORPION (${((Date.now() - t0) / 1000).toFixed(0)}s): ${streamed.trim().slice(0, 700)}`);
   return { text: streamed, events };
 }
 
@@ -57,7 +57,7 @@ const usedSheet = a.events.some((e) => e.type === 'tool' && e.name === 'read_spr
 const analystOk = /7,?555/.test(a.text) && /2,?550/.test(a.text) && /2,?085/.test(a.text) && /2,?920/.test(a.text);
 
 // 2. Delegation
-const b = await turn('delegate', 'kenzo', 'Write a JavaScript function isPrime(n) and save it to prime.js. Then ask the Reviewer agent to review prime.js for bugs, and tell me what it said.');
+const b = await turn('delegate', 'scorpion', 'Write a JavaScript function isPrime(n) and save it to prime.js. Then ask the Reviewer agent to review prime.js for bugs, and tell me what it said.');
 const delegated = b.events.some((e) => e.type === 'tool' && e.name === 'ask_agent');
 const helperWorked = b.events.some((e) => e.parent && (e.type === 'tool' || e.type === 'helper-text'));
 const reviewResult = b.events.find((e) => e.type === 'tool-result' && !e.parent && b.events.some((t) => t.type === 'tool' && t.id === e.id && t.name === 'ask_agent'));

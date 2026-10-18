@@ -9,7 +9,7 @@ const on = (channel) => (fn) => {
   return () => ipcRenderer.removeListener(channel, listener);
 };
 
-contextBridge.exposeInMainWorld('kenzo', {
+contextBridge.exposeInMainWorld('scorpion', {
   state: invoke('app:state'),
   updateSettings: invoke('settings:update'),
 

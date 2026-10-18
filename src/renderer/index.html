@@ -1,22 +1,34 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="classic">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
-  <title>Kenzo</title>
+  <title>Scorpion</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="themes.css">
   <script type="module" src="app.js"></script>
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
-      <div class="brand"><span class="logo" aria-hidden="true"></span>Kenzo</div>
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 100 100" aria-hidden="true">
+          <g transform="rotate(-45 50 53) translate(50 53) scale(1.18) translate(-50 -53)">
+            <polygon points="43.7,47 38.5,36.6 50,10 61.5,36.6 56.3,47" fill="var(--accent)"/>
+            <polygon points="43.7,47 38.5,36.6 50,10 50,47" fill="#000" opacity=".22"/>
+            <rect x="46.4" y="46" width="7.2" height="34" fill="var(--accent-2)"/>
+            <g fill="var(--logo-wrap)"><rect x="46.4" y="52" width="7.2" height="3"/><rect x="46.4" y="59" width="7.2" height="3"/><rect x="46.4" y="66" width="7.2" height="3"/><rect x="46.4" y="73" width="7.2" height="3"/></g>
+            <circle cx="50" cy="86.5" r="5.9" fill="none" stroke="var(--accent)" stroke-width="3.4"/>
+          </g>
+        </svg>
+        <span class="brand-name">Scorpion</span>
+      </div>
       <button class="btn primary wide" id="new-chat">＋ New chat</button>
       <nav class="threads" id="threads" aria-label="Chats"></nav>
       <div class="sidebar-foot">
         <button class="navbtn" id="open-settings" title="Models, documents, agents, schedules, memory and preferences">⚙️ Settings</button>
-        <div class="offline-badge" title="Kenzo makes no network requests while you chat">● Offline &amp; private</div>
+        <div class="offline-badge" title="Scorpion makes no network requests while you chat">● Offline &amp; private</div>
       </div>
     </aside>
 
@@ -77,7 +89,7 @@
       <section class="view hidden" id="view-models">
         <div class="page">
           <h1>Models</h1>
-          <p class="muted">Models run entirely on this computer with llama.cpp. Get one once (download, or import a <code>.gguf</code> file from a USB drive) and Kenzo works with no internet forever after.</p>
+          <p class="muted">Models run entirely on this computer with llama.cpp. Get one once (download, or import a <code>.gguf</code> file from a USB drive) and Scorpion works with no internet forever after.</p>
           <div class="engine-info" id="engine-info"></div>
           <h2>On this computer</h2>
           <div class="cards" id="local-models"></div>
@@ -91,7 +103,7 @@
       <section class="view hidden" id="view-docs">
         <div class="page">
           <h1>Documents</h1>
-          <p class="muted">Add PDFs, Word files or text. Kenzo indexes them locally so you can ask questions about them in any chat. Requires an embedding model (see Models).</p>
+          <p class="muted">Add PDFs, Word files or text. Scorpion indexes them locally so you can ask questions about them in any chat. Requires an embedding model (see Models).</p>
           <div class="row"><button class="btn primary" id="add-docs">Add documents…</button><span class="muted" id="docs-progress"></span></div>
           <div class="cards" id="doc-list"></div>
         </div>
@@ -127,10 +139,10 @@
       <section class="view hidden" id="view-schedules">
         <div class="page">
           <h1>Scheduled agents</h1>
-          <p class="muted">Agents that work on their own: on a timer, every day at a set time, or whenever files in a folder change. Each one posts results to its own chat and shows a notification. They run while Kenzo is open, and Kenzo stays in the system tray when you close the window.</p>
+          <p class="muted">Agents that work on their own: on a timer, every day at a set time, or whenever files in a folder change. Each one posts results to its own chat and shows a notification. They run while Scorpion is open, and Scorpion stays in the system tray when you close the window.</p>
           <div class="row">
             <button class="btn primary" id="new-schedule">＋ New scheduled agent</button>
-            <label class="toggle"><input type="checkbox" id="open-at-login"><span>Start Kenzo in the tray when I log in</span></label>
+            <label class="toggle"><input type="checkbox" id="open-at-login"><span>Start Scorpion in the tray when I log in</span></label>
           </div>
           <form class="editor hidden" id="schedule-editor">
             <h2 id="schedule-editor-title">New scheduled agent</h2>
@@ -160,7 +172,7 @@
       <section class="view hidden" id="view-memory">
         <div class="page">
           <h1>Memory</h1>
-          <p class="muted">What Kenzo remembers about you across chats. Kenzo saves facts when you share something lasting, or when you say “remember that…”. Ask it to forget something, or edit and delete it here. Stored only on this computer.</p>
+          <p class="muted">What Scorpion remembers about you across chats. Scorpion saves facts when you share something lasting, or when you say “remember that…”. Ask it to forget something, or edit and delete it here. Stored only on this computer.</p>
           <form class="row" id="memory-form">
             <input id="memory-input" class="text-input" placeholder="Add a memory, e.g. “I prefer short answers with code examples.”" maxlength="500">
             <button class="btn primary" type="submit">Add</button>
@@ -174,6 +186,10 @@
       <section class="view hidden" id="view-settings">
         <div class="page">
           <h1>General</h1>
+          <div class="field">
+            <label>Theme</label>
+            <div class="theme-grid" id="theme-grid"></div>
+          </div>
           <div class="field">
             <label for="glass">Glass sidebar</label>
             <select id="glass">
@@ -201,12 +217,12 @@
               <option value="32">32 layers</option><option value="24">24 layers</option><option value="16">16 layers</option><option value="8">8 layers</option>
               <option value="0">CPU only</option>
             </select>
-            <p class="muted small">How much of the model runs on the graphics card. Lower it if a model fails to load or crashes while answering; Kenzo already steps down automatically when loading fails.</p>
+            <p class="muted small">How much of the model runs on the graphics card. Lower it if a model fails to load or crashes while answering; Scorpion already steps down automatically when loading fails.</p>
           </div>
           <div class="field">
             <label for="ctx-size">Context size (tokens)</label>
             <select id="ctx-size"><option>4096</option><option>8192</option><option>16384</option><option>32768</option></select>
-            <p class="muted small">Larger remembers more but uses more memory. Kenzo lowers it automatically if it doesn't fit.</p>
+            <p class="muted small">Larger remembers more but uses more memory. Scorpion lowers it automatically if it doesn't fit.</p>
           </div>
           <div class="field">
             <label for="temperature">Creativity (temperature): <span id="temp-val"></span></label>
@@ -214,7 +230,7 @@
           </div>
           <div class="field">
             <label for="system-prompt">Custom instructions</label>
-            <textarea id="system-prompt" rows="5" placeholder="Optional. Replaces Kenzo's default personality, e.g. 'You are a senior Python engineer. Answer briefly.'"></textarea>
+            <textarea id="system-prompt" rows="5" placeholder="Optional. Replaces Scorpion's default personality, e.g. 'You are a senior Python engineer. Answer briefly.'"></textarea>
             <div class="row"><button class="btn" id="save-prompt">Save</button></div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 // Model files: a curated catalog, local discovery, one-time download, and import.
-// After a model file is on disk Kenzo never touches the network again.
+// After a model file is on disk Scorpion never touches the network again.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -84,7 +84,7 @@ function scan(dir, source) {
 
 // ---------- models already installed by Ollama ----------
 // Ollama stores each model as content-addressed blobs plus a manifest per
-// "name:tag". The manifest's `model` layer is a plain GGUF file, so Kenzo can
+// "name:tag". The manifest's `model` layer is a plain GGUF file, so Scorpion can
 // load it in place (read-only, never copied or deleted).
 function ollamaRoot() {
   const candidates = [process.env.OLLAMA_MODELS, path.join(os.homedir(), '.ollama', 'models')];

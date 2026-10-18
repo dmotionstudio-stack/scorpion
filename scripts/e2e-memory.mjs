@@ -11,7 +11,7 @@ import * as memory from '../src/main/memory.js';
 import { buildFunctions, buildSystemPrompt, withConversationRecall } from '../src/main/agent.js';
 
 const [chatModel] = process.argv.slice(2);
-store.initStore(fs.mkdtempSync(path.join(os.tmpdir(), 'kenzo-mem-e2e-')));
+store.initStore(fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-mem-e2e-')));
 const settings = store.updateSettings({ chatModel, memoryEnabled: true, recallEnabled: true });
 await engine.loadChatModel(chatModel, { contextSize: 8192 });
 
@@ -20,7 +20,7 @@ const tools = [];
 
 // Mirrors main.js chatSend: persist the transcript so recall can index it.
 async function say(thread, text) {
-  console.log(`\n[${thread.title}] USER: ${text}\nKENZO: `);
+  console.log(`\n[${thread.title}] USER: ${text}\nSCORPION: `);
   let streamed = '';
   const blocks = [];
   thread.history = await engine.runTurn({

@@ -13,7 +13,7 @@ import { buildFunctions, buildSystemPrompt } from '../src/main/agent.js';
 import { runCommand } from '../src/main/tools.js';
 
 const [chatModel, gl] = process.argv.slice(2);
-const data = fs.mkdtempSync(path.join(os.tmpdir(), 'kenzo-modes-'));
+const data = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-modes-'));
 const ws = path.join(data, 'ws');
 fs.mkdirSync(ws);
 store.initStore(data);
@@ -27,12 +27,12 @@ let segments = 0;
 const continuation = () => {
   segments++;
   console.log('  [— context filling up: continuing in a new segment —]');
-  return `(Kenzo: continuing the same task.)\nPlan status:\n${plan.map((s) => `${s.status === 'done' ? '[done]' : '[todo]'} ${s.title}`).join('\n')}\nCarry on with the next unfinished step. When every step is done and tested, give the final summary.`;
+  return `(Scorpion: continuing the same task.)\nPlan status:\n${plan.map((s) => `${s.status === 'done' ? '[done]' : '[todo]'} ${s.title}`).join('\n')}\nCarry on with the next unfinished step. When every step is done and tested, give the final summary.`;
 };
 async function turn(mode, text) {
   console.log(`\n=== ${mode.toUpperCase()} ===\nUSER: ${text}`);
   const settings = { ...base, mode };
-  const agent = agents.getAgent('kenzo');
+  const agent = agents.getAgent('scorpion');
   const events = [];
   let streamed = '';
   const t0 = Date.now();
@@ -53,7 +53,7 @@ async function turn(mode, text) {
     }),
     onText: (d) => { streamed += d; },
   });
-  console.log(`KENZO (${((Date.now() - t0) / 1000).toFixed(0)}s): ${streamed.trim().slice(-400)}`);
+  console.log(`SCORPION (${((Date.now() - t0) / 1000).toFixed(0)}s): ${streamed.trim().slice(-400)}`);
   return events;
 }
 

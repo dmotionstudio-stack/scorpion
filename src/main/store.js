@@ -1,5 +1,5 @@
 // Persistence for settings and chat threads. Everything lives in the OS app-data
-// folder (Electron's userData), so Kenzo never needs a server or an account.
+// folder (Electron's userData), so Scorpion never needs a server or an account.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS = {
   memoryEnabled: true, // saved memories + remember/forget tools
   recallEnabled: true, // bring back relevant snippets from other chats
   systemPrompt: '',
+  theme: 'classic', // classic | hellfire | bloodmoon | smoke | molten | bone
   glass: 'auto', // 'auto' (native glass where the OS supports it) or 'off'
 };
 
@@ -95,4 +96,26 @@ export function listThreads() {
     .filter(Boolean)
     .map(({ id, title, updatedAt }) => ({ id, title, updatedAt }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+// The app used to be called Kenzo. On first start under the new name, move the
+// old data folder over (chats, memory, settings, models) and repoint settings
+// that hold absolute paths into it. Never deletes anything.
+export function migrateFromKenzo(newDir, oldDir) {
+  if (fs.existsSync(path.join(newDir, 'settings.json')) || !fs.existsSync(path.join(oldDir, 'settings.json'))) return false;
+  let moved = false;
+  if (!fs.existsSync(newDir)) {
+    // Same drive, so a rename is instant even with gigabytes of models.
+    try { fs.renameSync(oldDir, newDir); moved = true; } catch { /* in use: copy below */ }
+  }
+  if (!moved) fs.cpSync(oldDir, newDir, { recursive: true, force: false, errorOnExist: false });
+  const file = path.join(newDir, 'settings.json');
+  try {
+    const s = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
+    for (const key of ['chatModel', 'embedModel']) {
+      if (typeof s[key] === 'string' && s[key].toLowerCase().startsWith(oldDir.toLowerCase())) s[key] = newDir + s[key].slice(oldDir.length);
+    }
+    fs.writeFileSync(file, JSON.stringify(s, null, 1));
+  } catch { /* unreadable settings: defaults apply */ }
+  return true;
 }

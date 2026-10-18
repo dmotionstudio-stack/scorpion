@@ -305,7 +305,7 @@ export const TOOLS = {
       return { ...args, code };
     },
     async run({ language, code }, { workspace, signal }) {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kenzo-run-'));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-run-'));
       const cwd = workspace ? resolveInside(workspace, '.') : dir;
       try {
         let result;
@@ -398,7 +398,7 @@ export const TOOLS = {
     run({ query }, { memory, threadId }) {
       const hits = memory.searchConversations(query, { k: 6, excludeThreadId: threadId });
       if (!hits.length) return 'No earlier conversations matched.';
-      return hits.map((h, i) => `[${i + 1}] chat "${h.title}" (${new Date(h.at).toLocaleDateString()}) — ${h.role === 'user' ? 'user' : 'Kenzo'}:\n${h.text}`).join('\n\n');
+      return hits.map((h, i) => `[${i + 1}] chat "${h.title}" (${new Date(h.at).toLocaleDateString()}) — ${h.role === 'user' ? 'user' : 'Scorpion'}:\n${h.text}`).join('\n\n');
     },
   },
 

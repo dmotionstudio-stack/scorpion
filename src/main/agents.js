@@ -1,5 +1,5 @@
 // Agent profiles: a name, instructions and the tools that agent may use.
-// Built-ins ship with Kenzo; users can create their own (stored in agents.json).
+// Built-ins ship with Scorpion; users can create their own (stored in agents.json).
 import path from 'node:path';
 import { paths, writeJson, readJson, newId } from './store.js';
 
@@ -9,8 +9,8 @@ const MEMORY = ['remember', 'forget', 'search_past_chats'];
 
 export const BUILTIN_AGENTS = [
   {
-    id: 'kenzo',
-    name: 'Kenzo',
+    id: 'scorpion',
+    name: 'Scorpion',
     icon: '✨',
     description: 'General assistant. Can use every tool and hand work to specialists.',
     instructions: '',

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { TOOLS, resolveInside } from '../src/main/tools.js';
 import { chunkText } from '../src/main/rag.js';
 
-const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'kenzo-ws-'));
+const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-ws-'));
 const ctx = { workspace: ws };
 
 test('resolveInside refuses paths that escape the workspace', () => {
@@ -22,8 +22,8 @@ test('resolveInside requires a workspace', () => {
 test('write, read, edit, list and search files', async () => {
   assert.match(TOOLS.write_file.run({ path: 'src/hello.txt', content: 'hello world\nsecond line' }, ctx), /Created/);
   assert.match(TOOLS.read_file.run({ path: 'src/hello.txt', startLine: 1 }, ctx), /1\| hello world/);
-  assert.match(TOOLS.edit_file.run({ path: 'src/hello.txt', find: 'world', replace: 'Kenzo' }, ctx), /Edited/);
-  assert.equal(fs.readFileSync(path.join(ws, 'src/hello.txt'), 'utf8'), 'hello Kenzo\nsecond line');
+  assert.match(TOOLS.edit_file.run({ path: 'src/hello.txt', find: 'world', replace: 'Scorpion' }, ctx), /Edited/);
+  assert.equal(fs.readFileSync(path.join(ws, 'src/hello.txt'), 'utf8'), 'hello Scorpion\nsecond line');
   assert.throws(() => TOOLS.edit_file.run({ path: 'src/hello.txt', find: 'nope', replace: '' }, ctx), /not found/);
   assert.match(TOOLS.list_files.run({ path: '.', depth: 2 }, ctx), /src\/hello\.txt/);
   assert.match(TOOLS.search_files.run({ query: 'SECOND', path: '.' }, ctx), /src\/hello\.txt:2/);
@@ -35,9 +35,9 @@ test('edit_file rejects ambiguous matches', () => {
 });
 
 test('run_command runs inside the workspace', async () => {
-  const out = await TOOLS.run_command.run({ command: 'echo kenzo-ok', subdir: '.' }, ctx);
+  const out = await TOOLS.run_command.run({ command: 'echo scorpion-ok', subdir: '.' }, ctx);
   assert.match(out, /exit code 0/);
-  assert.match(out, /kenzo-ok/);
+  assert.match(out, /scorpion-ok/);
 });
 
 test('update_plan reports the next step', () => {

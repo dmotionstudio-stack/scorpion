@@ -1,38 +1,83 @@
-// Generates resources/icon.png (1024x1024): a gradient rounded square with a "K".
-// Dependency-free PNG encoder so the build needs nothing extra.
+// Generates resources/icon.png (1024x1024): a yellow kunai on a black tile.
+// Dependency-free: shapes are signed-distance functions, antialiased per pixel,
+// encoded with a tiny PNG writer.
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import path from 'node:path';
 
 const N = 1024;
 const px = Buffer.alloc(N * N * 4);
-const segs = [ // K strokes in unit coords
-  [0.34, 0.24, 0.34, 0.76],
-  [0.36, 0.53, 0.68, 0.24],
-  [0.45, 0.45, 0.70, 0.76],
-];
-const distSeg = (x, y, [x1, y1, x2, y2]) => {
-  const dx = x2 - x1, dy = y2 - y1;
-  const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)));
-  return Math.hypot(x - (x1 + t * dx), y - (y1 + t * dy));
-};
-const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+const clamp = (x) => Math.max(0, Math.min(1, x));
+const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+
+const YELLOW = [245, 197, 24];
+const YELLOW_DARK = [196, 144, 0];
+const WRAP = [28, 26, 20];
+const BG_TOP = [30, 28, 24];
+const BG_BOTTOM = [10, 10, 9];
+
+// Kunai in local coordinates: u runs along the blade (up), v across it.
+// Rotated 45° so the tip points to the top-right.
+const ANGLE = -Math.PI / 4;
+const CX = 0.5, CY = 0.53, SCALE = 1.0;
+
+function toLocal(x, y) {
+  const dx = (x - CX) / SCALE, dy = (y - CY) / SCALE;
+  // rotate by -ANGLE; screen y grows downward, so u = up = -y
+  const rx = dx * Math.cos(-ANGLE) - dy * Math.sin(-ANGLE);
+  const ry = dx * Math.sin(-ANGLE) + dy * Math.cos(-ANGLE);
+  return { u: -ry, v: rx };
+}
+
+// Signed distance approximations (negative inside).
+function blade(u, v) {
+  const u0 = 0.06, u1 = 0.43; // base → tip
+  const t = (u - u0) / (u1 - u0);
+  if (t < 0 || t > 1) return 1;
+  const peak = 0.28;
+  const half = 0.115 * (t < peak ? 0.55 + 0.45 * (t / peak) : (1 - t) / (1 - peak));
+  return Math.abs(v) - half;
+}
+function handle(u, v) {
+  if (u < -0.27 || u > 0.07) return 1;
+  return Math.abs(v) - 0.036;
+}
+function ring(u, v) {
+  const d = Math.hypot(u + 0.335, v);
+  return Math.max(d - 0.075, 0.042 - d);
+}
 
 for (let j = 0; j < N; j++) {
   for (let i = 0; i < N; i++) {
     const x = (i + 0.5) / N, y = (j + 0.5) / N;
-    // rounded-square mask (macOS-style margin), antialiased
+    // rounded tile mask
     const m = 0.06, r = 0.2;
     const qx = Math.max(Math.abs(x - 0.5) - (0.5 - m - r), 0), qy = Math.max(Math.abs(y - 0.5) - (0.5 - m - r), 0);
-    const d = Math.hypot(qx, qy) - r;
-    const alpha = Math.max(0, Math.min(1, -d * N));
-    const t = (x + y) / 2;
-    let R = lerp(0x3f, 0x2a, t), G = lerp(0xbf, 0x7b, t), B = lerp(0x9f, 0xd6, t);
-    const k = Math.min(...segs.map((s) => distSeg(x, y, s))) - 0.055;
-    const ink = Math.max(0, Math.min(1, -k * N));
-    R = lerp(R, 255, ink); G = lerp(G, 255, ink); B = lerp(B, 255, ink);
+    const alpha = clamp(-(Math.hypot(qx, qy) - r) * N);
+
+    let c = mix(BG_TOP, BG_BOTTOM, y);
+    // faint warm glow behind the blade
+    const glow = Math.exp(-((x - 0.62) ** 2 + (y - 0.4) ** 2) / 0.05) * 0.22;
+    c = mix(c, [120, 70, 10], glow);
+
+    const { u, v } = toLocal(x, y);
+    const aa = 1.2 / N;
+    const b = blade(u, v), h = handle(u, v), rg = ring(u, v);
+    const inBlade = clamp(0.5 - b / aa);
+    const inHandle = clamp(0.5 - h / aa);
+    const inRing = clamp(0.5 - rg / aa);
+
+    // blade: darker on one side of the centre ridge for a bevelled look
+    if (inBlade > 0) c = mix(c, v > 0 ? YELLOW : YELLOW_DARK, inBlade);
+    if (inHandle > 0) {
+      // cord wrap: dark bands across a yellow core
+      const band = (Math.sin((u + 0.27) * 110) > 0.2) ? WRAP : YELLOW_DARK;
+      c = mix(c, band, inHandle);
+    }
+    if (inRing > 0) c = mix(c, YELLOW, inRing);
+
     const o = (j * N + i) * 4;
-    px[o] = R; px[o + 1] = G; px[o + 2] = B; px[o + 3] = Math.round(alpha * 255);
+    px[o] = Math.round(c[0]); px[o + 1] = Math.round(c[1]); px[o + 2] = Math.round(c[2]); px[o + 3] = Math.round(alpha * 255);
   }
 }
 

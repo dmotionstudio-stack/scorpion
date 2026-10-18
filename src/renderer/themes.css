@@ -1,0 +1,120 @@
+/* Scorpion themes. Palettes inspired by classic ninja outfit colours: no logos,
+   artwork or franchise names, only colour and mood. Each theme sets the same
+   tokens; html[data-theme] outranks the :root defaults in styles.css. */
+
+html[data-theme] {
+  --accent-text: var(--accent);
+  --logo-wrap: var(--bg);
+}
+
+/* Classic: ninja yellow on black */
+html[data-theme="classic"] {
+  color-scheme: dark;
+  --bg: #0e0d0b; --panel: #161512; --panel-2: #201e19; --border: #302d24;
+  --text: #f2eee2; --muted: #a49e8d;
+  --accent: #f5c518; --accent-2: #d99a00; --accent-ink: #141210;
+  --danger: #e5484d; --warn: #f5a524;
+  --user-bubble: #2b250f; --code-bg: #090908;
+  --glow-1: #f5c518; --glow-2: #e07a00; --glow-3: #5a3d00;
+  --glass-tint: rgba(14, 13, 11, 0.45); --glass-tint-css: rgba(20, 18, 14, 0.55);
+}
+
+/* Hellfire: charred black, fire orange */
+html[data-theme="hellfire"] {
+  color-scheme: dark;
+  --bg: #0f0807; --panel: #170d0b; --panel-2: #22130f; --border: #3a1f18;
+  --text: #f7ece6; --muted: #b39a90;
+  --accent: #ff6a1a; --accent-2: #e8331c; --accent-ink: #160805;
+  --danger: #ff4d4d; --warn: #ffb020;
+  --user-bubble: #3a1a10; --code-bg: #0a0504;
+  --glow-1: #ff6a1a; --glow-2: #ff2e1f; --glow-3: #7a1200;
+  --glass-tint: rgba(15, 8, 7, 0.45); --glass-tint-css: rgba(24, 12, 9, 0.55);
+}
+
+/* Blood Moon: near-black wine, crimson */
+html[data-theme="bloodmoon"] {
+  color-scheme: dark;
+  --bg: #0d0709; --panel: #160b0f; --panel-2: #211016; --border: #3a1922;
+  --text: #f5e9ec; --muted: #b0939b;
+  --accent: #e0243c; --accent-2: #9e1029; --accent-ink: #ffffff;
+  --danger: #ff5a6e; --warn: #f0a030;
+  --user-bubble: #3a1219; --code-bg: #090405;
+  --glow-1: #e0243c; --glow-2: #7a0b1e; --glow-3: #3b0d4a;
+  --glass-tint: rgba(13, 7, 9, 0.45); --glass-tint-css: rgba(22, 10, 14, 0.55);
+}
+
+/* Smoke: cool charcoal and steel, amber spark */
+html[data-theme="smoke"] {
+  color-scheme: dark;
+  --bg: #101214; --panel: #171a1d; --panel-2: #202428; --border: #2f3439;
+  --text: #e8ecef; --muted: #959da5;
+  --accent: #f0a830; --accent-2: #c77a06; --accent-ink: #15110a;
+  --danger: #ef5350; --warn: #f0a830;
+  --user-bubble: #262b30; --code-bg: #0b0d0f;
+  --glow-1: #6b7a88; --glow-2: #f0a830; --glow-3: #2b3540;
+  --glass-tint: rgba(16, 18, 20, 0.42); --glass-tint-css: rgba(24, 27, 30, 0.55);
+}
+
+/* Molten: dark bronze, copper */
+html[data-theme="molten"] {
+  color-scheme: dark;
+  --bg: #100c08; --panel: #18120c; --panel-2: #231a11; --border: #3b2c1c;
+  --text: #f4ece2; --muted: #ae9c86;
+  --accent: #e08a32; --accent-2: #b5541c; --accent-ink: #120b05;
+  --danger: #ef5350; --warn: #ffb347;
+  --user-bubble: #33230f; --code-bg: #0a0705;
+  --glow-1: #e08a32; --glow-2: #ffb347; --glow-3: #5c2a0a;
+  --glass-tint: rgba(16, 12, 8, 0.45); --glass-tint-css: rgba(24, 18, 12, 0.55);
+}
+
+/* Bone: light sand and ink, gold accent */
+html[data-theme="bone"] {
+  color-scheme: light;
+  --bg: #f3eee3; --panel: #fbf8f1; --panel-2: #ebe4d4; --border: #d9cfba;
+  --text: #1d1a14; --muted: #6f675a;
+  --accent: #d4a20f; --accent-2: #a87800; --accent-ink: #1d1a14;
+  --accent-text: #8a6400;
+  --danger: #c62828; --warn: #b26b00;
+  --user-bubble: #f1e3b8; --code-bg: #ece6d8;
+  --glow-1: #f5c518; --glow-2: #e8b04a; --glow-3: #d9cfba;
+  --logo-wrap: #2a251b;
+  --glass-tint: rgba(251, 248, 241, 0.5); --glass-tint-css: rgba(251, 248, 241, 0.6);
+  --glass-line: rgba(0, 0, 0, 0.08); --glass-hover: rgba(0, 0, 0, 0.05); --glass-active: rgba(0, 0, 0, 0.08);
+}
+
+/* ---- shared styling that uses the theme tokens ---- */
+html[data-theme] .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); }
+html[data-theme] .btn.primary:hover { filter: brightness(1.08); }
+html[data-theme] .md a,
+html[data-theme] .step.in_progress,
+html[data-theme] .modes button[data-mode="build"][aria-checked="true"],
+html[data-theme] .offline-badge,
+html[data-theme] .tool.ok .st { color: var(--accent-text); }
+html[data-theme] .card.selected, html[data-theme] .tool.delegate { border-color: var(--accent); }
+html[data-theme] .model-switch .status.ready { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+html.glass-css[data-theme] body {
+  background:
+    radial-gradient(420px 380px at 40px 120px, color-mix(in srgb, var(--glow-1) 45%, transparent), transparent 70%),
+    radial-gradient(380px 420px at 220px 78%, color-mix(in srgb, var(--glow-2) 45%, transparent), transparent 70%),
+    radial-gradient(300px 300px at 0 100%, color-mix(in srgb, var(--glow-3) 60%, transparent), transparent 70%),
+    var(--bg);
+}
+
+.brand { gap: 10px; }
+.brand .logo { width: 38px; height: 38px; margin: -4px -2px -4px -6px; flex: none; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 45%, transparent)); background: none; border-radius: 0; }
+.brand-name { font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; font-size: 16px; }
+
+/* theme picker */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; max-width: 760px; }
+.theme-card { border: 2px solid var(--border); border-radius: 12px; padding: 0; background: none; cursor: pointer; overflow: hidden; text-align: left; color: var(--text); }
+.theme-card:hover { border-color: var(--muted); }
+.theme-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.theme-preview { display: grid; grid-template-columns: 30% 1fr; height: 70px; }
+.theme-preview .side { display: flex; flex-direction: column; gap: 5px; padding: 8px 6px; }
+.theme-preview .side i { display: block; height: 5px; border-radius: 3px; opacity: .55; }
+.theme-preview .side i:first-child { opacity: 1; height: 8px; }
+.theme-preview .content { display: flex; flex-direction: column; justify-content: flex-end; gap: 5px; padding: 8px; }
+.theme-preview .content i { display: block; height: 6px; border-radius: 3px; }
+.theme-card .label { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; font-size: 13px; font-weight: 600; background: var(--panel); }
+.theme-card .label small { font-weight: 400; color: var(--muted); }

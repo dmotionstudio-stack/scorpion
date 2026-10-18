@@ -11,7 +11,7 @@ import * as rag from '../src/main/rag.js';
 import { buildFunctions, buildSystemPrompt, withDocumentContext } from '../src/main/agent.js';
 
 const [chatModel, embedModel] = process.argv.slice(2);
-const data = fs.mkdtempSync(path.join(os.tmpdir(), 'kenzo-e2e-'));
+const data = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-e2e-'));
 const workspace = path.join(data, 'ws');
 fs.mkdirSync(workspace);
 store.initStore(data);
@@ -40,7 +40,7 @@ const turn = async (text, history) => { streamed = ''; return engine.runTurn({
 }); };
 
 console.log('\n--- agent task ---');
-let history = await turn('Create a file named hello.py in the workspace that prints "Hello from Kenzo", then run it with python or tell me it is created.', null);
+let history = await turn('Create a file named hello.py in the workspace that prints "Hello from Scorpion", then run it with python or tell me it is created.', null);
 const file = path.join(workspace, 'hello.py');
 console.log(`\nhello.py exists: ${fs.existsSync(file)}; approvals requested: ${approvals}`);
 if (fs.existsSync(file)) console.log(fs.readFileSync(file, 'utf8'));

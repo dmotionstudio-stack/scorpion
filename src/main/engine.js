@@ -118,7 +118,7 @@ function promptOptions({ functions, temperature, signal, onText, onThought, maxT
     // cap each response so a runaway can't fill the whole context.
     maxTokens,
     repeatPenalty: { lastTokens: 64, penalty: 1.1 },
-    onFunctionCallParamsChunk: process.env.KENZO_DEBUG ? (c) => process.stdout.write(`{${c.paramsChunk}}`) : undefined,
+    onFunctionCallParamsChunk: process.env.SCORPION_DEBUG ? (c) => process.stdout.write(`{${c.paramsChunk}}`) : undefined,
     onResponseChunk(chunk) {
       if (chunk.type === 'segment' && chunk.segmentType === 'thought') onThought?.(chunk.text);
       else if (chunk.type !== 'segment') onText?.(chunk.text);

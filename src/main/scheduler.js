@@ -1,5 +1,5 @@
 // Scheduled agents: run an agent with a prompt every N minutes, daily at a set
-// time, or when files in a folder change. Runs happen while Kenzo is open (it
+// time, or when files in a folder change. Runs happen while Scorpion is open (it
 // can keep running in the tray), and each schedule posts results to its own chat.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -52,7 +52,7 @@ export function saveSchedule(input) {
   const fields = {
     name,
     prompt,
-    agentId: String(input.agentId || 'kenzo'),
+    agentId: String(input.agentId || 'scorpion'),
     trigger: cleanTrigger(input.trigger),
     workspace: input.workspace || null,
     allowChanges: Boolean(input.allowChanges),

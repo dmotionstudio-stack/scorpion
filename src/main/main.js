@@ -24,18 +24,23 @@ const VENDOR = {
 };
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'kenzo', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: 'scorpion', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
-// Portable mode: a "kenzo-data" folder next to Kenzo.exe holds everything
-// (models, chats, memory), so Kenzo can run from a USB stick and leave nothing
-// on the computer. KENZO_DATA_DIR overrides it (used for testing).
-const portableDir = path.join(path.dirname(process.execPath), 'kenzo-data');
-if (process.env.KENZO_DATA_DIR) app.setPath('userData', path.resolve(process.env.KENZO_DATA_DIR));
-else if (app.isPackaged && fs.existsSync(portableDir)) {
+// Portable mode: a "scorpion-data" folder next to Scorpion.exe holds everything
+// (models, chats, memory), so Scorpion can run from a USB stick and leave nothing
+// on the computer. SCORPION_DATA_DIR overrides it (used for testing).
+// The app used to be called Kenzo; its data folders are picked up and moved
+// over once, so chats, memory, settings and models survive the rename.
+const exeDir = path.dirname(process.execPath);
+const portableDir = [path.join(exeDir, 'scorpion-data'), path.join(exeDir, 'kenzo-data')].find((d) => fs.existsSync(d));
+if (process.env.SCORPION_DATA_DIR) app.setPath('userData', path.resolve(process.env.SCORPION_DATA_DIR));
+else if (app.isPackaged && portableDir) {
   app.setPath('userData', portableDir);
   // Chromium caches also go in the portable folder instead of AppData.
   app.setPath('sessionData', path.join(portableDir, 'session'));
+} else {
+  store.migrateFromKenzo(app.getPath('userData'), path.join(app.getPath('appData'), 'Kenzo'));
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -52,7 +57,7 @@ function send(channel, payload) {
 }
 
 function serveApp() {
-  protocol.handle('kenzo', (request) => {
+  protocol.handle('scorpion', (request) => {
     const { pathname } = new URL(request.url);
     const rel = decodeURIComponent(pathname).replace(/^\/+/, '') || 'index.html';
     let file;
@@ -78,7 +83,7 @@ function nativeGlassSupported() {
 }
 
 function glassMode() {
-  if (['native', 'css', 'off'].includes(process.env.KENZO_GLASS)) return process.env.KENZO_GLASS; // testing
+  if (['native', 'css', 'off'].includes(process.env.SCORPION_GLASS)) return process.env.SCORPION_GLASS; // testing
   const pref = store.getSettings().glass;
   if (pref === 'off') return 'off';
   return nativeGlassSupported() ? 'native' : 'css';
@@ -89,12 +94,16 @@ function applyGlass() {
   const native = glassMode() === 'native';
   if (process.platform === 'win32') {
     win.setBackgroundMaterial?.(native ? 'acrylic' : 'none');
-    win.setBackgroundColor(native ? '#00000000' : '#111214');
+    win.setBackgroundColor(native ? '#00000000' : themeBg());
   } else if (process.platform === 'darwin') {
     win.setVibrancy(native ? 'sidebar' : null);
-    win.setBackgroundColor(native ? '#00000000' : '#111214');
+    win.setBackgroundColor(native ? '#00000000' : themeBg());
   }
 }
+
+// Window background per theme, so nothing flashes before the page paints.
+const THEME_BG = { classic: '#0e0d0b', hellfire: '#0f0807', bloodmoon: '#0d0709', smoke: '#101214', molten: '#100c08', bone: '#f3eee3' };
+const themeBg = () => THEME_BG[store.getSettings().theme] || THEME_BG.classic;
 
 function createWindow() {
   const native = glassMode() === 'native';
@@ -103,9 +112,9 @@ function createWindow() {
     height: 840,
     minWidth: 820,
     minHeight: 560,
-    title: 'Kenzo',
+    title: 'Scorpion',
     show: false,
-    backgroundColor: native ? '#00000000' : '#111214',
+    backgroundColor: native ? '#00000000' : themeBg(),
     ...(native && process.platform === 'win32' ? { backgroundMaterial: 'acrylic' } : {}),
     ...(native && process.platform === 'darwin' ? { vibrancy: 'sidebar', visualEffectState: 'active' } : {}),
     autoHideMenuBar: true,
@@ -117,19 +126,19 @@ function createWindow() {
       sandbox: true,
     },
   });
-  // Kenzo is offline: never navigate the app window anywhere else; open
+  // Scorpion is offline: never navigate the app window anywhere else; open
   // external links (e.g. in rendered Markdown) in the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e, url) => {
-    if (!url.startsWith('kenzo://')) e.preventDefault();
+    if (!url.startsWith('scorpion://')) e.preventDefault();
   });
-  win.loadURL('kenzo://app/index.html');
-  if (!startHidden || process.env.KENZO_SCREENSHOT) win.once('ready-to-show', () => win.show());
+  win.loadURL('scorpion://app/index.html');
+  if (!startHidden || process.env.SCORPION_SCREENSHOT) win.once('ready-to-show', () => win.show());
 
-  // With scheduled agents on, closing the window keeps Kenzo running in the tray.
+  // With scheduled agents on, closing the window keeps Scorpion running in the tray.
   win.on('close', (e) => {
     if (quitting || !scheduler.hasEnabledSchedules()) return;
     e.preventDefault();
@@ -137,13 +146,14 @@ function createWindow() {
     ensureTray();
   });
 
-  // Smoke test: KENZO_SCREENSHOT=out.png [KENZO_VIEW=models] npm start
-  if (process.env.KENZO_SCREENSHOT) {
+  // Smoke test: SCORPION_SCREENSHOT=out.png [SCORPION_VIEW=models] npm start
+  if (process.env.SCORPION_SCREENSHOT) {
     win.webContents.on('console-message', (e) => console.log(`[renderer] ${e.message}`));
     win.webContents.once('did-finish-load', async () => {
-      if (process.env.KENZO_VIEW) await win.webContents.executeJavaScript(`document.querySelector('[data-view="${process.env.KENZO_VIEW}"]')?.click()`);
-      await new Promise((r) => setTimeout(r, Number(process.env.KENZO_SCREENSHOT_DELAY) || 2500));
-      fs.writeFileSync(process.env.KENZO_SCREENSHOT, (await win.webContents.capturePage()).toPNG());
+      await new Promise((r) => setTimeout(r, 1500)); // let the app finish opening its first chat
+      if (process.env.SCORPION_VIEW) await win.webContents.executeJavaScript(`document.querySelector('[data-view="${process.env.SCORPION_VIEW}"]')?.click()`);
+      await new Promise((r) => setTimeout(r, Number(process.env.SCORPION_SCREENSHOT_DELAY) || 2500));
+      fs.writeFileSync(process.env.SCORPION_SCREENSHOT, (await win.webContents.capturePage()).toPNG());
       app.quit();
     });
   }
@@ -160,11 +170,11 @@ function ensureTray() {
   if (tray) return;
   const icon = nativeImage.createFromPath(path.join(APP_ROOT, 'resources', 'icon.png')).resize({ width: 16, height: 16 });
   tray = new Tray(icon);
-  tray.setToolTip('Kenzo — scheduled agents are running');
+  tray.setToolTip('Scorpion — scheduled agents are running');
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open Kenzo', click: showWindow },
+    { label: 'Open Scorpion', click: showWindow },
     { type: 'separator' },
-    { label: 'Quit Kenzo', click: () => { quitting = true; app.quit(); } },
+    { label: 'Quit Scorpion', click: () => { quitting = true; app.quit(); } },
   ]));
   tray.on('click', showWindow);
 }
@@ -236,10 +246,10 @@ async function loadChat() {
  */
 async function runAgentTurn({ thread, text, displayText = text, approve, workspace, mode }) {
   const threadId = thread.id;
-  if (running.has(threadId)) throw new Error('Kenzo is still answering in this chat');
+  if (running.has(threadId)) throw new Error('Scorpion is still answering in this chat');
   const base = store.getSettings();
   const settings = { ...base, workspace: workspace ?? base.workspace, mode: mode || thread.mode || 'build' };
-  const agent = agents.getAgent(thread.agentId || 'kenzo');
+  const agent = agents.getAgent(thread.agentId || 'scorpion');
   if (!engine.isChatReady()) await loadChat();
 
   const assistant = { role: 'assistant', blocks: [], model: engine.chatModelName(), agentId: agent.id, mode: settings.mode, createdAt: Date.now() };
@@ -304,7 +314,7 @@ function continuationPrompt(blocks) {
   const status = plan?.steps?.length
     ? `\nPlan status:\n${plan.steps.map((s) => `${mark(s)} ${s.title}`).join('\n')}`
     : '';
-  return `(Kenzo: continuing the same task.)${status}\nCarry on with the next unfinished step. When every step is done and tested, give the final summary.`;
+  return `(Scorpion: continuing the same task.)${status}\nCarry on with the next unfinished step. When every step is done and tested, give the final summary.`;
 }
 
 // Interactive approval: show Allow/Deny in the chat and wait for the click.
@@ -364,7 +374,7 @@ function registerIpc() {
   h('settings:update', async (patch) => {
     const before = store.getSettings();
     const next = store.updateSettings(patch);
-    if (patch.glass !== undefined && patch.glass !== before.glass) applyGlass();
+    if ((patch.glass !== undefined && patch.glass !== before.glass) || (patch.theme && patch.theme !== before.theme)) applyGlass();
     if (patch.chatModel && patch.chatModel !== before.chatModel) loadChat().catch(() => {});
     else if (((patch.contextSize && patch.contextSize !== before.contextSize) || (patch.gpuLayers !== undefined && patch.gpuLayers !== before.gpuLayers)) && engine.isChatReady()) {
       await engine.unloadChatModel();
@@ -396,7 +406,7 @@ function registerIpc() {
   });
 
   h('workspace:choose', async () => {
-    const r = await dialog.showOpenDialog(win, { title: 'Choose the folder Kenzo may work in', properties: ['openDirectory', 'createDirectory'] });
+    const r = await dialog.showOpenDialog(win, { title: 'Choose the folder Scorpion may work in', properties: ['openDirectory', 'createDirectory'] });
     if (r.canceled || !r.filePaths[0]) return store.getSettings();
     return store.updateSettings({ workspace: r.filePaths[0] });
   });
