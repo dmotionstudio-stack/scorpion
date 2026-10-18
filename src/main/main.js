@@ -201,15 +201,15 @@ async function loadChat() {
  * `approve` decides write/exec actions; chats ask the user in the UI, schedules
  * use their "allow changes" setting. `workspace` overrides the folder.
  */
-async function runAgentTurn({ thread, text, displayText = text, approve, workspace }) {
+async function runAgentTurn({ thread, text, displayText = text, approve, workspace, mode }) {
   const threadId = thread.id;
   if (running.has(threadId)) throw new Error('Kenzo is still answering in this chat');
   const base = store.getSettings();
-  const settings = { ...base, workspace: workspace ?? base.workspace };
+  const settings = { ...base, workspace: workspace ?? base.workspace, mode: mode || thread.mode || 'build' };
   const agent = agents.getAgent(thread.agentId || 'kenzo');
   if (!engine.isChatReady()) await loadChat();
 
-  const assistant = { role: 'assistant', blocks: [], model: engine.chatModelName(), agentId: agent.id, createdAt: Date.now() };
+  const assistant = { role: 'assistant', blocks: [], model: engine.chatModelName(), agentId: agent.id, mode: settings.mode, createdAt: Date.now() };
   thread.messages.push({ role: 'user', text: displayText, createdAt: Date.now() }, assistant);
   if (thread.title === 'New chat') thread.title = displayText.replace(/\s+/g, ' ').slice(0, 60);
   store.saveThread(thread);
@@ -225,6 +225,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
 
   const searcher = rag.createSearcher(settings);
   let streamed = '';
+  const info = await engine.engineInfo();
   try {
     const recall = settings.memoryEnabled && settings.recallEnabled ? withConversationRecall(text, memory, threadId) : text;
     thread.history = await engine.runTurn({
@@ -237,11 +238,16 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
       }),
       text: await withDocumentContext(recall, searcher),
       temperature: agent.temperature ?? settings.temperature,
+      // Building writes whole files and iterates on errors, so it gets more room.
+      // A single reply also has to fit in the context, so cap it at half of it.
+      maxTokens: Math.min(settings.mode === 'build' ? 6144 : 3072, Math.floor((info.contextSize || 8192) / 2)),
       signal: controller.signal,
       functions: buildFunctions({
         settings, agent, rag: searcher, memory, threadId, emit, requestApproval,
         signal: controller.signal, streamedText: () => streamed, runHelper: engine.runHelperTurn,
+        maxToolChars: info.maxToolChars ?? undefined,
       }),
+      continuation: () => continuationPrompt(assistant.blocks),
       onText: (delta) => { streamed += delta; emit({ type: 'text', delta }); },
       onThought: (delta) => emit({ type: 'thought', delta }),
     });
@@ -255,6 +261,17 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
     send('chat:event', { threadId, type: 'done', error: assistant.error, stopped: assistant.stopped, title: thread.title });
   }
   return { threadId, error: assistant.error, text: streamed };
+}
+
+// When a long turn pauses for room, the follow-up carries the live plan so the
+// model knows exactly where it is even after older context is dropped.
+function continuationPrompt(blocks) {
+  const plan = blocks.find((b) => b.type === 'plan');
+  const mark = (s) => (s.status === 'done' ? '[done]' : s.status === 'in_progress' ? '[in progress]' : '[todo]');
+  const status = plan?.steps?.length
+    ? `\nPlan status:\n${plan.steps.map((s) => `${mark(s)} ${s.title}`).join('\n')}`
+    : '';
+  return `(Kenzo: continuing the same task.)${status}\nCarry on with the next unfinished step. When every step is done and tested, give the final summary.`;
 }
 
 // Interactive approval: show Allow/Deny in the chat and wait for the click.
@@ -292,6 +309,7 @@ async function runScheduled(schedule, reason) {
     displayText: `⏰ ${reason}\n${schedule.prompt}`,
     approve: async () => schedule.allowChanges,
     workspace,
+    mode: 'build',
   });
   if (Notification.isSupported()) {
     const n = new Notification({
@@ -350,15 +368,27 @@ function registerIpc() {
   });
   h('workspace:open', () => { const w = store.getSettings().workspace; if (w) shell.openPath(w); });
 
-  h('thread:create', (agentId) => {
+  h('thread:create', (opts) => {
+    const { agentId, mode } = typeof opts === 'string' ? { agentId: opts } : opts || {};
     const t = store.createThread();
-    if (agentId) { t.agentId = agents.getAgent(agentId).id; store.saveThread(t); }
+    if (agentId) t.agentId = agents.getAgent(agentId).id;
+    if (['chat', 'plan', 'build'].includes(mode)) t.mode = mode;
+    store.saveThread(t);
     return t;
   });
   h('thread:setAgent', ({ id, agentId }) => {
     const t = store.getThread(id);
     if (!t) throw new Error('Chat not found');
     t.agentId = agents.getAgent(agentId).id;
+    store.saveThread(t);
+    return t;
+  });
+
+  h('thread:setMode', ({ id, mode }) => {
+    const t = store.getThread(id);
+    if (!t) throw new Error('Chat not found');
+    if (!['chat', 'plan', 'build'].includes(mode)) throw new Error('Unknown mode');
+    t.mode = mode;
     store.saveThread(t);
     return t;
   });

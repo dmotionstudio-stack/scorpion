@@ -88,7 +88,7 @@ test('each agent only gets its own tools; helpers cannot delegate', () => {
   assert.ok(!names(agents.getAgent('coder'), { isHelper: true }).includes('ask_agent'));
   assert.ok(!names(agents.getAgent('researcher')).includes('write_file'));
   // Plan mode strips anything that changes files or runs programs.
-  const planned = names(agents.getAgent('coder'), { settings: { ...settings, planMode: true } });
+  const planned = names(agents.getAgent('coder'), { settings: { ...settings, mode: 'plan' } });
   assert.ok(!planned.some((n) => ['write_file', 'edit_file', 'move_file', 'run_command', 'run_code'].includes(n)));
   // Without a workspace, file tools disappear but calculator/run_code stay.
   const noWs = names(agents.getAgent('analyst'), { settings: { ...settings, workspace: null } });
@@ -166,4 +166,82 @@ test('Ollama models are discovered from manifests and used in place', async () =
   const found = scanOllama(root);
   assert.deepEqual(found.map((m) => [m.name, m.source, m.kind]), [['tev1:4b', 'ollama', 'chat']]);
   assert.equal(found[0].path, blob(dig('a1')));
+});
+
+test('chat, plan and build modes offer the right tools and instructions', () => {
+  const settings = { ...store.getSettings(), workspace: ws, memoryEnabled: true };
+  const rag = { hasDocuments: () => false };
+  const base = { rag, memory: {}, emit() {}, requestApproval: async () => true, runHelper: async () => 'x', agent: agents.getAgent('kenzo') };
+  const tools = (mode) => Object.keys(buildFunctions({ ...base, settings: { ...settings, mode } }));
+
+  const chat = tools('chat');
+  assert.ok(chat.includes('calculator') && chat.includes('remember'));
+  assert.ok(!chat.some((n) => ['write_file', 'read_file', 'run_command', 'run_code', 'ask_agent', 'update_plan'].includes(n)));
+
+  const plan = tools('plan');
+  assert.ok(plan.includes('read_file') && plan.includes('update_plan') && plan.includes('ask_agent'));
+  assert.ok(!plan.some((n) => ['write_file', 'edit_file', 'move_file', 'run_command', 'run_code'].includes(n)));
+
+  const build = tools('build');
+  assert.ok(['write_file', 'run_command', 'run_code', 'update_plan', 'ask_agent'].every((n) => build.includes(n)));
+
+  const prompt = (mode) => buildSystemPrompt({ ...settings, mode }, { docNames: [] });
+  assert.match(prompt('chat'), /CHAT MODE/);
+  assert.doesNotMatch(prompt('chat'), /ask_agent/);
+  assert.match(prompt('plan'), /PLAN MODE/);
+  assert.match(prompt('build'), /BUILD MODE/);
+});
+
+test('compaction trims old tool output but keeps recent calls and the latest reply', async () => {
+  const { compactHistory } = await import('../src/main/engine.js');
+  const call = (i, size) => ({ type: 'functionCall', name: 'read_file', params: { path: `f${i}` }, result: 'x'.repeat(size) });
+  const history = [
+    { type: 'system', text: 'sys' },
+    { type: 'user', text: 'build it' },
+    { type: 'model', response: ['y'.repeat(5000), call(1, 9000), call(2, 9000), call(3, 9000), call(4, 9000), 'last words'] },
+    { type: 'user', text: 'continue' },
+    { type: 'model', response: ['z'.repeat(5000)] },
+  ];
+  const out = compactHistory(history);
+  const calls = out[2].response.filter((p) => typeof p === 'object');
+  assert.ok(calls[0].result.length < 300 && /trimmed/.test(calls[0].result));
+  assert.equal(calls[3].result.length, 9000); // recent calls stay intact
+  assert.ok(out[2].response[0].length < 1300); // old long text trimmed
+  assert.equal(out[4].response[0].length, 5000); // latest model reply untouched
+  assert.equal(history[2].response[1].result.length, 9000); // input not mutated
+});
+
+test('a code block feeds only one write, and JSON blocks cannot become programs', async () => {
+  const { TOOLS: T } = await import('../src/main/tools.js');
+  let text = 'Here is the data:\n```json\n[]\n```\n';
+  const written = [];
+  const settings = { ...store.getSettings(), workspace: ws, mode: 'build', autoApprove: true };
+  const fns = buildFunctions({ settings, agent: agents.getAgent('coder'), rag: { hasDocuments: () => false }, emit() {}, requestApproval: async () => true, streamedText: () => text });
+  assert.match(await fns.write_file.handler({ path: 'data/todos.json' }), /Created/);
+  written.push(fs.readFileSync(path.join(ws, 'data/todos.json'), 'utf8'));
+  // No new block: must not reuse the JSON block for the program.
+  assert.match(await fns.write_file.handler({ path: 'data/todo.mjs' }), /no new ``` code block/);
+  assert.ok(!fs.existsSync(path.join(ws, 'data/todo.mjs')));
+  text += 'And the program:\n```js\nconsole.log("ok")\n```\n';
+  assert.match(await fns.write_file.handler({ path: 'data/todo.mjs' }), /Created/);
+  assert.equal(fs.readFileSync(path.join(ws, 'data/todo.mjs'), 'utf8'), 'console.log("ok")\n');
+  assert.deepEqual(written, ['[]\n']);
+  assert.throws(() => T.write_file.prepare({ path: 'x.mjs' }, { lastCodeBlock: () => '[]', lastCodeLang: () => 'json' }), /is JSON/);
+});
+
+test('hard compaction keeps only the latest call in full', async () => {
+  const { compactHistory } = await import('../src/main/engine.js');
+  const call = (i) => ({ type: 'functionCall', name: 'run_command', params: { command: `c${i}` }, result: 'r'.repeat(5000) });
+  const out = compactHistory([{ type: 'user', text: 'go' }, { type: 'model', response: [call(1), call(2), call(3)] }, { type: 'user', text: 'more' }, { type: 'model', response: ['done'] }], { hard: true });
+  const [a, b, c] = out[1].response;
+  assert.ok(a.result.length < 200 && b.result.length < 200);
+  assert.equal(c.result.length, 5000);
+});
+
+test('hard compaction also trims the most recent long reply', async () => {
+  const { compactHistory } = await import('../src/main/engine.js');
+  const out = compactHistory([{ type: 'user', text: 'plan it' }, { type: 'model', response: ['p'.repeat(6000)] }], { hard: true });
+  assert.ok(out[1].response[0].length < 500);
+  const soft = compactHistory([{ type: 'user', text: 'plan it' }, { type: 'model', response: ['p'.repeat(6000)] }]);
+  assert.equal(soft[1].response[0].length, 6000);
 });

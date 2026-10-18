@@ -18,6 +18,7 @@ export async function engineInfo() {
   const l = await ensureLlama();
   return {
     gpu: l.gpu || 'cpu',
+    maxToolChars: chat.context ? Math.max(3000, chat.context.contextSize) : null,
     contextSize: chat.context?.contextSize ?? null,
     gpuLayers: chat.model ? chat.model.gpuLayers : null,
     totalLayers: chat.model ? chat.model.fileInsights.totalLayers : null,
@@ -107,7 +108,7 @@ export function runTurn(opts) {
   return withLock(() => runTurnUnlocked(opts));
 }
 
-function promptOptions({ functions, temperature, signal, onText, onThought }) {
+function promptOptions({ functions, temperature, signal, onText, onThought, maxTokens = 3072 }) {
   return {
     functions,
     temperature,
@@ -115,7 +116,7 @@ function promptOptions({ functions, temperature, signal, onText, onThought }) {
     stopOnAbortSignal: true,
     // Small models sometimes loop (e.g. endless whitespace after a tool call);
     // cap each response so a runaway can't fill the whole context.
-    maxTokens: 3072,
+    maxTokens,
     repeatPenalty: { lastTokens: 64, penalty: 1.1 },
     onFunctionCallParamsChunk: process.env.KENZO_DEBUG ? (c) => process.stdout.write(`{${c.paramsChunk}}`) : undefined,
     onResponseChunk(chunk) {
@@ -143,7 +144,47 @@ export async function runHelperTurn({ systemPrompt, text, functions, temperature
   }
 }
 
-async function runTurnUnlocked({ threadId, history, systemPrompt, text, functions, temperature, signal, onText, onThought }) {
+// Compaction: shrink everything except the most recent tool results, so a
+// long agent run frees real room before it continues. Calls stay in history
+// (the model still sees what it did); only their bulky outputs are trimmed.
+const KEEP_RECENT_CALLS = 3;
+const OLD_RESULT_CHARS = 240;
+const OLD_TEXT_CHARS = 1200;
+export function compactHistory(history, { hard = false } = {}) {
+  const keep = hard ? 1 : KEEP_RECENT_CALLS;
+  const resultChars = hard ? 120 : OLD_RESULT_CHARS;
+  const textChars = hard ? 400 : OLD_TEXT_CHARS;
+  const out = structuredClone(history);
+  const calls = [];
+  for (const item of out) {
+    if (item.type !== 'model') continue;
+    for (const part of item.response) if (part && typeof part === 'object' && part.type === 'functionCall') calls.push(part);
+  }
+  for (const call of calls.slice(0, Math.max(0, calls.length - keep))) {
+    const text = typeof call.result === 'string' ? call.result : JSON.stringify(call.result ?? '');
+    if (text.length > resultChars) call.result = `${text.slice(0, resultChars)}… [older output trimmed to save memory]`;
+  }
+  const lastModel = out.findLastIndex((i) => i.type === 'model');
+  out.forEach((item, idx) => {
+    if (idx === lastModel && !hard) return;
+    if (item.type === 'model') {
+      item.response = item.response.map((p) => (typeof p === 'string' && p.length > textChars ? `${p.slice(0, textChars)}… [trimmed]` : p));
+    } else if (item.type === 'user' && item.text.length > textChars * 2) {
+      item.text = `${item.text.slice(0, textChars * 2)}… [trimmed]`;
+    }
+  });
+  return out;
+}
+
+const MAX_SEGMENTS = 8;
+// A long turn pauses (and compacts) once this segment alone has used a good
+// share of the context, or when the context is nearly full. Measuring growth
+// rather than total use matters: the system prompt and tool descriptions can
+// fill half of a small context before the agent does anything.
+const SEGMENT_GROWTH = 0.3;
+const SEGMENT_FULL = 0.85;
+
+async function runTurnUnlocked({ threadId, history, systemPrompt, text, functions, temperature, signal, onText, onThought, maxTokens, continuation }) {
   if (!chat.session) throw new Error('No chat model loaded. Pick one in Models.');
   const session = chat.session;
 
@@ -160,7 +201,63 @@ async function runTurnUnlocked({ threadId, history, systemPrompt, text, function
   }
 
   try {
-    await session.prompt(text, promptOptions({ functions, temperature, signal, onText, onThought }));
+    // Long agent runs (Build mode) can call many tools in one response, and a
+    // single response can't be trimmed to fit the context. So after each tool
+    // call, if the context is filling up, pause this response cleanly and
+    // continue in a fresh one; older responses can then be dropped to make room.
+    let prompt = text;
+    let stalled = 0;
+    let recoveries = 0;
+    for (let segment = 0; segment < MAX_SEGMENTS; segment++) {
+      const segmentStop = new AbortController();
+      const relay = () => segmentStop.abort();
+      signal?.addEventListener('abort', relay, { once: true });
+      let pausedForRoom = false;
+      let calls = 0;
+      let baseline = null;
+      const watched = functions && Object.fromEntries(Object.entries(functions).map(([name, fn]) => [name, {
+        ...fn,
+        async handler(params) {
+          const result = await fn.handler(params);
+          calls++;
+          const used = session.sequence.nextTokenIndex;
+          const size = chat.context.contextSize;
+          baseline ??= used;
+          if (used - baseline > size * SEGMENT_GROWTH || used > size * SEGMENT_FULL) {
+            pausedForRoom = true;
+            segmentStop.abort();
+          }
+          return result;
+        },
+      }]));
+      let overflowed = false;
+      try {
+        await session.prompt(prompt, promptOptions({ functions: watched, temperature, signal: segmentStop.signal, onText, onThought, maxTokens }));
+      } catch (err) {
+        // A reply outgrew the context before any tool call let us pause.
+        // Compact hard and continue (at most twice); files already written stay
+        // on disk and the plan status is carried into the continuation.
+        if (!functions || recoveries >= 2 || !/context shift|context size|too long/i.test(err?.message || '')) throw err;
+        recoveries++;
+        overflowed = true;
+      } finally {
+        signal?.removeEventListener('abort', relay);
+      }
+      if (overflowed) {
+        session.setChatHistory(compactHistory(session.getChatHistory(), { hard: true }));
+        onText?.('\n\n');
+        prompt = continuation?.() || 'Continue where you left off with the next unfinished step.';
+        continue;
+      }
+      if (!pausedForRoom || signal?.aborted) break;
+      // A segment that only managed a single tool call made no real progress;
+      // twice in a row means the model is looping, so let it stop there.
+      stalled = calls <= 1 ? stalled + 1 : 0;
+      if (stalled >= 2) break;
+      session.setChatHistory(compactHistory(session.getChatHistory()));
+      onText?.('\n\n');
+      prompt = continuation?.() || 'Continue where you left off with the next unfinished step. If everything is done and tested, give the final summary.';
+    }
   } catch (err) {
     // Force a history reload next turn — the session may be mid-turn.
     chat.threadId = null;

@@ -7,8 +7,11 @@ const $ = (sel) => document.querySelector(sel);
 const S = {
   settings: {}, models: [], catalog: [], threads: [], documents: [], memories: [], agents: [], tools: [], schedules: [], engine: {},
   thread: null, running: new Set(), pending: new Map(), downloads: {}, modelStatus: null, view: 'chat',
-  newChatAgent: 'kenzo', editingAgent: null, editingSchedule: null,
+  newChatAgent: 'kenzo', newChatMode: savedMode(), editingAgent: null, editingSchedule: null,
 };
+function savedMode() {
+  try { const m = localStorage.getItem('kenzo.mode'); return ['chat', 'plan', 'build'].includes(m) ? m : 'build'; } catch { return 'build'; }
+}
 const agentById = (id) => S.agents.find((a) => a.id === id) || S.agents[0] || { id: 'kenzo', name: 'Kenzo', icon: '✨' };
 const VIEWS = ['chat', 'models', 'docs', 'memory', 'agents', 'schedules', 'settings'];
 
@@ -16,7 +19,7 @@ const VIEWS = ['chat', 'models', 'docs', 'memory', 'agents', 'schedules', 'setti
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const md = (text) => DOMPurify.sanitize(marked.parse(text || '', { breaks: true, gfm: true }));
 const base = (p) => String(p || '').split(/[\\/]/).pop();
-const modelName = (p) => S.models.find((m) => m.path === p)?.name || base(p).replace(/\.gguf$/i, '');
+const modelName = (p) => S.models.find((m) => m.path === p)?.name || base(p).replace(/\.gguf$/i, '').replace(/^hf_[^_]+_/, '');
 const gb = (bytes) => (bytes / 1024 ** 3 >= 1 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`);
 
 function toast(text, ms = 4000) {
@@ -50,20 +53,74 @@ function setView(view) {
 
 // ---------- top bar ----------
 function renderTopbar() {
-  const st = S.modelStatus;
-  const loaded = S.engine?.chatModel;
-  let cls = '', label = 'No model — open Models';
-  if (st?.loading) { cls = 'loading'; label = `Loading ${st.name}${st.progress != null ? ` ${Math.round(st.progress * 100)}%` : '…'}`; }
-  else if (loaded) { cls = 'ready'; label = S.engine.chatModelName || modelName(loaded); }
-  else if (S.settings.chatModel) label = `${modelName(S.settings.chatModel)} (not loaded)`;
-  $('#model-pill').innerHTML = `<span class="status ${cls}"></span>${esc(label)}`;
+  renderModelSwitch();
   $('#workspace-chip').textContent = S.settings.workspace ? `📁 ${base(S.settings.workspace)}` : '📁 No workspace';
   $('#workspace-chip').title = S.settings.workspace || 'Choose a folder the agent can work in';
-  $('#plan-mode').checked = !!S.settings.planMode;
   $('#auto-approve').checked = !!S.settings.autoApprove;
+  renderModes();
   const current = S.thread?.agentId || (S.thread ? 'kenzo' : S.newChatAgent);
   $('#agent-picker').innerHTML = S.agents.map((a) => `<option value="${esc(a.id)}"${a.id === current ? ' selected' : ''}>${esc(a.icon)} ${esc(a.name)}</option>`).join('');
   $('#agent-picker').title = agentById(current).description || '';
+}
+
+// Model switcher: every chat model on this computer (library, bundled, Ollama).
+function renderModelSwitch() {
+  const st = S.modelStatus;
+  const selected = S.settings.chatModel;
+  const chatModels = S.models.filter((m) => m.kind === 'chat');
+  // The active model may live outside the scanned folders; list it anyway so
+  // the picker never shows a different model than the one actually in use.
+  if (selected && !chatModels.some((m) => m.path === selected)) {
+    chatModels.unshift({ path: selected, name: modelName(selected), bytes: 0, source: 'other' });
+  }
+  let cls = '', note = '';
+  if (st?.loading) { cls = 'loading'; note = st.progress != null ? `loading ${Math.round(st.progress * 100)}%` : 'loading…'; }
+  else if (st?.error) { cls = 'error'; note = 'failed to load'; }
+  else if (S.engine?.chatModel && S.engine.chatModel === selected) cls = 'ready';
+  else if (selected) note = 'not loaded';
+  const sel = $('#model-picker');
+  sel.innerHTML = chatModels.length
+    ? chatModels.map((m) => `<option value="${esc(m.path)}"${m.path === selected ? ' selected' : ''}>${esc(m.name)}${m.bytes ? ` · ${gb(m.bytes)}` : ''}${m.source === 'ollama' ? ' · ollama' : ''}</option>`).join('')
+      + '<option value="__manage">Manage models…</option>'
+    : '<option value="__manage">No models — get one…</option>';
+  sel.disabled = Boolean(st?.loading) || S.running.size > 0;
+  sel.title = st?.error || (S.running.size ? 'Wait for the answer to finish before switching models' : 'Switch the model used for chatting');
+  $('#model-status').className = `status ${cls}`;
+  $('#model-note').textContent = note;
+}
+
+// Modes are per chat; a chat that hasn't been created yet uses the composer's choice.
+const MODE_HINTS = {
+  chat: 'Just talking. No files or commands.',
+  plan: 'Read-only. Kenzo explores and writes a plan.',
+  build: 'Kenzo builds it: writes files, runs and fixes them.',
+};
+function currentMode() {
+  return S.thread?.mode || S.newChatMode;
+}
+function renderModes() {
+  const mode = currentMode();
+  document.querySelectorAll('#modes [data-mode]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === mode)));
+  const needsWs = mode !== 'chat' && !S.settings.workspace;
+  $('#mode-hint').textContent = needsWs ? `${MODE_HINTS[mode]} Choose a workspace folder first (📁).` : MODE_HINTS[mode];
+}
+
+// Spell the plan out so the model starts building instead of assuming the
+// steps it proposed are already finished.
+function buildPlanMessage() {
+  const plans = (S.thread?.messages || []).flatMap((m) => (m.blocks || []).filter((b) => b.type === 'plan'));
+  const steps = plans.at(-1)?.steps || [];
+  const list = steps.map((s, i) => `${i + 1}. ${s.title}`).join('\n');
+  return `Build the plan now. None of these steps are done yet:\n${list}\n\nWork through every step with your tools: write the files, run and test them, fix any errors, and mark each step done as you finish it.`;
+}
+
+async function setMode(mode) {
+  if (S.thread && S.running.has(S.thread.id)) { toast('Wait for the current answer to finish.'); return; }
+  S.newChatMode = mode;
+  try { localStorage.setItem('kenzo.mode', mode); } catch { /* storage unavailable */ }
+  if (S.thread) S.thread = { ...S.thread, ...(await api.setThreadMode({ id: S.thread.id, mode })) };
+  renderModes();
+  renderMessages(true);
 }
 
 // ---------- messages ----------
@@ -130,7 +187,10 @@ function messageHtml(m, i, msgs) {
   if (m.role === 'user') return `<div class="msg user"><div class="bubble">${esc(m.text)}</div></div>`;
   const live = S.running.has(S.thread.id) && i === msgs.length - 1;
   const a = agentById(m.agentId || S.thread.agentId || 'kenzo');
-  return `<div class="msg assistant"><div class="meta">${esc(a.icon)} ${esc(a.name)}${m.model ? ` · ${esc(m.model)}` : ''}</div>${renderBlocks(m, live)}</div>`;
+  const modeTag = m.mode && m.mode !== 'build' ? ` <span class="mode-tag">${m.mode === 'plan' ? '📝 plan' : '💬 chat'}</span>` : '';
+  // After a plan is written in Plan mode, offer to build it in one click.
+  const offerBuild = !live && i === msgs.length - 1 && m.mode === 'plan' && (m.blocks || []).some((b) => b.type === 'plan');
+  return `<div class="msg assistant"><div class="meta">${esc(a.icon)} ${esc(a.name)}${m.model ? ` · ${esc(m.model)}` : ''}${modeTag}</div>${renderBlocks(m, live)}${offerBuild ? '<div class="build-plan"><button class="btn primary small" data-build-plan="1">🔨 Build this plan</button></div>' : ''}</div>`;
 }
 
 const SUGGESTIONS = [
@@ -389,7 +449,7 @@ async function openThread(id) {
 }
 
 async function newThread(agentId) {
-  S.thread = await api.createThread(typeof agentId === 'string' ? agentId : S.newChatAgent);
+  S.thread = await api.createThread({ agentId: typeof agentId === 'string' ? agentId : S.newChatAgent, mode: S.newChatMode });
   renderTopbar();
   S.threads.unshift({ id: S.thread.id, title: S.thread.title, updatedAt: Date.now() });
   renderPlanPanel.shown = false;
@@ -407,7 +467,7 @@ async function sendMessage(text) {
   thread.messages.push({ role: 'user', text }, { role: 'assistant', blocks: [], agentId: thread.agentId, model: S.engine?.chatModelName || modelName(S.settings.chatModel) });
   S.running.add(thread.id);
   $('#input').value = ''; autosize();
-  renderThreads(); renderMessages();
+  renderThreads(); renderModelSwitch(); renderMessages();
   try { await api.send({ threadId: thread.id, text }); } catch (err) {
     S.running.delete(thread.id);
     thread.messages.at(-1).error = String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
@@ -431,6 +491,7 @@ function applyChatEvent(ev) {
     // Runs started elsewhere (scheduled agents) show up live too.
     S.running.add(ev.threadId);
     renderThreads();
+    renderModelSwitch();
     if (S.thread?.id === ev.threadId && S.thread.messages.at(-1)?.role !== 'assistant') {
       api.getThread(ev.threadId).then((t) => { if (S.thread?.id === t.id) { S.thread = t; renderMessages(); } });
     }
@@ -486,6 +547,10 @@ function wire() {
   $('#messages').onclick = (e) => {
     const s = e.target.closest('.suggestion');
     if (s) return sendMessage(s.textContent);
+    if (e.target.closest('[data-build-plan]')) {
+      setMode('build').then(() => sendMessage(buildPlanMessage()));
+      return;
+    }
     const ok = e.target.closest('[data-approve]');
     const no = e.target.closest('[data-deny]');
     const id = ok?.dataset.approve || no?.dataset.deny;
@@ -495,7 +560,14 @@ function wire() {
   $('#workspace-chip').onclick = async () => { S.settings = await api.chooseWorkspace(); renderAll(); };
   $('#choose-ws').onclick = $('#workspace-chip').onclick;
   $('#open-ws').onclick = () => api.openWorkspace();
-  $('#plan-mode').onchange = (e) => setSetting({ planMode: e.target.checked });
+  $('#modes').onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); };
+  $('#model-picker').onchange = async (e) => {
+    const value = e.target.value;
+    if (value === '__manage') { renderModelSwitch(); setView('models'); return; }
+    S.modelStatus = { loading: true, name: modelName(value) };
+    await setSetting({ chatModel: value });
+    toast(`Switching to ${modelName(value)}…`, 2500);
+  };
   $('#auto-approve').onchange = (e) => {
     if (e.target.checked && !confirm('Auto-approve lets the agent edit files and run commands in your workspace without asking. Turn it on?')) { e.target.checked = false; return; }
     setSetting({ autoApprove: e.target.checked });

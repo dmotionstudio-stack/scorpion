@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('kenzo', {
   deleteThread: invoke('thread:delete'),
   renameThread: invoke('thread:rename'),
   setThreadAgent: invoke('thread:setAgent'),
+  setThreadMode: invoke('thread:setMode'),
 
   saveAgent: invoke('agents:save'),
   deleteAgent: invoke('agents:delete'),

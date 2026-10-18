@@ -185,3 +185,24 @@ code, pre { font-family: var(--mono); }
 .tool.delegate { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 .tool .helper { border-top: 1px solid var(--border); padding: 8px 12px 4px 16px; border-left: 3px solid var(--accent); margin-left: 8px; }
 .tool .helper .md { font-size: 13px; }
+
+/* model switcher + modes */
+.model-switch { display: flex; align-items: center; gap: 6px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 4px 2px 10px; max-width: 320px; }
+.model-switch .status { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.model-switch .status.ready { background: var(--accent); }
+.model-switch .status.loading { background: var(--warn); animation: pulse .8s infinite alternate; }
+.model-switch .status.error { background: var(--danger); }
+.model-switch select { background: transparent; border: 0; font-weight: 600; padding: 3px 4px; max-width: 220px; cursor: pointer; outline: none; }
+.model-switch select option, .agent-picker option { background: var(--panel); color: var(--text); }
+.model-note { font-size: 12px; color: var(--warn); white-space: nowrap; padding-right: 6px; }
+.composer-box { flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.composer-box:focus-within { border-color: var(--accent); }
+.composer-box textarea { border: 0 !important; background: transparent !important; }
+.composer-bar { display: flex; align-items: center; gap: 10px; padding: 4px 8px 6px; }
+.modes { display: inline-flex; background: var(--panel-2); border-radius: 8px; padding: 2px; gap: 2px; }
+.modes button { border: 0; background: none; padding: 3px 10px; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 13px; }
+.modes button:hover { color: var(--text); }
+.modes button[aria-checked="true"] { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.modes button[data-mode="build"][aria-checked="true"] { color: var(--accent); }
+.build-plan { margin: 6px 0 2px; }
+.mode-tag { font-size: 11px; padding: 0 6px; border-radius: 999px; background: var(--panel-2); }

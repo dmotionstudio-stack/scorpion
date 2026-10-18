@@ -31,12 +31,13 @@
       <section class="view" id="view-chat">
         <header class="topbar">
           <select id="agent-picker" class="agent-picker" aria-label="Agent for this chat"></select>
-          <div class="model-pill" id="model-pill">No model</div>
+          <div class="model-switch" title="Model used for every chat">
+            <span class="status" id="model-status"></span>
+            <select id="model-picker" aria-label="Model"></select>
+            <span class="model-note" id="model-note"></span>
+          </div>
           <div class="spacer"></div>
           <button class="chip" id="workspace-chip" title="Folder the agent can work in">📁 No workspace</button>
-          <label class="toggle" title="Read-only: the agent can explore and plan but not change anything">
-            <input type="checkbox" id="plan-mode"><span>Plan mode</span>
-          </label>
           <label class="toggle" title="Run file edits and commands without asking">
             <input type="checkbox" id="auto-approve"><span>Auto-approve</span>
           </label>
@@ -50,7 +51,17 @@
           </aside>
         </div>
         <form class="composer" id="composer">
-          <textarea id="input" rows="1" placeholder="Ask anything, or give the agent a task…  (Enter to send, Shift+Enter for a new line)"></textarea>
+          <div class="composer-box">
+            <textarea id="input" rows="1" placeholder="Ask anything, or give the agent a task…  (Enter to send, Shift+Enter for a new line)"></textarea>
+            <div class="composer-bar">
+              <div class="modes" id="modes" role="radiogroup" aria-label="Mode">
+                <button type="button" role="radio" data-mode="chat" title="Just talk. No file or command tools.">💬 Chat</button>
+                <button type="button" role="radio" data-mode="plan" title="Read-only: explore and write a plan. Nothing is changed.">📝 Plan</button>
+                <button type="button" role="radio" data-mode="build" title="Build it: create files, run and test them, fix errors until it works.">🔨 Build</button>
+              </div>
+              <span class="mode-hint muted small" id="mode-hint"></span>
+            </div>
+          </div>
           <button type="submit" class="btn primary" id="send">Send</button>
           <button type="button" class="btn danger hidden" id="stop">Stop</button>
         </form>

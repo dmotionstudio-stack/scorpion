@@ -215,9 +215,22 @@ export const TOOLS = {
     access: 'write',
     description: 'Create or overwrite a file. FIRST write the complete file content in a fenced code block (```lang ... ```) in your reply, THEN call write_file with the path. The last code block you wrote is saved.',
     params: { type: 'object', properties: { path: { type: 'string' } } },
-    prepare(args, { lastCodeBlock }) {
+    prepare(args, { lastCodeBlock, lastCodeLang }) {
       const content = lastCodeBlock?.();
-      if (content == null) throw new Error('Nothing saved: your reply has no ``` code block yet. Next, write the complete file content inside a ``` fenced code block as normal reply text (not inside a tool call), and only then call write_file again with the path.');
+      if (content == null) throw new Error('Nothing saved: there is no new ``` code block since your last file write. Next, write the complete content of this file inside a new ``` fenced code block as normal reply text (not inside a tool call), and only then call write_file again with the path.');
+      const lang = lastCodeLang?.() || '';
+      const ext = path.extname(args.path).toLowerCase();
+      const CODE_EXT = ['.js', '.mjs', '.cjs', '.ts', '.py', '.html', '.css', '.java', '.c', '.cpp', '.cs', '.go', '.rs', '.rb', '.php', '.sh', '.ps1'];
+      if (lang === 'json' && CODE_EXT.includes(ext)) {
+        throw new Error(`Nothing saved: the last code block is JSON, but ${args.path} is a ${ext} file. Write the ${ext} file's own code in a new code block first.`);
+      }
+      // Catch the common mix-up of saving code into a data file (e.g. a program
+      // into todos.json) before it overwrites anything.
+      if (/\.json$/i.test(args.path) && content.trim()) {
+        try { JSON.parse(content); } catch {
+          throw new Error(`Nothing saved: the last code block is not valid JSON, so it can't go in ${args.path}. If it is program code, save it to the right file (e.g. a .js/.mjs file) instead; if it is meant to be JSON, write a code block with valid JSON first.`);
+        }
+      }
       return { ...args, content };
     },
     run({ path: p, content }, { workspace }) {
@@ -404,7 +417,14 @@ export const TOOLS = {
         },
       },
     },
-    run({ steps }, { onPlan }) {
+    run({ steps }, { onPlan, mode }) {
+      // In Plan mode nothing gets built, so a plan is only a proposal: never
+      // let the model mark steps done there (Build mode would then skip them).
+      if (mode === 'plan') {
+        const proposal = steps.map((s) => ({ ...s, status: 'pending' }));
+        onPlan?.(proposal);
+        return 'Plan saved as a proposal. Nothing has been built yet and you cannot build in Plan mode. Now explain the plan to the user in a few lines.';
+      }
       onPlan?.(steps);
       const next = steps.find((s) => s.status !== 'done');
       return next ? `Plan saved. Continue with: ${next.title}` : 'Plan saved. All steps are done — give the user a short summary.';

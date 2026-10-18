@@ -63,6 +63,11 @@ test('findLastCodeBlock returns the last fenced block body', async () => {
 });
 
 test('write_file.prepare requires a code block', () => {
-  assert.throws(() => TOOLS.write_file.prepare({ path: 'a.py' }, { lastCodeBlock: () => null }), /no ``` code block|No code block/);
+  assert.throws(() => TOOLS.write_file.prepare({ path: 'a.py' }, { lastCodeBlock: () => null }), /no new ``` code block/);
   assert.deepEqual(TOOLS.write_file.prepare({ path: 'a.py' }, { lastCodeBlock: () => 'x' }), { path: 'a.py', content: 'x' });
+});
+
+test('write_file refuses non-JSON content for .json files', () => {
+  assert.throws(() => TOOLS.write_file.prepare({ path: 'todos.json' }, { lastCodeBlock: () => 'import fs from "fs";\n' }), /not valid JSON/);
+  assert.deepEqual(TOOLS.write_file.prepare({ path: 'todos.json' }, { lastCodeBlock: () => '[]\n' }), { path: 'todos.json', content: '[]\n' });
 });

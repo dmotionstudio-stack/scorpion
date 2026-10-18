@@ -28,6 +28,27 @@ const MEMORY_RULES = `You have long-term memory across chats.
 - Don't save trivia from a single task, and never save passwords or other secrets.
 - If they refer to an earlier conversation, use search_past_chats.`;
 
+// Per-chat modes. Each mode changes both the instructions and, more
+// importantly, which tools the model is even offered (enforced in
+// buildFunctions, not just requested in the prompt).
+export const MODES = ['chat', 'plan', 'build'];
+export function modeOf(settings) {
+  if (MODES.includes(settings.mode)) return settings.mode;
+  return settings.planMode ? 'plan' : 'build'; // older settings
+}
+
+const CHAT_RULES = 'CHAT MODE: just talk with the user. You have no file or command tools in this mode. If they want you to work on files or build something, tell them to switch to 🔨 Build mode (below the message box).';
+
+const PLAN_RULES = 'PLAN MODE (read only): you cannot edit files or run programs. Investigate with read tools, then call update_plan with a complete step-by-step plan and explain it briefly. End by telling the user they can press "Build this plan" to have it built.';
+
+const BUILD_RULES = `BUILD MODE: you are building what the user asks for, end to end.
+1. If there is no plan yet, call update_plan with short, concrete steps.
+2. Work through the steps one by one: create files (code block, then write_file), keep each file complete and runnable.
+3. Verify your work: run it with run_command or run_code. If it fails, read the error, fix the cause and run it again.
+4. Mark each step done in update_plan as you finish it.
+5. Finish with a short summary: what you built, which files, and how to run it.
+Don't stop to ask for confirmation between steps unless something is genuinely ambiguous.`;
+
 const TEAM_RULES = `You can hand a self-contained subtask to a specialist agent with ask_agent (give it the full context it needs; it can't see this chat). Use this when a specialist clearly fits, e.g. Reviewer to check finished work, Data Analyst for spreadsheets, Coder for programming. Then use its answer to reply to the user.`;
 
 export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent = null, isHelper = false }) {
@@ -37,14 +58,16 @@ export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent 
   const parts = [intro];
   if (isHelper) parts.push('Another agent asked you to do the task below. Complete it fully with your tools, then reply with the result only: concise, factual and self-contained.');
   parts.push(`Today is ${new Date().toDateString()}. Operating system: ${os.type()} ${os.release()}.`);
-  if (settings.workspace) {
+  const mode = modeOf(settings);
+  if (mode === 'chat') {
+    parts.push(CHAT_RULES);
+  } else if (settings.workspace) {
     parts.push(`Workspace folder: ${settings.workspace}`);
     parts.push(AGENT_RULES);
-    if (settings.planMode) {
-      parts.push('PLAN MODE is on (read only). You cannot edit files or run commands. Investigate with read tools, then call update_plan with a complete plan and ask the user to turn plan mode off to execute it.');
-    }
+    parts.push(mode === 'plan' ? PLAN_RULES : BUILD_RULES);
   } else {
-    parts.push('No workspace folder is set, so file and command tools are unavailable. If the user asks you to work on files, tell them to choose a workspace folder.');
+    parts.push('No workspace folder is set, so file and command tools are unavailable. If the user asks you to work on files, tell them to choose a workspace folder (📁 in the top bar).');
+    if (mode === 'plan') parts.push(PLAN_RULES);
   }
   if (docNames.length) {
     parts.push(`The user has imported these documents: ${docNames.slice(0, 40).join(', ')}. Use search_documents to answer questions about them and cite the document name.`);
@@ -53,7 +76,7 @@ export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent 
     parts.push(MEMORY_RULES);
     if (memoryBlock) parts.push(memoryBlock);
   }
-  if (!isHelper && (!agent || agentAllows(agent, 'ask_agent'))) {
+  if (!isHelper && mode !== 'chat' && (!agent || agentAllows(agent, 'ask_agent'))) {
     const others = listAgents().filter((a) => a.id !== (agent?.id || 'kenzo') && a.id !== 'kenzo');
     parts.push(`${TEAM_RULES}\nAvailable specialists:\n${others.map((a) => `- ${a.name}: ${a.description}`).join('\n')}`);
   }
@@ -102,8 +125,14 @@ function summarizeArgs(name, args) {
 
 // Last complete fenced code block in the text the model has streamed this turn.
 export function findLastCodeBlock(text) {
-  const blocks = [...text.matchAll(/```[^\n`]*\n([\s\S]*?)```/g)];
-  return blocks.length ? blocks.at(-1)[1] : null;
+  return findLastCodeBlockInfo(text)?.code ?? null;
+}
+
+export function findLastCodeBlockInfo(text) {
+  const blocks = [...text.matchAll(/```([^\n`]*)\n([\s\S]*?)```/g)];
+  if (!blocks.length) return null;
+  const m = blocks.at(-1);
+  return { code: m[2], lang: m[1].trim().toLowerCase(), end: m.index + m[0].length };
 }
 
 /**
@@ -112,11 +141,22 @@ export function findLastCodeBlock(text) {
  *        emit(event), requestApproval(info) => Promise<boolean>, runHelper(opts) => Promise<string> }
  */
 export function buildFunctions(ctx) {
-  const { settings, rag, emit, requestApproval, signal, streamedText, memory, threadId, agent, isHelper, runHelper } = ctx;
-  const lastCodeBlock = () => findLastCodeBlock(streamedText?.() ?? '');
+  const { settings, rag, emit, requestApproval, signal, streamedText, memory, threadId, agent, isHelper, runHelper, maxToolChars = 16000 } = ctx;
+  // Each code block can feed one write_file/run_code call. Without this, a
+  // model that forgets to write a new block would silently reuse the previous
+  // one (e.g. save a JSON snippet as the program).
+  let consumedUpTo = 0;
+  const freshBlock = () => {
+    const info = findLastCodeBlockInfo(streamedText?.() ?? '');
+    return info && info.end > consumedUpTo ? info : null;
+  };
+  const lastCodeBlock = () => freshBlock()?.code ?? null;
+  const lastCodeLang = () => freshBlock()?.lang ?? '';
   const available = Object.entries(TOOLS).filter(([name, tool]) => {
     if (agent && !agentAllows(agent, name)) return false;
-    if (settings.planMode && (tool.access === 'write' || tool.access === 'exec')) return false;
+    const mode = modeOf(settings);
+    if (mode !== 'build' && (tool.access === 'write' || tool.access === 'exec')) return false;
+    if (mode === 'chat' && name !== 'calculator' && tool.access !== 'memory' && name !== 'search_past_chats' && name !== 'search_documents') return false;
     if (name === 'search_documents') return rag.hasDocuments();
     if (tool.access === 'plan') return !isHelper;
     if (tool.access === 'memory' || name === 'search_past_chats') return Boolean(settings.memoryEnabled && memory && !isHelper);
@@ -134,7 +174,11 @@ export function buildFunctions(ctx) {
         const id = `${Date.now().toString(36)}-${++seq}`;
         let args = rawArgs;
         try {
-          if (tool.prepare) args = tool.prepare(rawArgs, { lastCodeBlock });
+          if (tool.prepare) {
+            const block = freshBlock();
+            args = tool.prepare(rawArgs, { lastCodeBlock, lastCodeLang });
+            if (block) consumedUpTo = block.end;
+          }
         } catch (err) {
           emit({ type: 'tool', id, name, access: tool.access, summary: summarizeArgs(name, rawArgs), args: rawArgs });
           emit({ type: 'tool-result', id, ok: false, output: err.message });
@@ -156,13 +200,18 @@ export function buildFunctions(ctx) {
             rag,
             signal,
             onPlan: (steps) => emit({ type: 'plan', steps }),
+            mode: modeOf(settings),
             memory,
             threadId,
             onMemory: () => emit({ type: 'memory' }),
           });
-          const output = typeof result === 'string' ? result : JSON.stringify(result, null, 1);
-          emit({ type: 'tool-result', id, ok: true, output });
-          return output;
+          const full = typeof result === 'string' ? result : JSON.stringify(result, null, 1);
+          emit({ type: 'tool-result', id, ok: true, output: full });
+          // Keep any one tool result from crowding out the rest of the context.
+          return full.length > maxToolChars
+            ? `${full.slice(0, maxToolChars)}
+…[cut: ${full.length - maxToolChars} more characters. Read a specific part (e.g. read_file with startLine) if you need it.]`
+            : full;
         } catch (err) {
           const message = err?.message || String(err);
           emit({ type: 'tool-result', id, ok: false, output: message });
@@ -174,7 +223,7 @@ export function buildFunctions(ctx) {
 
   // Delegation: run a specialist on its own context sequence, then hand its
   // answer back as this tool's result. Helpers can't delegate further.
-  if (!isHelper && runHelper && (!agent || agentAllows(agent, 'ask_agent'))) {
+  if (!isHelper && runHelper && modeOf(settings) !== 'chat' && (!agent || agentAllows(agent, 'ask_agent'))) {
     const helpers = listAgents().filter((a) => a.id !== (agent?.id || 'kenzo') && a.id !== 'kenzo');
     if (helpers.length) {
       functions.ask_agent = defineChatSessionFunction({
