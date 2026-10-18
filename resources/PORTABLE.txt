@@ -1,0 +1,23 @@
+Kenzo portable
+==============
+
+No installation needed. Unzip this folder anywhere, even a USB stick, and run
+Kenzo.exe.
+
+Everything Kenzo saves (chats, settings, memories, documents and downloaded
+models) goes in the "kenzo-data" folder next to Kenzo.exe. Nothing is written
+to the computer, so you can carry your whole AI around.
+
+Fully offline from the start:
+  Copy a .gguf model file into kenzo-data\models before you run Kenzo.
+  Kenzo picks it automatically. If Ollama is installed on the computer, Kenzo
+  also lists its models (it uses them in place).
+
+Otherwise, open Models in Kenzo and download one (a one-time download).
+
+Windows may show "Windows protected your PC" the first time, because this
+build isn't code-signed. Click More info, then Run anyway.
+
+To start fresh, delete the kenzo-data folder (keep an empty one to stay
+portable). If you delete the folder completely, Kenzo stores its data in
+AppData like the installed version.

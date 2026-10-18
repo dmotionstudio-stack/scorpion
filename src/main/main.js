@@ -26,8 +26,16 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'kenzo', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
-// Portable/test mode: keep all data (models, chats, memory) in a chosen folder.
+// Portable mode: a "kenzo-data" folder next to Kenzo.exe holds everything
+// (models, chats, memory), so Kenzo can run from a USB stick and leave nothing
+// on the computer. KENZO_DATA_DIR overrides it (used for testing).
+const portableDir = path.join(path.dirname(process.execPath), 'kenzo-data');
 if (process.env.KENZO_DATA_DIR) app.setPath('userData', path.resolve(process.env.KENZO_DATA_DIR));
+else if (app.isPackaged && fs.existsSync(portableDir)) {
+  app.setPath('userData', portableDir);
+  // Chromium caches also go in the portable folder instead of AppData.
+  app.setPath('sessionData', path.join(portableDir, 'session'));
+}
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
