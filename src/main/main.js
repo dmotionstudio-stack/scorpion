@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage } from 'electron';
 import path from 'node:path';
+import os from 'node:os';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as store from './store.js';
@@ -68,7 +69,35 @@ function serveApp() {
   });
 }
 
+// Glass sidebar: Windows 11 acrylic or macOS vibrancy shows the desktop through
+// the window, blurred. Other systems (and "off") get an in-app frosted look.
+function nativeGlassSupported() {
+  if (process.platform === 'darwin') return true;
+  if (process.platform !== 'win32') return false;
+  return Number(os.release().split('.')[2] || 0) >= 22000; // Windows 11
+}
+
+function glassMode() {
+  if (['native', 'css', 'off'].includes(process.env.KENZO_GLASS)) return process.env.KENZO_GLASS; // testing
+  const pref = store.getSettings().glass;
+  if (pref === 'off') return 'off';
+  return nativeGlassSupported() ? 'native' : 'css';
+}
+
+function applyGlass() {
+  if (!win || win.isDestroyed()) return;
+  const native = glassMode() === 'native';
+  if (process.platform === 'win32') {
+    win.setBackgroundMaterial?.(native ? 'acrylic' : 'none');
+    win.setBackgroundColor(native ? '#00000000' : '#111214');
+  } else if (process.platform === 'darwin') {
+    win.setVibrancy(native ? 'sidebar' : null);
+    win.setBackgroundColor(native ? '#00000000' : '#111214');
+  }
+}
+
 function createWindow() {
+  const native = glassMode() === 'native';
   win = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -76,7 +105,9 @@ function createWindow() {
     minHeight: 560,
     title: 'Kenzo',
     show: false,
-    backgroundColor: '#111214',
+    backgroundColor: native ? '#00000000' : '#111214',
+    ...(native && process.platform === 'win32' ? { backgroundMaterial: 'acrylic' } : {}),
+    ...(native && process.platform === 'darwin' ? { vibrancy: 'sidebar', visualEffectState: 'active' } : {}),
     autoHideMenuBar: true,
     icon: path.join(APP_ROOT, 'resources', 'icon.png'),
     webPreferences: {
@@ -161,6 +192,8 @@ async function state() {
     supportedDocs: rag.SUPPORTED_EXTENSIONS,
     engine: await engine.engineInfo().catch((e) => ({ error: e.message })),
     platform: process.platform,
+    glass: glassMode(),
+    nativeGlass: nativeGlassSupported(),
   };
 }
 
@@ -331,6 +364,7 @@ function registerIpc() {
   h('settings:update', async (patch) => {
     const before = store.getSettings();
     const next = store.updateSettings(patch);
+    if (patch.glass !== undefined && patch.glass !== before.glass) applyGlass();
     if (patch.chatModel && patch.chatModel !== before.chatModel) loadChat().catch(() => {});
     else if (((patch.contextSize && patch.contextSize !== before.contextSize) || (patch.gpuLayers !== undefined && patch.gpuLayers !== before.gpuLayers)) && engine.isChatReady()) {
       await engine.unloadChatModel();

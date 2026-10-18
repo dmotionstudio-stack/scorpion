@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS = {
   memoryEnabled: true, // saved memories + remember/forget tools
   recallEnabled: true, // bring back relevant snippets from other chats
   systemPrompt: '',
+  glass: 'auto', // 'auto' (native glass where the OS supports it) or 'off'
 };
 
 let dataDir = null;

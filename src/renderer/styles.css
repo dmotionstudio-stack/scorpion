@@ -206,3 +206,64 @@ code, pre { font-family: var(--mono); }
 .modes button[data-mode="build"][aria-checked="true"] { color: var(--accent); }
 .build-plan { margin: 6px 0 2px; }
 .mode-tag { font-size: 11px; padding: 0 6px; border-radius: 999px; background: var(--panel-2); }
+
+/* ---------- settings hub ---------- */
+.main { flex-direction: column; }
+.sidebar-foot { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--glass-line, var(--border)); padding-top: 8px; }
+.settings-header { display: flex; align-items: center; gap: 14px; padding: 10px 24px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.stabs { display: flex; gap: 2px; flex-wrap: wrap; }
+.stab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px 10px; cursor: pointer; color: var(--muted); font-weight: 500; }
+.stab:hover { color: var(--text); }
+.stab.active { color: var(--text); border-bottom-color: var(--accent); }
+.btn.ghost { background: none; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--text); border-color: var(--border); }
+.page h1 { font-size: 22px; }
+
+/* ---------- glass sidebar ----------
+   glass-native: the OS (Windows 11 acrylic / macOS vibrancy) blurs the desktop
+   behind the window; the page is transparent and only the content area is
+   painted, so the sidebar shows the glass through a light tint.
+   glass-css: no OS support; a soft colour field sits behind the sidebar and
+   backdrop-filter frosts it, so it still reads as glass. */
+:root {
+  --glass-tint: rgba(17, 18, 22, 0.42);
+  --glass-tint-css: rgba(22, 24, 30, 0.52);
+  --glass-line: rgba(255, 255, 255, 0.08);
+  --glass-hover: rgba(255, 255, 255, 0.07);
+  --glass-active: rgba(255, 255, 255, 0.11);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --glass-tint: rgba(255, 255, 255, 0.45);
+    --glass-tint-css: rgba(255, 255, 255, 0.55);
+    --glass-line: rgba(0, 0, 0, 0.08);
+    --glass-hover: rgba(0, 0, 0, 0.05);
+    --glass-active: rgba(0, 0, 0, 0.08);
+  }
+}
+
+html.glass-native, html.glass-native body { background: transparent; }
+html.glass-native .main { background: var(--bg); }
+html.glass-native .sidebar { background: var(--glass-tint); }
+
+html.glass-css body {
+  background:
+    radial-gradient(420px 380px at 40px 120px, color-mix(in srgb, var(--accent) 55%, transparent), transparent 70%),
+    radial-gradient(380px 420px at 220px 78%, rgba(42, 123, 214, 0.55), transparent 70%),
+    radial-gradient(300px 300px at 0 100%, rgba(150, 90, 220, 0.35), transparent 70%),
+    var(--bg);
+}
+html.glass-css .main { background: var(--bg); }
+html.glass-css .sidebar {
+  background: var(--glass-tint-css);
+  backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+}
+
+html.glass-native .sidebar, html.glass-css .sidebar { border-right-color: var(--glass-line); box-shadow: inset -1px 0 0 var(--glass-line); }
+html.glass-native .thread:hover, html.glass-css .thread:hover,
+html.glass-native .navbtn:hover, html.glass-css .navbtn:hover { background: var(--glass-hover); }
+html.glass-native .thread.active, html.glass-css .thread.active,
+html.glass-native .navbtn.active, html.glass-css .navbtn.active { background: var(--glass-active); color: var(--text); }
+html.glass-native .sidebar-foot, html.glass-css .sidebar-foot { border-top-color: var(--glass-line); }
+html.glass-native .thread, html.glass-css .thread { color: color-mix(in srgb, var(--text) 78%, transparent); }

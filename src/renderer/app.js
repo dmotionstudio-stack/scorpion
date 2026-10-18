@@ -45,10 +45,15 @@ function renderThreads() {
     </div>`).join('') || '<div class="muted small" style="padding:8px">No chats yet</div>';
 }
 
+// Everything except the chat lives under Settings, as tabs.
 function setView(view) {
   S.view = view;
+  const inSettings = view !== 'chat';
+  if (inSettings) S.lastSettingsView = view;
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle('hidden', v !== view);
-  document.querySelectorAll('.navbtn').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+  $('#settings-header').classList.toggle('hidden', !inSettings);
+  document.querySelectorAll('.stab').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+  $('#open-settings').classList.toggle('active', inSettings);
 }
 
 // ---------- top bar ----------
@@ -426,6 +431,10 @@ function renderSettings() {
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
   $('#ctx-size').value = String(S.settings.contextSize);
   $('#gpu-layers').value = String(S.settings.gpuLayers ?? 'auto');
+  $('#glass').value = S.settings.glass === 'off' ? 'off' : 'auto';
+  $('#glass-hint').textContent = S.nativeGlass
+    ? 'Uses your system\'s real glass effect: the desktop shows through, blurred.'
+    : 'Your system has no native glass effect, so Kenzo draws a frosted look itself.';
   $('#temperature').value = S.settings.temperature;
   $('#temp-val').textContent = S.settings.temperature;
   $('#memory-enabled').checked = !!S.settings.memoryEnabled;
@@ -434,7 +443,14 @@ function renderSettings() {
   if (document.activeElement !== $('#system-prompt')) $('#system-prompt').value = S.settings.systemPrompt || '';
 }
 
+function applyGlass() {
+  const root = document.documentElement;
+  root.classList.toggle('glass-native', S.glass === 'native');
+  root.classList.toggle('glass-css', S.glass === 'css');
+}
+
 function renderAll() {
+  applyGlass();
   renderThreads(); renderTopbar(); renderModels(); renderDocs(); renderMemory(); renderAgents(); renderSchedules(); renderSettings(); renderMessages();
 }
 
@@ -521,7 +537,10 @@ async function setSetting(patch) {
 // ---------- wiring ----------
 function wire() {
   $('#new-chat').onclick = newThread;
-  document.querySelectorAll('.navbtn').forEach((b) => (b.onclick = () => setView(b.dataset.view)));
+  document.querySelectorAll('.stab').forEach((b) => (b.onclick = () => setView(b.dataset.view)));
+  $('#open-settings').onclick = () => (S.view === 'chat' ? setView(S.lastSettingsView || 'settings') : setView('chat'));
+  $('#back-to-chat').onclick = () => setView('chat');
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.view !== 'chat') setView('chat'); });
   $('#threads').onclick = async (e) => {
     const del = e.target.closest('[data-del]');
     if (del) {
@@ -638,6 +657,11 @@ function wire() {
   $('#recall-enabled').onchange = (e) => setSetting({ recallEnabled: e.target.checked });
 
   $('#ctx-size').onchange = (e) => setSetting({ contextSize: Number(e.target.value) });
+  $('#glass').onchange = async (e) => {
+    await setSetting({ glass: e.target.value });
+    S.glass = (await api.state()).glass;
+    applyGlass();
+  };
   $('#gpu-layers').onchange = (e) => { const v = e.target.value; setSetting({ gpuLayers: v === 'auto' || v === 'max' ? v : Number(v) }); toast('Reloading the model…'); };
   $('#temperature').oninput = (e) => { $('#temp-val').textContent = e.target.value; };
   $('#temperature').onchange = (e) => setSetting({ temperature: Number(e.target.value) });
