@@ -248,6 +248,12 @@ const FIT = {
   slow: ['fit-slow', '🐢 Slower here', 'Too big for the graphics card, so part of it runs on the CPU.'],
   'too-big': ['fit-big', '⛔ Too big', 'Likely too large for the memory of this PC.'],
 };
+const SKILL = {
+  agent: ['skill-agent', '🛠 Agent-ready', 'Passed the calculator and Build-mode file tests: can plan, write files and run code.'],
+  tools: ['skill-tools', '🔧 Simple tools', 'Uses simple tools (like the calculator) but struggles with multi-step Build tasks.'],
+  chat: ['skill-chat', '💬 Chat only', 'Did not use tools reliably in testing. Best for conversation.'],
+};
+const skillTag = (skill) => (SKILL[skill] ? `<span class="tag ${SKILL[skill][0]}" title="${SKILL[skill][2]}">${SKILL[skill][1]}</span>` : '');
 const fitTag = (fit) => (FIT[fit] ? `<span class="tag ${FIT[fit][0]}" title="${FIT[fit][2]}">${FIT[fit][1]}</span>` : '');
 
 function renderModels() {
@@ -257,7 +263,7 @@ function renderModels() {
     const selected = m.path === S.settings.chatModel || m.path === S.settings.embedModel;
     return `<div class="card ${selected ? 'selected' : ''}">
       <div class="title">${esc(m.name)}</div>
-      <div><span class="tag">${m.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${gb(m.bytes)}</span><span class="tag">${m.source}</span>${fitTag(m.fit)}${selected ? '<span class="tag on">in use</span>' : ''}</div>
+      <div><span class="tag">${m.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${gb(m.bytes)}</span><span class="tag">${m.source}</span>${fitTag(m.fit)}${skillTag(m.skill)}${selected ? '<span class="tag on">in use</span>' : ''}</div>
       <div class="row">${selected ? '' : `<button class="btn small primary" data-use="${esc(m.path)}" data-kind="${m.kind}">Use</button>`}
       ${m.source === 'library' ? `<button class="btn small" data-delmodel="${esc(m.path)}" data-size="${m.bytes}">Uninstall</button>` : '<span class="muted small">Comes with the installer</span>'}</div></div>`;
   }).join('') || '<div class="muted">No models installed. Download one below (⚡ runs best on this PC) or import a .gguf file.</div>';
@@ -271,7 +277,7 @@ function renderModels() {
     const pct = d?.totalSize ? Math.round((d.downloadedSize / d.totalSize) * 100) : 0;
     const local = installed(c);
     return `<div class="card${local ? ' selected' : ''}"><div class="title">${esc(c.name)}</div>
-      <div><span class="tag">${c.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${esc(c.size)}</span>${fitTag(c.fit)}</div>
+      <div><span class="tag">${c.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${esc(c.size)}</span>${fitTag(c.fit)}${skillTag(c.skill)}</div>
       <div class="muted small">${esc(c.note)}</div>
       ${d ? `<div class="progress"><div style="width:${pct}%"></div></div><div class="row"><span class="small muted">${pct}% of ${d.totalSize ? gb(d.totalSize) : '…'}</span><button class="btn small" data-cancel="${c.id}">Cancel</button></div>`
         : local ? `<div class="row"><span class="small installed">✓ Installed</span><button class="btn small" data-uninstall="${c.id}" data-size="${local.bytes}">Uninstall</button><button class="btn small" data-reinstall="${c.id}" title="Delete and download a fresh copy">Reinstall</button></div>`

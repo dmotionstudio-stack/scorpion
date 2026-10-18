@@ -198,7 +198,7 @@ async function state() {
   return {
     settings: store.getSettings(),
     hardware: hw,
-    models: models.listLocalModels(modelEnv()).map((m) => ({ ...m, fit: fit(m.kind, m.bytes) })),
+    models: models.listLocalModels(modelEnv()).map((m) => ({ ...m, fit: fit(m.kind, m.bytes), skill: models.CATALOG.find((c) => models.findInstalled(c, [m]))?.skill })),
     catalog: models.CATALOG.map((c) => ({ ...c, fit: fit(c.kind, parseSize(c.size)) })),
     threads: store.listThreads(),
     documents: rag.listDocuments(),

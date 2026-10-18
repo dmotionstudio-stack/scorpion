@@ -7,6 +7,11 @@ import path from 'node:path';
 import { createModelDownloader } from 'node-llama-cpp';
 import { paths } from './store.js';
 
+// `skill` is what scripts/model-check.mjs measured with Scorpion's real agent:
+//   agent  - passed both the calculator and the Build-mode file test
+//   tools  - calls simple tools correctly, but failed the Build-mode file test
+//   chat   - failed the tool tests; use it for conversation only
+// Entries without `skill` haven't been through that check.
 export const CATALOG = [
   {
     id: 'qwen3-4b',
@@ -14,15 +19,17 @@ export const CATALOG = [
     name: 'Qwen3 4B Instruct',
     uri: 'hf:unsloth/Qwen3-4B-Instruct-2507-GGUF/Qwen3-4B-Instruct-2507-Q4_K_M.gguf',
     size: '2.5 GB',
-    note: 'Recommended. Strong tool use for agent work. 8 GB RAM.',
+    skill: 'agent',
+    note: 'Recommended. The only small model that passed every agent test. Apache-2.0.',
   },
   {
-    id: 'qwen2.5-7b',
+    id: 'gemma3-4b',
     kind: 'chat',
-    name: 'Qwen2.5 7B Instruct',
-    uri: 'hf:bartowski/Qwen2.5-7B-Instruct-GGUF/Qwen2.5-7B-Instruct-Q4_K_M.gguf',
-    size: '4.7 GB',
-    note: 'Smarter, slower. 16 GB RAM or a GPU.',
+    name: 'Gemma 3 4B',
+    uri: 'hf:bartowski/google_gemma-3-4b-it-GGUF/google_gemma-3-4b-it-Q4_K_M.gguf',
+    size: '2.3 GB',
+    skill: 'tools',
+    note: 'Good writing and many languages. Gemma licence.',
   },
   {
     id: 'llama3.2-3b',
@@ -33,12 +40,65 @@ export const CATALOG = [
     note: 'Fast general chat.',
   },
   {
+    id: 'qwen3-1.7b',
+    kind: 'chat',
+    name: 'Qwen3 1.7B',
+    uri: 'hf:unsloth/Qwen3-1.7B-GGUF/Qwen3-1.7B-Q4_K_M.gguf',
+    size: '1.0 GB',
+    skill: 'tools',
+    note: 'Small and quick; thinks briefly before answering. Apache-2.0.',
+  },
+  {
+    id: 'llama3.2-1b',
+    kind: 'chat',
+    name: 'Llama 3.2 1B Instruct',
+    uri: 'hf:bartowski/Llama-3.2-1B-Instruct-GGUF/Llama-3.2-1B-Instruct-Q4_K_M.gguf',
+    size: '0.8 GB',
+    skill: 'tools',
+    note: 'Fastest tested (~120 tokens/sec on a laptop GPU). Llama licence.',
+  },
+  {
     id: 'qwen2.5-1.5b',
     kind: 'chat',
     name: 'Qwen2.5 1.5B Instruct',
     uri: 'hf:bartowski/Qwen2.5-1.5B-Instruct-GGUF/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf',
     size: '1.0 GB',
     note: 'For older or low-memory computers.',
+  },
+  {
+    id: 'qwen2.5-0.5b',
+    kind: 'chat',
+    name: 'Qwen2.5 0.5B Instruct',
+    uri: 'hf:bartowski/Qwen2.5-0.5B-Instruct-GGUF/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf',
+    size: '0.4 GB',
+    skill: 'tools',
+    note: 'Tiny: for very old or low-memory PCs. Apache-2.0.',
+  },
+  {
+    id: 'qwen2.5-7b',
+    kind: 'chat',
+    name: 'Qwen2.5 7B Instruct',
+    uri: 'hf:bartowski/Qwen2.5-7B-Instruct-GGUF/Qwen2.5-7B-Instruct-Q4_K_M.gguf',
+    size: '4.7 GB',
+    note: 'Smarter, slower. 16 GB RAM or a GPU.',
+  },
+  {
+    id: 'qwen2.5-coder-1.5b',
+    kind: 'chat',
+    name: 'Qwen2.5 Coder 1.5B',
+    uri: 'hf:bartowski/Qwen2.5-Coder-1.5B-Instruct-GGUF/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf',
+    size: '0.9 GB',
+    skill: 'chat',
+    note: 'Fast code help in chat (explain, write snippets). Apache-2.0.',
+  },
+  {
+    id: 'gemma3-1b',
+    kind: 'chat',
+    name: 'Gemma 3 1B',
+    uri: 'hf:bartowski/google_gemma-3-1b-it-GGUF/google_gemma-3-1b-it-Q4_K_M.gguf',
+    size: '0.8 GB',
+    skill: 'chat',
+    note: 'Very fast everyday chat. Gemma licence.',
   },
   {
     id: 'nomic-embed',

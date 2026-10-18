@@ -283,3 +283,16 @@ test('a damaged model file gives a clear, actionable error', async () => {
   fs.writeFileSync(bad, 'GGUF');
   await assert.rejects(engine.loadChatModel(bad, { name: 'Broken model', gpuLayers: 0 }), /Broken model could not be loaded.*download it again/);
 });
+
+test('every catalog entry is well formed and fast models carry a tested skill', async () => {
+  const { CATALOG } = await import('../src/main/models.js');
+  const ids = new Set();
+  for (const c of CATALOG) {
+    assert.ok(!ids.has(c.id), `duplicate id ${c.id}`); ids.add(c.id);
+    assert.match(c.uri, /^hf:[^/]+\/[^/]+\/[^/]+\.gguf$/, c.id);
+    assert.match(c.size, /^[\d.]+ (GB|MB)$/, c.id);
+    if (c.skill) assert.ok(['agent', 'tools', 'chat'].includes(c.skill), c.id);
+  }
+  assert.equal(CATALOG[0].skill, 'agent'); // the default pick must handle Build mode
+  for (const id of ['gemma3-4b', 'qwen3-1.7b', 'llama3.2-1b', 'gemma3-1b', 'qwen2.5-0.5b', 'qwen2.5-coder-1.5b']) assert.ok(ids.has(id), id);
+});

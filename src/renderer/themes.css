@@ -125,3 +125,6 @@ html.glass-css[data-theme] body {
 .tag.fit-slow { background: color-mix(in srgb, #f0a830 24%, transparent); color: var(--text); }
 .tag.fit-big { background: color-mix(in srgb, #f85149 24%, transparent); color: var(--text); }
 .installed { color: var(--accent-text, var(--accent)); font-weight: 600; }
+.tag.skill-agent { background: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--text); }
+.tag.skill-tools { background: color-mix(in srgb, #58a6ff 18%, transparent); color: var(--text); }
+.tag.skill-chat { background: color-mix(in srgb, var(--muted) 22%, transparent); color: var(--text); }
