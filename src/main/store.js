@@ -37,8 +37,9 @@ function safeId(id) {
   return id;
 }
 
-function readJson(file, fallback) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
+// Tolerates a UTF-8 byte-order mark (Notepad and PowerShell like to add one).
+export function readJson(file, fallback) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, '')); } catch { return fallback; }
 }
 
 // Write to a temp file then rename, so a crash mid-write never corrupts data.

@@ -18,6 +18,8 @@ export async function engineInfo() {
   const l = await ensureLlama();
   return {
     gpu: l.gpu || 'cpu',
+    contextSize: chat.context?.contextSize ?? null,
+    parallelHelpers: chat.context ? chat.context.totalSequences > 1 : null,
     chatModel: chat.path,
     embedModel: embed.path,
   };
@@ -38,12 +40,20 @@ export async function loadChatModel(modelPath, { contextSize = 8192, onProgress 
     modelPath,
     onLoadProgress: (p) => onProgress?.(p),
   });
-  // node-llama-cpp sizes the context to fit memory, but its estimate can be off
-  // on shared-memory GPUs, so step down on allocation failure.
-  for (let size = contextSize; ; size = Math.floor(size / 2)) {
+  // A second sequence lets a helper agent run while the main chat waits on it,
+  // but each sequence costs a full context of memory. The main chat's context
+  // matters more, so keep 2 sequences only if the main one still gets (almost)
+  // the full size; otherwise helpers borrow a temporary context when needed.
+  // node-llama-cpp's memory estimate can be off on shared-memory GPUs, so also
+  // step down on allocation failure.
+  try {
+    const two = await chat.model.createContext({ sequences: 2, contextSize: { min: 2048, max: contextSize } });
+    if (two.contextSize >= contextSize * 0.9) chat.context = two;
+    else await two.dispose();
+  } catch { /* fall through to a single sequence */ }
+  for (let size = contextSize; !chat.context; size = Math.floor(size / 2)) {
     try {
       chat.context = await chat.model.createContext({ contextSize: { min: Math.min(2048, size), max: size } });
-      break;
     } catch (err) {
       if (size <= 2048) { await disposeChat(); throw err; }
     }
@@ -69,7 +79,57 @@ export function chatModelName() {
  * Run one user turn on a thread. `history` is the thread's saved node-llama-cpp
  * chat history (or null for a fresh thread). Returns the updated history.
  */
-export async function runTurn({ threadId, history, systemPrompt, text, functions, temperature, signal, onText, onThought }) {
+// One loaded model serves every chat, scheduled run and helper, so main turns
+// take turns. (Helpers run *inside* a main turn, on their own sequence, and
+// don't take the lock.)
+let queue = Promise.resolve();
+function withLock(fn) {
+  const run = queue.then(fn, fn);
+  queue = run.catch(() => {});
+  return run;
+}
+
+export function runTurn(opts) {
+  return withLock(() => runTurnUnlocked(opts));
+}
+
+function promptOptions({ functions, temperature, signal, onText, onThought }) {
+  return {
+    functions,
+    temperature,
+    signal,
+    stopOnAbortSignal: true,
+    // Small models sometimes loop (e.g. endless whitespace after a tool call);
+    // cap each response so a runaway can't fill the whole context.
+    maxTokens: 3072,
+    repeatPenalty: { lastTokens: 64, penalty: 1.1 },
+    onFunctionCallParamsChunk: process.env.KENZO_DEBUG ? (c) => process.stdout.write(`{${c.paramsChunk}}`) : undefined,
+    onResponseChunk(chunk) {
+      if (chunk.type === 'segment' && chunk.segmentType === 'thought') onThought?.(chunk.text);
+      else if (chunk.type !== 'segment') onText?.(chunk.text);
+    },
+  };
+}
+
+/** Run a helper agent on a fresh, separate session. Returns its final answer. */
+export async function runHelperTurn({ systemPrompt, text, functions, temperature, signal, onText }) {
+  if (!chat.model) throw new Error('No chat model loaded');
+  // Prefer a spare sequence (runs without disturbing the main chat's cache).
+  // Without one, borrow the main chat's own sequence: the main turn is paused
+  // waiting for this helper anyway, and node-llama-cpp re-aligns a sequence to
+  // the full chat history when generation resumes, so the main chat just
+  // re-reads its history afterwards. Slower, but needs no extra memory.
+  const spare = chat.context.sequencesLeft > 0;
+  const sequence = spare ? chat.context.getSequence() : chat.session.sequence;
+  const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt });
+  try {
+    return await session.prompt(text, promptOptions({ functions, temperature, signal, onText }));
+  } finally {
+    try { session.dispose({ disposeSequence: spare }); } catch { /* already gone */ }
+  }
+}
+
+async function runTurnUnlocked({ threadId, history, systemPrompt, text, functions, temperature, signal, onText, onThought }) {
   if (!chat.session) throw new Error('No chat model loaded. Pick one in Models.');
   const session = chat.session;
 
@@ -86,21 +146,7 @@ export async function runTurn({ threadId, history, systemPrompt, text, functions
   }
 
   try {
-    await session.prompt(text, {
-      functions,
-      temperature,
-      signal,
-      stopOnAbortSignal: true,
-      // Small models sometimes loop (e.g. endless whitespace after a tool call);
-      // cap each response so a runaway can't fill the whole context.
-      maxTokens: 3072,
-      repeatPenalty: { lastTokens: 64, penalty: 1.1 },
-      onFunctionCallParamsChunk: process.env.KENZO_DEBUG ? (c) => process.stdout.write(`{${c.paramsChunk}}`) : undefined,
-      onResponseChunk(chunk) {
-        if (chunk.type === 'segment' && chunk.segmentType === 'thought') onThought?.(chunk.text);
-        else if (chunk.type !== 'segment') onText?.(chunk.text);
-      },
-    });
+    await session.prompt(text, promptOptions({ functions, temperature, signal, onText, onThought }));
   } catch (err) {
     // Force a history reload next turn — the session may be mid-turn.
     chat.threadId = null;

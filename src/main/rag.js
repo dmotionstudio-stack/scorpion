@@ -2,7 +2,7 @@
 // → store vectors on disk → cosine search. Fully offline.
 import fs from 'node:fs';
 import path from 'node:path';
-import { paths, writeJson, newId } from './store.js';
+import { paths, writeJson, readJson, newId } from './store.js';
 import * as engine from './engine.js';
 
 const CHUNK_CHARS = 1200;
@@ -19,7 +19,7 @@ const indexFile = () => path.join(paths.rag, 'index.json');
 
 function load() {
   if (index) return;
-  try { index = JSON.parse(fs.readFileSync(indexFile(), 'utf8')); } catch { index = { embedModel: null, docs: [], chunks: [] }; }
+  index = readJson(indexFile(), null) || { embedModel: null, docs: [], chunks: [] };
   vectors = index.chunks.map((c) => decodeVector(c.v));
 }
 

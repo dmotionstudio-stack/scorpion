@@ -5,8 +5,7 @@
 //     relevant snippets from *other* chats can be brought back automatically.
 // Both are plain local files; nothing leaves the computer.
 import path from 'node:path';
-import fs from 'node:fs';
-import { paths, writeJson, newId, listThreads, getThread } from './store.js';
+import { paths, writeJson, readJson, newId, listThreads, getThread } from './store.js';
 
 const MAX_MEMORIES = 200;
 const MAX_IN_PROMPT = 60;
@@ -15,7 +14,7 @@ const memoryFile = () => path.join(paths.data, 'memory.json');
 // ---------- saved memories ----------
 
 export function listMemories() {
-  try { return JSON.parse(fs.readFileSync(memoryFile(), 'utf8')); } catch { return []; }
+  return readJson(memoryFile(), []);
 }
 
 function saveMemories(list) {

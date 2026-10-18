@@ -26,6 +26,17 @@ contextBridge.exposeInMainWorld('kenzo', {
   getThread: invoke('thread:get'),
   deleteThread: invoke('thread:delete'),
   renameThread: invoke('thread:rename'),
+  setThreadAgent: invoke('thread:setAgent'),
+
+  saveAgent: invoke('agents:save'),
+  deleteAgent: invoke('agents:delete'),
+
+  listSchedules: invoke('schedules:list'),
+  saveSchedule: invoke('schedules:save'),
+  deleteSchedule: invoke('schedules:delete'),
+  runSchedule: invoke('schedules:run'),
+  chooseFolder: invoke('dialog:folder'),
+  setOpenAtLogin: invoke('app:setOpenAtLogin'),
 
   send: invoke('chat:send'),
   stop: invoke('chat:stop'),
@@ -44,4 +55,7 @@ contextBridge.exposeInMainWorld('kenzo', {
   onModelStatus: on('model:status'),
   onDownload: on('model:download'),
   onDocsProgress: on('docs:progress'),
+  onThreadsChanged: on('threads:changed'),
+  onSchedulesChanged: on('schedules:changed'),
+  onOpenThread: on('open-thread'),
 });

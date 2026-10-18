@@ -5,7 +5,85 @@
 // All file paths are resolved inside the workspace folder and escapes are refused.
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import os from 'node:os';
+import { spawn, spawnSync } from 'node:child_process';
+import { evaluate } from './calc.js';
+import { extractText } from './rag.js';
+
+// Python is optional; find whichever launcher this computer has, once.
+let pythonCmd;
+function findPython() {
+  if (pythonCmd !== undefined) return pythonCmd;
+  const candidates = process.platform === 'win32' ? [['py', ['-3']], ['python', []], ['python3', []]] : [['python3', []], ['python', []]];
+  pythonCmd = null;
+  for (const [cmd, pre] of candidates) {
+    const r = spawnSync(cmd, [...pre, '--version'], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+    // The Windows Store "python" stub exits non-zero, so require a real version.
+    if (r.status === 0 && /Python 3/.test(`${r.stdout}${r.stderr}`)) { pythonCmd = [cmd, pre]; break; }
+  }
+  return pythonCmd;
+}
+
+function parseCsv(text, delimiter) {
+  const rows = [];
+  let row = [], field = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') { field += '"'; i++; } else if (ch === '"') quoted = false; else field += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === delimiter) { row.push(field); field = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); rows.push(row); row = []; field = '';
+    } else field += ch;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((c) => c !== ''));
+}
+
+async function readSheetRows(file, sheetName) {
+  const ext = path.extname(file).toLowerCase();
+  if (ext === '.csv' || ext === '.tsv') {
+    const text = fs.readFileSync(file, 'utf8').replace(/^﻿/, '');
+    return { sheets: [path.basename(file)], rows: parseCsv(text, ext === '.tsv' ? '\t' : ',') };
+  }
+  if (ext !== '.xlsx') throw new Error('Supported spreadsheet types: .xlsx, .csv, .tsv');
+  const ExcelJS = (await import('exceljs')).default;
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(file);
+  const sheets = wb.worksheets.map((w) => w.name);
+  const ws = (sheetName && wb.getWorksheet(sheetName)) || wb.worksheets[0];
+  if (!ws) throw new Error('The workbook has no sheets');
+  const rows = [];
+  ws.eachRow({ includeEmpty: false }, (r) => {
+    rows.push(r.values.slice(1).map((v) => {
+      if (v == null) return '';
+      if (v instanceof Date) return v.toISOString().slice(0, 10);
+      if (typeof v === 'object') return String(v.result ?? v.text ?? v.richText?.map((t) => t.text).join('') ?? '');
+      return String(v);
+    }));
+  });
+  return { sheets, sheet: ws.name, rows };
+}
+
+function summarizeTable(rows) {
+  if (!rows.length) return 'The sheet is empty.';
+  const [header, ...data] = rows;
+  const width = Math.max(...rows.map((r) => r.length));
+  const cols = Array.from({ length: width }, (_, i) => header[i] || `col${i + 1}`);
+  const esc = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ').slice(0, 60);
+  const show = data.slice(0, 30);
+  const table = [`| ${cols.map(esc).join(' | ')} |`, `|${cols.map(() => '---').join('|')}|`,
+    ...show.map((r) => `| ${cols.map((_, i) => esc(r[i])).join(' | ')} |`)].join('\n');
+  const stats = cols.map((c, i) => {
+    const nums = data.map((r) => Number(String(r[i] ?? '').replace(/[$,%\s]/g, ''))).filter((n, j) => data[j][i] !== '' && Number.isFinite(n));
+    if (nums.length < Math.max(1, data.length * 0.6)) return null;
+    const sum = nums.reduce((a, b) => a + b, 0);
+    return `- ${c}: count ${nums.length}, sum ${+sum.toFixed(4)}, mean ${+(sum / nums.length).toFixed(4)}, min ${Math.min(...nums)}, max ${Math.max(...nums)}`;
+  }).filter(Boolean);
+  return `${data.length} data rows × ${cols.length} columns. Columns: ${cols.join(', ')}\n\n${table}${data.length > show.length ? `\n…${data.length - show.length} more rows` : ''}${stats.length ? `\n\nNumeric columns:\n${stats.join('\n')}` : ''}`;
+}
 
 const MAX_READ_CHARS = 24_000;
 const MAX_OUTPUT_CHARS = 16_000;
@@ -48,11 +126,15 @@ function walk(dir, depth, out, root, limit = 400) {
 }
 
 export function runCommand(command, cwd, signal) {
+  const isWin = process.platform === 'win32';
+  return isWin
+    ? runProcess('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { cwd }, signal)
+    : runProcess(process.env.SHELL || '/bin/bash', ['-lc', command], { cwd }, signal);
+}
+
+export function runProcess(file, args, options, signal) {
   return new Promise((resolve) => {
-    const isWin = process.platform === 'win32';
-    const child = isWin
-      ? spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { cwd, windowsHide: true })
-      : spawn(process.env.SHELL || '/bin/bash', ['-lc', command], { cwd });
+    const child = spawn(file, args, { windowsHide: true, ...options });
     let output = '';
     const add = (d) => { output += d.toString(); if (output.length > MAX_OUTPUT_CHARS * 2) output = output.slice(-MAX_OUTPUT_CHARS * 2); };
     child.stdout.on('data', add);
@@ -135,7 +217,7 @@ export const TOOLS = {
     params: { type: 'object', properties: { path: { type: 'string' } } },
     prepare(args, { lastCodeBlock }) {
       const content = lastCodeBlock?.();
-      if (content == null) throw new Error('No code block found. Write the full file content in a fenced code block first, then call write_file again.');
+      if (content == null) throw new Error('Nothing saved: your reply has no ``` code block yet. Next, write the complete file content inside a ``` fenced code block as normal reply text (not inside a tool call), and only then call write_file again with the path.');
       return { ...args, content };
     },
     run({ path: p, content }, { workspace }) {
@@ -182,6 +264,87 @@ export const TOOLS = {
       const hits = await rag.search(query, 6);
       if (!hits.length) return 'No relevant passages found.';
       return hits.map((h, i) => `[${i + 1}] ${h.docName} (part ${h.order + 1}, score ${h.score.toFixed(2)})\n${h.text}`).join('\n\n');
+    },
+  },
+
+  move_file: {
+    access: 'write',
+    description: 'Move or rename a file or folder inside the workspace. Creates the destination folder if needed. Will not overwrite an existing file.',
+    params: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } } },
+    run({ from, to }, { workspace }) {
+      const src = resolveInside(workspace, from);
+      const dest = resolveInside(workspace, to);
+      if (!fs.existsSync(src)) throw new Error(`${from} does not exist`);
+      if (fs.existsSync(dest)) throw new Error(`${to} already exists; choose another name`);
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.renameSync(src, dest);
+      return `Moved ${from} → ${to}`;
+    },
+  },
+
+  run_code: {
+    access: 'exec',
+    description: 'Run a program and return its output. FIRST write the complete program in a fenced code block in your reply, THEN call run_code with the language ("javascript" always works; "python" only if Python is installed). Use it for calculations, data processing and checking your work. Runs in the workspace folder (or a temporary folder if none is set). 60 second limit.',
+    params: { type: 'object', properties: { language: { enum: ['javascript', 'python'] } } },
+    prepare(args, { lastCodeBlock }) {
+      const code = lastCodeBlock?.();
+      if (code == null) throw new Error('No code block found. Write the program in a fenced code block first, then call run_code again.');
+      return { ...args, code };
+    },
+    async run({ language, code }, { workspace, signal }) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kenzo-run-'));
+      const cwd = workspace ? resolveInside(workspace, '.') : dir;
+      try {
+        let result;
+        if (language === 'python') {
+          const py = findPython();
+          if (!py) return 'Python is not installed on this computer. Rewrite the program in JavaScript and run it with language "javascript".';
+          const file = path.join(dir, 'main.py');
+          fs.writeFileSync(file, code);
+          result = await runProcess(py[0], [...py[1], file], { cwd, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } }, signal);
+        } else {
+          const file = path.join(dir, 'main.mjs');
+          fs.writeFileSync(file, code);
+          // Electron's own binary doubles as Node.js, so JavaScript always runs offline.
+          result = await runProcess(process.execPath, [file], { cwd, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }, signal);
+        }
+        return `exit code ${result.exitCode}\n${result.output}`;
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  },
+
+  calculator: {
+    access: 'read',
+    description: 'Evaluate a math expression exactly, e.g. "(1250 * 0.07) / 12" or "sqrt(2)^3". Supports + - * / % ^, parentheses, pi, e, sqrt, abs, round, floor, ceil, log, ln, sin, cos, tan, min, max. Use it instead of doing arithmetic in your head.',
+    params: { type: 'object', properties: { expression: { type: 'string' } } },
+    run({ expression }) {
+      const v = evaluate(expression);
+      if (!Number.isFinite(v)) return `${expression} = ${v} (not a finite number)`;
+      return `${expression} = ${+v.toPrecision(15)}`;
+    },
+  },
+
+  read_spreadsheet: {
+    access: 'read',
+    description: 'Read a spreadsheet (.xlsx, .csv, .tsv) in the workspace: columns, the first 30 rows, and totals/averages of numeric columns. Use sheet "" for the first sheet.',
+    params: { type: 'object', properties: { path: { type: 'string' }, sheet: { type: 'string' } } },
+    async run({ path: p, sheet }, { workspace }) {
+      const file = resolveInside(workspace, p);
+      const { sheets, sheet: used, rows } = await readSheetRows(file, sheet);
+      const head = sheets.length > 1 ? `Sheets: ${sheets.join(', ')} (showing "${used}")\n` : '';
+      return clip(head + summarizeTable(rows), MAX_READ_CHARS);
+    },
+  },
+
+  read_document: {
+    access: 'read',
+    description: 'Read the text of a PDF, Word (.docx) or text document in the workspace.',
+    params: { type: 'object', properties: { path: { type: 'string' } } },
+    async run({ path: p }, { workspace }) {
+      const text = await extractText(resolveInside(workspace, p));
+      return clip(text.trim() || '(no text found — scanned PDFs need OCR)', MAX_READ_CHARS);
     },
   },
 

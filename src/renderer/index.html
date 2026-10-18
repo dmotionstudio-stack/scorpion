@@ -18,6 +18,8 @@
         <button data-view="chat" class="navbtn active">💬 Chat</button>
         <button data-view="models" class="navbtn">🧠 Models</button>
         <button data-view="docs" class="navbtn">📄 Documents</button>
+        <button data-view="agents" class="navbtn">🤖 Agents</button>
+        <button data-view="schedules" class="navbtn">⏰ Schedules</button>
         <button data-view="memory" class="navbtn">🧷 Memory</button>
         <button data-view="settings" class="navbtn">⚙️ Settings</button>
       </nav>
@@ -28,6 +30,7 @@
       <!-- CHAT -->
       <section class="view" id="view-chat">
         <header class="topbar">
+          <select id="agent-picker" class="agent-picker" aria-label="Agent for this chat"></select>
           <div class="model-pill" id="model-pill">No model</div>
           <div class="spacer"></div>
           <button class="chip" id="workspace-chip" title="Folder the agent can work in">📁 No workspace</button>
@@ -74,6 +77,65 @@
           <p class="muted">Add PDFs, Word files or text. Kenzo indexes them locally so you can ask questions about them in any chat. Requires an embedding model (see Models).</p>
           <div class="row"><button class="btn primary" id="add-docs">Add documents…</button><span class="muted" id="docs-progress"></span></div>
           <div class="cards" id="doc-list"></div>
+        </div>
+      </section>
+
+      <!-- AGENTS -->
+      <section class="view hidden" id="view-agents">
+        <div class="page">
+          <h1>Agents</h1>
+          <p class="muted">Specialists with their own instructions and tools. Pick one for a chat from the top bar. Any agent can also hand a subtask to another specialist and use its answer.</p>
+          <div class="row"><button class="btn primary" id="new-agent">＋ New agent</button></div>
+          <form class="editor hidden" id="agent-editor">
+            <h2 id="agent-editor-title">New agent</h2>
+            <div class="grid2">
+              <label>Name<input id="ae-name" class="text-input" maxlength="40" required placeholder="e.g. Tutor"></label>
+              <label>Icon<input id="ae-icon" class="text-input icon-input" maxlength="4" placeholder="🤖"></label>
+            </div>
+            <label>Short description<input id="ae-description" class="text-input" maxlength="200" placeholder="What is this agent for?"></label>
+            <label>Instructions<textarea id="ae-instructions" rows="6" maxlength="4000" placeholder="Who the agent is and how it should work, e.g. 'You are a patient math tutor. Explain step by step and check answers with the calculator.'"></textarea></label>
+            <label>Creativity: <span id="ae-temp-val"></span><input type="range" id="ae-temp" min="0" max="1.5" step="0.05"></label>
+            <div>
+              <div class="label">Tools</div>
+              <label class="toggle"><input type="checkbox" id="ae-all-tools"><span>All tools</span></label>
+              <div class="tool-grid" id="ae-tools"></div>
+            </div>
+            <div class="row"><button class="btn primary" type="submit">Save agent</button><button class="btn" type="button" id="ae-cancel">Cancel</button></div>
+          </form>
+          <div class="cards" id="agent-list"></div>
+        </div>
+      </section>
+
+      <!-- SCHEDULES -->
+      <section class="view hidden" id="view-schedules">
+        <div class="page">
+          <h1>Scheduled agents</h1>
+          <p class="muted">Agents that work on their own: on a timer, every day at a set time, or whenever files in a folder change. Each one posts results to its own chat and shows a notification. They run while Kenzo is open, and Kenzo stays in the system tray when you close the window.</p>
+          <div class="row">
+            <button class="btn primary" id="new-schedule">＋ New scheduled agent</button>
+            <label class="toggle"><input type="checkbox" id="open-at-login"><span>Start Kenzo in the tray when I log in</span></label>
+          </div>
+          <form class="editor hidden" id="schedule-editor">
+            <h2 id="schedule-editor-title">New scheduled agent</h2>
+            <div class="grid2">
+              <label>Name<input id="se-name" class="text-input" maxlength="60" required placeholder="e.g. Morning inbox summary"></label>
+              <label>Agent<select id="se-agent"></select></label>
+            </div>
+            <label>What should it do?<textarea id="se-prompt" rows="4" maxlength="4000" required placeholder="e.g. Read the new files in this folder and write a short summary of each into summary.md."></textarea></label>
+            <label>When<select id="se-trigger">
+              <option value="daily">Every day at a set time</option>
+              <option value="interval">Every few minutes or hours</option>
+              <option value="folder">When files in a folder change</option>
+            </select></label>
+            <div class="row" id="se-daily-row"><span>At</span><input type="time" id="se-time" class="text-input narrow"></div>
+            <div class="row hidden" id="se-interval-row"><span>Every</span><input type="number" id="se-minutes" class="text-input narrow" min="5" step="5"><span>minutes</span></div>
+            <div class="row hidden" id="se-folder-row"><code id="se-folder">No folder chosen</code><button class="btn small" type="button" id="se-pick-folder">Choose folder…</button><span class="muted small">This folder is also its workspace.</span></div>
+            <div class="row" id="se-workspace-row"><span>Workspace:</span><code id="se-workspace">Same as Settings</code><button class="btn small" type="button" id="se-pick-workspace">Choose…</button></div>
+            <label class="toggle"><input type="checkbox" id="se-allow"><span>Allow it to change files and run programs without asking</span></label>
+            <p class="muted small">Off (recommended): it can only read and report. Nobody is there to approve changes while it runs.</p>
+            <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" id="se-cancel">Cancel</button></div>
+          </form>
+          <div class="cards" id="schedule-list"></div>
         </div>
       </section>
 

@@ -63,6 +63,6 @@ test('findLastCodeBlock returns the last fenced block body', async () => {
 });
 
 test('write_file.prepare requires a code block', () => {
-  assert.throws(() => TOOLS.write_file.prepare({ path: 'a.py' }, { lastCodeBlock: () => null }), /No code block/);
+  assert.throws(() => TOOLS.write_file.prepare({ path: 'a.py' }, { lastCodeBlock: () => null }), /no ``` code block|No code block/);
   assert.deepEqual(TOOLS.write_file.prepare({ path: 'a.py' }, { lastCodeBlock: () => 'x' }), { path: 'a.py', content: 'x' });
 });

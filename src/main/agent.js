@@ -4,6 +4,11 @@
 import os from 'node:os';
 import { defineChatSessionFunction } from 'node-llama-cpp';
 import { TOOLS } from './tools.js';
+import { listAgents, findAgentByName, agentAllows } from './agents.js';
+
+// Tools that work without a workspace folder.
+const NO_WORKSPACE_TOOLS = new Set(['calculator', 'run_code', 'update_plan']);
+const MAX_HELPER_OUTPUT = 6000;
 
 const BASE_PROMPT = `You are Kenzo, a helpful AI assistant and agent running fully offline on the user's own computer.
 Be accurate and concise. Use Markdown for formatting and fenced code blocks for code.`;
@@ -23,8 +28,14 @@ const MEMORY_RULES = `You have long-term memory across chats.
 - Don't save trivia from a single task, and never save passwords or other secrets.
 - If they refer to an earlier conversation, use search_past_chats.`;
 
-export function buildSystemPrompt(settings, { docNames, memoryBlock = '' }) {
-  const parts = [settings.systemPrompt?.trim() || BASE_PROMPT];
+const TEAM_RULES = `You can hand a self-contained subtask to a specialist agent with ask_agent (give it the full context it needs; it can't see this chat). Use this when a specialist clearly fits, e.g. Reviewer to check finished work, Data Analyst for spreadsheets, Coder for programming. Then use its answer to reply to the user.`;
+
+export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent = null, isHelper = false }) {
+  const intro = agent?.instructions?.trim()
+    ? `${agent.instructions.trim()}\nYou run fully offline on the user's own computer as part of Kenzo. Use Markdown, and fenced code blocks for code.`
+    : settings.systemPrompt?.trim() || BASE_PROMPT;
+  const parts = [intro];
+  if (isHelper) parts.push('Another agent asked you to do the task below. Complete it fully with your tools, then reply with the result only: concise, factual and self-contained.');
   parts.push(`Today is ${new Date().toDateString()}. Operating system: ${os.type()} ${os.release()}.`);
   if (settings.workspace) {
     parts.push(`Workspace folder: ${settings.workspace}`);
@@ -38,9 +49,13 @@ export function buildSystemPrompt(settings, { docNames, memoryBlock = '' }) {
   if (docNames.length) {
     parts.push(`The user has imported these documents: ${docNames.slice(0, 40).join(', ')}. Use search_documents to answer questions about them and cite the document name.`);
   }
-  if (settings.memoryEnabled) {
+  if (settings.memoryEnabled && !isHelper) {
     parts.push(MEMORY_RULES);
     if (memoryBlock) parts.push(memoryBlock);
+  }
+  if (!isHelper && (!agent || agentAllows(agent, 'ask_agent'))) {
+    const others = listAgents().filter((a) => a.id !== (agent?.id || 'kenzo') && a.id !== 'kenzo');
+    parts.push(`${TEAM_RULES}\nAvailable specialists:\n${others.map((a) => `- ${a.name}: ${a.description}`).join('\n')}`);
   }
   return parts.join('\n\n');
 }
@@ -77,29 +92,36 @@ function summarizeArgs(name, args) {
   if (name === 'run_command') return args.command;
   if (name === 'write_file') return `${args.path} (${(args.content || '').length} chars)`;
   if (name === 'edit_file') return args.path;
+  if (name === 'move_file') return `${args.from} → ${args.to}`;
+  if (name === 'run_code') return `${args.language} (${(args.code || '').split('\n').length} lines)`;
+  if (name === 'calculator') return args.expression;
+  if (name === 'ask_agent') return `${args.agent}: ${String(args.task).slice(0, 120)}`;
+  if (args.path !== undefined && Object.keys(args).length <= 2) return args.path;
   return JSON.stringify(args);
 }
 
-/**
- * Build the function set for one turn.
- * ctx: { settings, rag, signal, emit(event), requestApproval(info) => Promise<boolean> }
- */
 // Last complete fenced code block in the text the model has streamed this turn.
 export function findLastCodeBlock(text) {
   const blocks = [...text.matchAll(/```[^\n`]*\n([\s\S]*?)```/g)];
   return blocks.length ? blocks.at(-1)[1] : null;
 }
 
+/**
+ * Build the function set for one turn.
+ * ctx: { settings, agent, isHelper, rag, memory, threadId, signal, streamedText(),
+ *        emit(event), requestApproval(info) => Promise<boolean>, runHelper(opts) => Promise<string> }
+ */
 export function buildFunctions(ctx) {
-  const { settings, rag, emit, requestApproval, signal, streamedText, memory, threadId } = ctx;
+  const { settings, rag, emit, requestApproval, signal, streamedText, memory, threadId, agent, isHelper, runHelper } = ctx;
   const lastCodeBlock = () => findLastCodeBlock(streamedText?.() ?? '');
   const available = Object.entries(TOOLS).filter(([name, tool]) => {
-    if (name === 'search_documents') return rag.hasDocuments();
-    if (tool.access === 'plan') return true;
-    if (tool.access === 'memory' || name === 'search_past_chats') return Boolean(settings.memoryEnabled && memory);
-    if (!settings.workspace) return false;
+    if (agent && !agentAllows(agent, name)) return false;
     if (settings.planMode && (tool.access === 'write' || tool.access === 'exec')) return false;
-    return true;
+    if (name === 'search_documents') return rag.hasDocuments();
+    if (tool.access === 'plan') return !isHelper;
+    if (tool.access === 'memory' || name === 'search_past_chats') return Boolean(settings.memoryEnabled && memory && !isHelper);
+    if (NO_WORKSPACE_TOOLS.has(name)) return true;
+    return Boolean(settings.workspace);
   });
 
   let seq = 0;
@@ -148,6 +170,45 @@ export function buildFunctions(ctx) {
         }
       },
     });
+  }
+
+  // Delegation: run a specialist on its own context sequence, then hand its
+  // answer back as this tool's result. Helpers can't delegate further.
+  if (!isHelper && runHelper && (!agent || agentAllows(agent, 'ask_agent'))) {
+    const helpers = listAgents().filter((a) => a.id !== (agent?.id || 'kenzo') && a.id !== 'kenzo');
+    if (helpers.length) {
+      functions.ask_agent = defineChatSessionFunction({
+        description: 'Give a self-contained subtask to a specialist agent and get its result back. Put every detail it needs in "task".',
+        params: { type: 'object', properties: { agent: { enum: helpers.map((a) => a.name) }, task: { type: 'string' } } },
+        async handler(args) {
+          const id = `${Date.now().toString(36)}-${++seq}`;
+          const helper = findAgentByName(args.agent);
+          emit({ type: 'tool', id, name: 'ask_agent', access: 'agent', summary: summarizeArgs('ask_agent', args), args, agentIcon: helper?.icon });
+          if (!helper) {
+            emit({ type: 'tool-result', id, ok: false, output: `Unknown agent ${args.agent}` });
+            return `Error: unknown agent ${args.agent}`;
+          }
+          let helperText = '';
+          const sub = (e) => emit({ ...e, parent: id });
+          try {
+            const answer = await runHelper({
+              systemPrompt: buildSystemPrompt(settings, { docNames: [], agent: helper, isHelper: true }),
+              text: args.task,
+              temperature: helper.temperature ?? settings.temperature,
+              functions: buildFunctions({ ...ctx, agent: helper, isHelper: true, emit: sub, streamedText: () => helperText }),
+              onText: (d) => { helperText += d; sub({ type: 'helper-text', delta: d }); },
+              signal,
+            });
+            const output = (answer || helperText).trim() || '(the agent returned no answer)';
+            emit({ type: 'tool-result', id, ok: true, output });
+            return `${helper.name} replied:\n${output.slice(0, MAX_HELPER_OUTPUT)}`;
+          } catch (err) {
+            emit({ type: 'tool-result', id, ok: false, output: err.message });
+            return `Error: ${helper.name} failed: ${err.message}`;
+          }
+        },
+      });
+    }
   }
   return functions;
 }

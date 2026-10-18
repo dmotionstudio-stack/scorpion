@@ -162,3 +162,26 @@ code, pre { font-family: var(--mono); }
 .memory button { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
 .memory button:hover { color: var(--danger); }
 .field label.toggle { display: flex; font-weight: 400; margin-bottom: 6px; }
+
+/* agents & schedules */
+.agent-picker { background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; font-weight: 600; cursor: pointer; max-width: 200px; }
+.agent-icon { font-size: 18px; }
+.editor { background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); padding: 16px 18px; margin: 12px 0 18px; display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
+.editor h2 { margin: 0; }
+.editor label:not(.toggle) { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+.editor .label { font-weight: 600; margin-bottom: 4px; }
+.editor textarea, .editor select { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-weight: 400; }
+.editor .text-input { max-width: none; font-weight: 400; }
+.editor input[type=range] { accent-color: var(--accent); }
+.grid2 { display: grid; grid-template-columns: 1fr 120px; gap: 12px; }
+.grid2:has(select) { grid-template-columns: 1fr 1fr; }
+.icon-input { text-align: center; font-size: 18px; }
+.narrow { max-width: 120px; min-width: 0; flex: 0 0 auto; }
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 12px; margin-top: 6px; }
+.tool-choice code { font-size: 12px; }
+.schedule.disabled { opacity: .6; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+.err-tag { background: color-mix(in srgb, var(--danger) 25%, transparent); color: var(--text); }
+.tool.delegate { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.tool .helper { border-top: 1px solid var(--border); padding: 8px 12px 4px 16px; border-left: 3px solid var(--accent); margin-left: 8px; }
+.tool .helper .md { font-size: 13px; }

@@ -10,6 +10,19 @@ account, or an internet connection to chat.
   you turn on Auto-approve.
 - **Multi-step planning**: for bigger tasks the agent writes a plan, then updates it
   live as it works. Plan mode is read-only: it explores and plans but can't change anything.
+- **Specialist agents**: you choose who answers each chat. Kenzo (general) or a
+  specialist: Coder, Researcher, Writer, Data Analyst, File Organizer or Reviewer.
+  You can also create your own agents with their own instructions and tools.
+- **Agents working together**: any agent can hand a subtask to a specialist with
+  `ask_agent`, for example "write this, then have the Reviewer check it". The
+  helper's steps appear nested in the chat.
+- **Scheduled agents**: an agent can run on a timer, every day at a set time, or
+  when files in a folder change. Each run posts a report to the agent's own chat
+  and shows a notification. These agents are read-only unless you allow changes.
+  Kenzo keeps running in the system tray, and can start at login.
+- **Tools**: files, shell commands, run code (JavaScript always works offline;
+  Python works if installed), an exact calculator, spreadsheets (.xlsx/.csv), and
+  reading PDF and Word files.
 - **Memory across chats**: Kenzo saves lasting facts about you, such as your name, preferences and projects, and knows them in every new chat. Ask it to forget something, or view, edit and delete memories on the Memory page. It also recalls relevant parts of earlier conversations, and you can turn either feature off in Settings.
 - **Chat with documents**: you add PDF, Word or text files. Kenzo indexes them on your
   machine and the agent searches them and names its sources.
@@ -96,14 +109,30 @@ node scripts/e2e-agent.mjs path/to/chat.gguf path/to/embed.gguf
 node scripts/e2e-memory.mjs path/to/chat.gguf
 ```
 
+```bash
+node scripts/e2e-team.mjs path/to/chat.gguf
+```
+
+### How helper agents share memory
+
+A helper agent needs a context of its own. If your GPU or RAM has room, Kenzo
+keeps a second context sequence for helpers, so they run alongside the main chat.
+If not (common on laptops with integrated graphics), the helper borrows the main
+chat's context while the main chat waits. The main chat then re-reads its history
+when it continues. This works on any machine; it's just slower.
+
 ## Security model
 
 - File tools resolve every path inside the workspace and follow symlinks, so the
   agent can't escape the folder.
 - `write_file`, `edit_file` and `run_command` need your approval unless you turn on
   Auto-approve. Plan mode hides those tools from the model completely.
-- `run_command` runs a real shell in the workspace folder. Approval is the only
-  safeguard, so read commands before you allow them.
+- `run_command` and `run_code` run real programs. Approval is the only safeguard,
+  so read them before you allow them.
+- Each agent sees only the tools it is allowed to use, and helper agents can't
+  delegate further. A scheduled agent runs with nobody watching, so its file
+  changes and commands are refused unless you tick "Allow it to change files" for
+  that schedule.
 - The UI runs with `contextIsolation`, `sandbox` and a strict CSP, and has no Node access.
 
 ## License

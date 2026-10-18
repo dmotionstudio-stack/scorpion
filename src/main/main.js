@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, net, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -7,11 +7,16 @@ import * as models from './models.js';
 import * as engine from './engine.js';
 import * as rag from './rag.js';
 import * as memory from './memory.js';
+import * as agents from './agents.js';
+import * as scheduler from './scheduler.js';
+import { TOOLS } from './tools.js';
+import { applyEvent } from '../shared/events.js';
 import { buildFunctions, buildSystemPrompt, withDocumentContext, withConversationRecall } from './agent.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const RENDERER_DIR = path.join(APP_ROOT, 'src', 'renderer');
+const SHARED_DIR = path.join(APP_ROOT, 'src', 'shared');
 const VENDOR = {
   'marked.js': path.join(APP_ROOT, 'node_modules', 'marked', 'lib', 'marked.esm.js'),
   'purify.js': path.join(APP_ROOT, 'node_modules', 'dompurify', 'dist', 'purify.es.mjs'),
@@ -27,6 +32,9 @@ if (process.env.KENZO_DATA_DIR) app.setPath('userData', path.resolve(process.env
 if (!app.requestSingleInstanceLock()) app.quit();
 
 let win = null;
+let tray = null;
+let quitting = false;
+const startHidden = process.argv.includes('--hidden');
 const running = new Map(); // threadId -> AbortController
 const approvals = new Map(); // approval id -> resolve(boolean)
 
@@ -40,7 +48,10 @@ function serveApp() {
     const rel = decodeURIComponent(pathname).replace(/^\/+/, '') || 'index.html';
     let file;
     if (rel.startsWith('vendor/')) file = VENDOR[rel.slice('vendor/'.length)];
-    else {
+    else if (rel.startsWith('shared/')) {
+      file = path.join(SHARED_DIR, rel.slice('shared/'.length));
+      if (path.relative(SHARED_DIR, file).startsWith('..')) file = null;
+    } else {
       file = path.join(RENDERER_DIR, rel);
       if (path.relative(RENDERER_DIR, file).startsWith('..')) file = null;
     }
@@ -56,6 +67,7 @@ function createWindow() {
     minWidth: 820,
     minHeight: 560,
     title: 'Kenzo',
+    show: false,
     backgroundColor: '#111214',
     autoHideMenuBar: true,
     icon: path.join(APP_ROOT, 'resources', 'icon.png'),
@@ -76,6 +88,15 @@ function createWindow() {
     if (!url.startsWith('kenzo://')) e.preventDefault();
   });
   win.loadURL('kenzo://app/index.html');
+  if (!startHidden || process.env.KENZO_SCREENSHOT) win.once('ready-to-show', () => win.show());
+
+  // With scheduled agents on, closing the window keeps Kenzo running in the tray.
+  win.on('close', (e) => {
+    if (quitting || !scheduler.hasEnabledSchedules()) return;
+    e.preventDefault();
+    win.hide();
+    ensureTray();
+  });
 
   // Smoke test: KENZO_SCREENSHOT=out.png [KENZO_VIEW=models] npm start
   if (process.env.KENZO_SCREENSHOT) {
@@ -89,8 +110,32 @@ function createWindow() {
   }
 }
 
+function showWindow() {
+  if (!win || win.isDestroyed()) createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function ensureTray() {
+  if (tray) return;
+  const icon = nativeImage.createFromPath(path.join(APP_ROOT, 'resources', 'icon.png')).resize({ width: 16, height: 16 });
+  tray = new Tray(icon);
+  tray.setToolTip('Kenzo — scheduled agents are running');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Open Kenzo', click: showWindow },
+    { type: 'separator' },
+    { label: 'Quit Kenzo', click: () => { quitting = true; app.quit(); } },
+  ]));
+  tray.on('click', showWindow);
+}
+
 function modelEnv() {
   return { resourcesPath: process.resourcesPath, appRoot: APP_ROOT };
+}
+
+function scheduleView() {
+  return scheduler.listSchedules().map((s) => ({ ...s, nextRunAt: scheduler.nextRunAt(s) }));
 }
 
 async function state() {
@@ -101,6 +146,10 @@ async function state() {
     threads: store.listThreads(),
     documents: rag.listDocuments(),
     memories: memory.listMemories(),
+    agents: agents.listAgents(),
+    tools: Object.entries(TOOLS).map(([name, t]) => ({ name, access: t.access, description: t.description.split('. ')[0] })).concat([{ name: 'ask_agent', access: 'agent', description: 'Hand subtasks to other agents' }]),
+    schedules: scheduleView(),
+    openAtLogin: app.getLoginItemSettings().openAtLogin,
     supportedDocs: rag.SUPPORTED_EXTENSIONS,
     engine: await engine.engineInfo().catch((e) => ({ error: e.message })),
     platform: process.platform,
@@ -136,34 +185,24 @@ async function loadChat() {
   }
 }
 
-function applyEvent(blocks, ev) {
-  const last = blocks.at(-1);
-  if (ev.type === 'text' || ev.type === 'thought') {
-    if (last?.type === ev.type) last.text += ev.delta;
-    else blocks.push({ type: ev.type, text: ev.delta });
-  } else if (ev.type === 'tool') {
-    blocks.push({ type: 'tool', id: ev.id, name: ev.name, access: ev.access, summary: ev.summary, args: ev.args, status: 'running' });
-  } else if (ev.type === 'tool-result') {
-    const b = blocks.find((x) => x.type === 'tool' && x.id === ev.id);
-    if (b) Object.assign(b, { status: ev.ok ? 'ok' : 'error', output: ev.output });
-  } else if (ev.type === 'plan') {
-    const existing = blocks.find((x) => x.type === 'plan');
-    if (existing) existing.steps = ev.steps;
-    else blocks.push({ type: 'plan', steps: ev.steps });
-  }
-}
-
-async function chatSend({ threadId, text }) {
+/**
+ * One agent turn on a thread, used by chats and scheduled agents alike.
+ * `approve` decides write/exec actions; chats ask the user in the UI, schedules
+ * use their "allow changes" setting. `workspace` overrides the folder.
+ */
+async function runAgentTurn({ thread, text, displayText = text, approve, workspace }) {
+  const threadId = thread.id;
   if (running.has(threadId)) throw new Error('Kenzo is still answering in this chat');
-  const thread = store.getThread(threadId);
-  if (!thread) throw new Error('Chat not found');
-  const settings = store.getSettings();
+  const base = store.getSettings();
+  const settings = { ...base, workspace: workspace ?? base.workspace };
+  const agent = agents.getAgent(thread.agentId || 'kenzo');
   if (!engine.isChatReady()) await loadChat();
 
-  const assistant = { role: 'assistant', blocks: [], model: engine.chatModelName(), createdAt: Date.now() };
-  thread.messages.push({ role: 'user', text, createdAt: Date.now() }, assistant);
-  if (thread.title === 'New chat') thread.title = text.replace(/\s+/g, ' ').slice(0, 60);
+  const assistant = { role: 'assistant', blocks: [], model: engine.chatModelName(), agentId: agent.id, createdAt: Date.now() };
+  thread.messages.push({ role: 'user', text: displayText, createdAt: Date.now() }, assistant);
+  if (thread.title === 'New chat') thread.title = displayText.replace(/\s+/g, ' ').slice(0, 60);
   store.saveThread(thread);
+  send('chat:event', { threadId, type: 'start', agentId: agent.id });
 
   const controller = new AbortController();
   running.set(threadId, controller);
@@ -171,26 +210,27 @@ async function chatSend({ threadId, text }) {
     applyEvent(assistant.blocks, ev);
     send('chat:event', { threadId, ...ev });
   };
-  const requestApproval = (info) => new Promise((resolve) => {
-    approvals.set(info.id, resolve);
-    controller.signal.addEventListener('abort', () => resolve(false), { once: true });
-    send('chat:event', { threadId, type: 'approval', ...info });
-  });
+  const requestApproval = (info) => approve(info, controller.signal, threadId);
 
   const searcher = rag.createSearcher(settings);
   let streamed = '';
   try {
+    const recall = settings.memoryEnabled && settings.recallEnabled ? withConversationRecall(text, memory, threadId) : text;
     thread.history = await engine.runTurn({
       threadId,
       history: thread.history,
       systemPrompt: buildSystemPrompt(settings, {
         docNames: rag.listDocuments().map((d) => d.name),
         memoryBlock: settings.memoryEnabled ? memory.memoryPromptBlock() : '',
+        agent,
       }),
-      text: await withDocumentContext(settings.memoryEnabled && settings.recallEnabled ? withConversationRecall(text, memory, threadId) : text, searcher),
-      temperature: settings.temperature,
+      text: await withDocumentContext(recall, searcher),
+      temperature: agent.temperature ?? settings.temperature,
       signal: controller.signal,
-      functions: buildFunctions({ settings, rag: searcher, memory, threadId, emit, requestApproval, signal: controller.signal, streamedText: () => streamed }),
+      functions: buildFunctions({
+        settings, agent, rag: searcher, memory, threadId, emit, requestApproval,
+        signal: controller.signal, streamedText: () => streamed, runHelper: engine.runHelperTurn,
+      }),
       onText: (delta) => { streamed += delta; emit({ type: 'text', delta }); },
       onThought: (delta) => emit({ type: 'thought', delta }),
     });
@@ -203,7 +243,56 @@ async function chatSend({ threadId, text }) {
     memory.invalidateRecall();
     send('chat:event', { threadId, type: 'done', error: assistant.error, stopped: assistant.stopped, title: thread.title });
   }
-  return { ok: !assistant.error };
+  return { threadId, error: assistant.error, text: streamed };
+}
+
+// Interactive approval: show Allow/Deny in the chat and wait for the click.
+function askUser(info, signal, threadId) {
+  return new Promise((resolve) => {
+    approvals.set(info.id, resolve);
+    signal.addEventListener('abort', () => resolve(false), { once: true });
+    send('chat:event', { threadId, type: 'approval', ...info });
+  });
+}
+
+async function chatSend({ threadId, text }) {
+  const thread = store.getThread(threadId);
+  if (!thread) throw new Error('Chat not found');
+  const result = await runAgentTurn({ thread, text, approve: askUser });
+  return { ok: !result.error };
+}
+
+// A scheduled run posts into the schedule's own chat and notifies when done.
+async function runScheduled(schedule, reason) {
+  let thread = schedule.threadId && store.getThread(schedule.threadId);
+  if (!thread) {
+    thread = store.createThread();
+    thread.title = `⏰ ${schedule.name}`;
+    thread.agentId = schedule.agentId;
+    store.saveThread(thread);
+    send('threads:changed');
+  }
+  thread.agentId = schedule.agentId;
+  const workspace = schedule.trigger.type === 'folder' ? schedule.trigger.folder : schedule.workspace || undefined;
+  const when = new Date().toLocaleString();
+  const result = await runAgentTurn({
+    thread,
+    text: `[Scheduled task "${schedule.name}" · ${when} · trigger: ${reason}]\n${schedule.prompt}\n\nThis runs unattended: do the task, then reply with a short report.${schedule.allowChanges ? '' : ' You may not change files or run commands in this run.'}`,
+    displayText: `⏰ ${reason}\n${schedule.prompt}`,
+    approve: async () => schedule.allowChanges,
+    workspace,
+  });
+  if (Notification.isSupported()) {
+    const n = new Notification({
+      title: `${result.error ? '⚠ ' : ''}${schedule.name}`,
+      body: (result.error || result.text || 'Done').replace(/[#*`>_]/g, '').trim().slice(0, 180),
+      silent: true,
+    });
+    n.on('click', () => { showWindow(); send('open-thread', thread.id); });
+    n.show();
+  }
+  send('schedules:changed');
+  return result;
 }
 
 function registerIpc() {
@@ -250,7 +339,34 @@ function registerIpc() {
   });
   h('workspace:open', () => { const w = store.getSettings().workspace; if (w) shell.openPath(w); });
 
-  h('thread:create', () => store.createThread());
+  h('thread:create', (agentId) => {
+    const t = store.createThread();
+    if (agentId) { t.agentId = agents.getAgent(agentId).id; store.saveThread(t); }
+    return t;
+  });
+  h('thread:setAgent', ({ id, agentId }) => {
+    const t = store.getThread(id);
+    if (!t) throw new Error('Chat not found');
+    t.agentId = agents.getAgent(agentId).id;
+    store.saveThread(t);
+    return t;
+  });
+
+  h('agents:save', (input) => agents.saveAgent(input));
+  h('agents:delete', (id) => agents.deleteAgent(id));
+
+  h('schedules:list', () => scheduleView());
+  h('schedules:save', (input) => { const s = scheduler.saveSchedule(input); if (s.enabled) ensureTrayHint(); return s; });
+  h('schedules:delete', (id) => scheduler.deleteSchedule(id));
+  h('schedules:run', (id) => { scheduler.runNow(id).catch(() => {}); });
+  h('dialog:folder', async () => {
+    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
+    return r.canceled ? null : r.filePaths[0];
+  });
+  h('app:setOpenAtLogin', (on) => {
+    app.setLoginItemSettings({ openAtLogin: Boolean(on), args: ['--hidden'] });
+    return app.getLoginItemSettings().openAtLogin;
+  });
   h('thread:get', (id) => store.getThread(id));
   h('thread:delete', (id) => { running.get(id)?.abort(); store.deleteThread(id); memory.invalidateRecall(); });
   h('thread:rename', ({ id, title }) => { const t = store.getThread(id); if (t) { t.title = String(title).slice(0, 80); store.saveThread(t); } });
@@ -284,15 +400,23 @@ function registerIpc() {
   h('memory:clear', () => memory.clearMemories());
 }
 
+// Starting minimized at login only makes sense if something is scheduled.
+function ensureTrayHint() {
+  if (scheduler.hasEnabledSchedules()) ensureTray();
+}
+
 app.whenReady().then(() => {
   store.initStore(app.getPath('userData'));
   autoSelectModels();
   serveApp();
   registerIpc();
   createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  scheduler.startScheduler(runScheduled);
+  ensureTrayHint();
+  if (startHidden && !scheduler.hasEnabledSchedules()) showWindow();
+  app.on('activate', showWindow);
 });
 
-app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('before-quit', () => { for (const c of running.values()) c.abort(); engine.shutdown(); });
+app.on('second-instance', showWindow);
+app.on('window-all-closed', () => { if (process.platform !== 'darwin' && !scheduler.hasEnabledSchedules()) app.quit(); });
+app.on('before-quit', () => { quitting = true; scheduler.stopScheduler(); for (const c of running.values()) c.abort(); engine.shutdown(); });

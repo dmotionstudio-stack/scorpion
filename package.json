@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "dompurify": "3.4.17",
+    "exceljs": "4.4.0",
     "mammoth": "1.13.0",
     "marked": "18.1.1",
     "node-llama-cpp": "3.22.2",
@@ -30,14 +31,22 @@
   "build": {
     "appId": "app.kenzo.desktop",
     "productName": "Kenzo",
-    "directories": { "output": "release" },
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "src/**/*",
       "package.json",
       "!**/*.map"
     ],
     "extraResources": [
-      { "from": "resources/models", "to": "models", "filter": ["**/*.gguf"] }
+      {
+        "from": "resources/models",
+        "to": "models",
+        "filter": [
+          "**/*.gguf"
+        ]
+      }
     ],
     "asarUnpack": [
       "node_modules/node-llama-cpp/bins/**/*",
@@ -45,7 +54,14 @@
       "node_modules/@node-llama-cpp/**/*"
     ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "resources/icon.png"
     },
     "nsis": {
@@ -54,7 +70,9 @@
       "perMachine": false
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "category": "public.app-category.productivity",
       "icon": "resources/icon.png",
       "hardenedRuntime": true,
@@ -62,7 +80,9 @@
       "entitlementsInherit": "resources/entitlements.mac.plist"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "icon": "resources/icon.png"
     }
   }

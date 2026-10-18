@@ -1,12 +1,16 @@
 import { marked } from '/vendor/marked.js';
 import DOMPurify from '/vendor/purify.js';
+import { applyEvent } from '/shared/events.js';
 
 const api = window.kenzo;
 const $ = (sel) => document.querySelector(sel);
 const S = {
-  settings: {}, models: [], catalog: [], threads: [], documents: [], memories: [], engine: {},
+  settings: {}, models: [], catalog: [], threads: [], documents: [], memories: [], agents: [], tools: [], schedules: [], engine: {},
   thread: null, running: new Set(), pending: new Map(), downloads: {}, modelStatus: null, view: 'chat',
+  newChatAgent: 'kenzo', editingAgent: null, editingSchedule: null,
 };
+const agentById = (id) => S.agents.find((a) => a.id === id) || S.agents[0] || { id: 'kenzo', name: 'Kenzo', icon: '✨' };
+const VIEWS = ['chat', 'models', 'docs', 'memory', 'agents', 'schedules', 'settings'];
 
 // ---------- helpers ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -39,7 +43,7 @@ function renderThreads() {
 
 function setView(view) {
   S.view = view;
-  for (const v of ['chat', 'models', 'docs', 'memory', 'settings']) $(`#view-${v}`).classList.toggle('hidden', v !== view);
+  for (const v of VIEWS) $(`#view-${v}`).classList.toggle('hidden', v !== view);
   document.querySelectorAll('.navbtn').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
 }
 
@@ -56,11 +60,55 @@ function renderTopbar() {
   $('#workspace-chip').title = S.settings.workspace || 'Choose a folder the agent can work in';
   $('#plan-mode').checked = !!S.settings.planMode;
   $('#auto-approve').checked = !!S.settings.autoApprove;
+  const current = S.thread?.agentId || (S.thread ? 'kenzo' : S.newChatAgent);
+  $('#agent-picker').innerHTML = S.agents.map((a) => `<option value="${esc(a.id)}"${a.id === current ? ' selected' : ''}>${esc(a.icon)} ${esc(a.name)}</option>`).join('');
+  $('#agent-picker').title = agentById(current).description || '';
 }
 
 // ---------- messages ----------
 const STATUS = { running: '⏳ running', ok: '✓ done', error: '✕ failed' };
-const TOOL_LABEL = { remember: '🧷 remembered', forget: '🧷 forgot', search_past_chats: '🔎 past chats', search_documents: '🔎 documents' };
+const TOOL_LABEL = {
+  remember: '🧷 remembered', forget: '🧷 forgot', search_past_chats: '🔎 past chats', search_documents: '🔎 documents',
+  run_code: '▶ run code', calculator: '🧮 calculator', read_spreadsheet: '📊 spreadsheet', read_document: '📄 document', move_file: '🗂️ move',
+};
+
+function approvalHtml(b) {
+  const detail = b.name === 'write_file' ? b.args.content
+    : b.name === 'edit_file' ? `- ${b.args.find}\n+ ${b.args.replace}`
+    : b.name === 'run_code' ? b.args.code
+    : b.summary;
+  const q = b.access === 'exec' ? (b.name === 'run_code' ? 'Run this program?' : 'Run this command?') : 'Allow this change?';
+  return `<div class="approval"><strong>${q}</strong>
+    <div class="muted small">${esc(b.name)} · ${esc(b.args.path || b.args.subdir || b.args.language || '')}</div>
+    <pre>${esc(detail)}</pre>
+    <div class="row"><button class="btn primary small" data-approve="${b.id}">Allow</button><button class="btn small" data-deny="${b.id}">Deny</button></div></div>`;
+}
+
+function toolHtml(b, live) {
+  const approval = S.pending.get(b.id);
+  const label = b.name === 'ask_agent' ? `${b.agentIcon || '🤝'} ${esc(b.args?.agent || 'agent')}` : esc(TOOL_LABEL[b.name] || b.name);
+  const summary = b.name === 'ask_agent' ? b.args?.task : b.summary;
+  // A helper agent's own steps and answer render nested inside its card.
+  const inner = b.children?.length
+    ? `<div class="helper">${renderBlockList(b.children, live && b.status === 'running')}</div>`
+    : b.output ? `<pre>${esc(b.output)}</pre>` : '';
+  const open = b.name === 'ask_agent' && (b.status === 'running' || hasPending(b.children)) ? ' open' : '';
+  return `<details class="tool ${b.status} ${b.name === 'ask_agent' ? 'delegate' : ''}"${open}><summary><span class="name">${label}</span><span class="sum">${esc(summary)}</span><span class="st">${approval ? '⏸ waiting' : STATUS[b.status] || ''}</span></summary>${inner}</details>${approval ? approvalHtml(b) : ''}`;
+}
+
+function hasPending(blocks) {
+  return (blocks || []).some((x) => S.pending.has(x.id) || hasPending(x.children));
+}
+
+function renderBlockList(blocks, live) {
+  return blocks.map((b) => {
+    if (b.type === 'text') return `<div class="md">${md(b.text)}</div>`;
+    if (b.type === 'thought') return `<details class="thought"${live ? ' open' : ''}><summary>Thinking</summary><div class="body">${esc(b.text)}</div></details>`;
+    if (b.type === 'plan') return `<div class="plan-block"><div class="title">PLAN</div>${renderPlanSteps(b.steps)}</div>`;
+    if (b.type === 'tool') return toolHtml(b, live);
+    return '';
+  }).join('');
+}
 
 function renderPlanSteps(steps) {
   const mark = { done: '✓', in_progress: '▶', pending: '○' };
@@ -68,34 +116,20 @@ function renderPlanSteps(steps) {
 }
 
 function renderBlocks(msg, live) {
-  const parts = [];
-  for (const b of msg.blocks || []) {
-    if (b.type === 'text') parts.push(`<div class="md">${md(b.text)}</div>`);
-    else if (b.type === 'thought') parts.push(`<details class="thought"${live ? ' open' : ''}><summary>Thinking</summary><div class="body">${esc(b.text)}</div></details>`);
-    else if (b.type === 'plan') parts.push(`<div class="plan-block"><div class="title">PLAN</div>${renderPlanSteps(b.steps)}</div>`);
-    else if (b.type === 'tool') {
-      const approval = S.pending.get(b.id);
-      parts.push(`<details class="tool ${b.status}"><summary><span class="name">${esc(TOOL_LABEL[b.name] || b.name)}</span><span class="sum">${esc(b.summary)}</span><span class="st">${approval ? '⏸ waiting' : STATUS[b.status] || ''}</span></summary>${b.output ? `<pre>${esc(b.output)}</pre>` : ''}</details>`);
-      if (approval) {
-        const detail = b.name === 'write_file' ? b.args.content : b.name === 'edit_file' ? `- ${b.args.find}\n+ ${b.args.replace}` : b.summary;
-        parts.push(`<div class="approval"><strong>${b.access === 'exec' ? 'Run this command?' : 'Allow this change?'}</strong>
-          <div class="muted small">${esc(b.name)} · ${esc(b.args.path || b.args.subdir || '')}</div>
-          <pre>${esc(detail)}</pre>
-          <div class="row"><button class="btn primary small" data-approve="${b.id}">Allow</button><button class="btn small" data-deny="${b.id}">Deny</button></div></div>`);
-      }
-    }
-  }
-  if (live && !(msg.blocks || []).length) parts.push('<div class="md cursor muted"></div>');
-  else if (live && msg.blocks.at(-1)?.type === 'text') parts[parts.length - 1] = parts.at(-1).replace('<div class="md">', '<div class="md cursor">');
-  if (msg.error) parts.push(`<div class="err">⚠ ${esc(msg.error)}</div>`);
-  if (msg.stopped) parts.push('<div class="muted small">Stopped.</div>');
-  return parts.join('');
+  const blocks = msg.blocks || [];
+  let html = renderBlockList(blocks, live);
+  if (live && !blocks.length) html += '<div class="md cursor muted"></div>';
+  else if (live && blocks.at(-1)?.type === 'text') html = html.replace(/<div class="md">(?![\s\S]*<div class="md">)/, '<div class="md cursor">');
+  if (msg.error) html += `<div class="err">⚠ ${esc(msg.error)}</div>`;
+  if (msg.stopped) html += '<div class="muted small">Stopped.</div>';
+  return html;
 }
 
 function messageHtml(m, i, msgs) {
   if (m.role === 'user') return `<div class="msg user"><div class="bubble">${esc(m.text)}</div></div>`;
   const live = S.running.has(S.thread.id) && i === msgs.length - 1;
-  return `<div class="msg assistant"><div class="meta">Kenzo${m.model ? ` · ${esc(m.model)}` : ''}</div>${renderBlocks(m, live)}</div>`;
+  const a = agentById(m.agentId || S.thread.agentId || 'kenzo');
+  return `<div class="msg assistant"><div class="meta">${esc(a.icon)} ${esc(a.name)}${m.model ? ` · ${esc(m.model)}` : ''}</div>${renderBlocks(m, live)}</div>`;
 }
 
 const SUGGESTIONS = [
@@ -194,6 +228,138 @@ async function reloadMemories() {
   renderMemory();
 }
 
+// ---------- agents page ----------
+const ACCESS_LABEL = { read: 'reads', write: 'changes files', exec: 'runs programs', memory: 'memory', plan: 'planning', agent: 'teamwork' };
+
+function renderAgents() {
+  $('#agent-list').innerHTML = S.agents.map((a) => {
+    const tools = a.tools.includes('*') ? 'All tools' : `${a.tools.length} tools`;
+    return `<div class="card agent-card">
+      <div class="title"><span class="agent-icon">${esc(a.icon)}</span> ${esc(a.name)} ${a.builtin ? '' : '<span class="tag">custom</span>'}</div>
+      <div class="muted small">${esc(a.description)}</div>
+      <div class="small muted">${esc(tools)}</div>
+      <div class="row">
+        <button class="btn small primary" data-chat-agent="${esc(a.id)}">Chat</button>
+        ${a.builtin ? `<button class="btn small" data-dup-agent="${esc(a.id)}">Duplicate</button>`
+          : `<button class="btn small" data-edit-agent="${esc(a.id)}">Edit</button><button class="btn small" data-del-agent="${esc(a.id)}">Delete</button>`}
+      </div></div>`;
+  }).join('');
+  renderAgentEditor();
+}
+
+function renderAgentEditor() {
+  const a = S.editingAgent;
+  $('#agent-editor').classList.toggle('hidden', !a);
+  if (!a) return;
+  $('#agent-editor-title').textContent = a.id ? `Edit ${a.name}` : 'New agent';
+  $('#ae-name').value = a.name || '';
+  $('#ae-icon').value = a.icon || '🤖';
+  $('#ae-description').value = a.description || '';
+  $('#ae-instructions').value = a.instructions || '';
+  $('#ae-temp').value = a.temperature ?? 0.6;
+  $('#ae-temp-val').textContent = a.temperature ?? 0.6;
+  const all = a.tools?.includes('*');
+  $('#ae-all-tools').checked = !!all;
+  $('#ae-tools').innerHTML = S.tools.map((t) => `<label class="toggle tool-choice" title="${esc(t.description)}">
+      <input type="checkbox" value="${esc(t.name)}"${all || a.tools?.includes(t.name) ? ' checked' : ''}${all ? ' disabled' : ''}>
+      <span><code>${esc(t.name)}</code> <span class="muted small">${esc(ACCESS_LABEL[t.access] || t.access)}</span></span></label>`).join('');
+}
+
+function readAgentEditor() {
+  const all = $('#ae-all-tools').checked;
+  return {
+    id: S.editingAgent?.id,
+    name: $('#ae-name').value,
+    icon: $('#ae-icon').value,
+    description: $('#ae-description').value,
+    instructions: $('#ae-instructions').value,
+    temperature: Number($('#ae-temp').value),
+    tools: all ? ['*'] : [...document.querySelectorAll('#ae-tools input:checked')].map((i) => i.value),
+  };
+}
+
+// ---------- schedules page ----------
+function describeTrigger(t) {
+  if (t.type === 'interval') return t.minutes % 60 === 0 ? `Every ${t.minutes / 60} hour${t.minutes === 60 ? '' : 's'}` : `Every ${t.minutes} minutes`;
+  if (t.type === 'daily') return `Every day at ${t.time}`;
+  return `When files change in ${base(t.folder)}`;
+}
+
+function renderSchedules() {
+  $('#schedule-list').innerHTML = S.schedules.map((s) => {
+    const a = agentById(s.agentId);
+    const status = s.lastStatus === 'running' ? '<span class="tag on">running…</span>'
+      : s.lastStatus?.startsWith('error') ? `<span class="tag err-tag" title="${esc(s.lastStatus)}">last run failed</span>`
+      : s.lastRunAt ? `<span class="tag">last run ${esc(new Date(s.lastRunAt).toLocaleString())}</span>` : '<span class="tag">never run</span>';
+    const next = s.nextRunAt && s.enabled ? `<span class="tag">next ${esc(new Date(s.nextRunAt).toLocaleString())}</span>` : '';
+    return `<div class="card schedule ${s.enabled ? '' : 'disabled'}">
+      <div class="title">⏰ ${esc(s.name)}</div>
+      <div class="small">${esc(a.icon)} ${esc(a.name)} · ${esc(describeTrigger(s.trigger))}${s.allowChanges ? ' · may change files' : ' · read-only'}</div>
+      <div class="muted small clamp">${esc(s.prompt)}</div>
+      <div>${status}${next}</div>
+      <div class="row">
+        <button class="btn small primary" data-run-sched="${s.id}"${s.lastStatus === 'running' ? ' disabled' : ''}>Run now</button>
+        ${s.threadId ? `<button class="btn small" data-open-sched="${s.threadId}">Results</button>` : ''}
+        <button class="btn small" data-edit-sched="${s.id}">Edit</button>
+        <label class="toggle small"><input type="checkbox" data-toggle-sched="${s.id}"${s.enabled ? ' checked' : ''}><span>On</span></label>
+        <button class="btn small" data-del-sched="${s.id}">Delete</button>
+      </div></div>`;
+  }).join('') || '<div class="muted">No scheduled agents yet.</div>';
+  $('#open-at-login').checked = !!S.openAtLogin;
+  renderScheduleEditor();
+}
+
+function renderScheduleEditor() {
+  const s = S.editingSchedule;
+  $('#schedule-editor').classList.toggle('hidden', !s);
+  if (!s) return;
+  $('#schedule-editor-title').textContent = s.id ? `Edit ${s.name}` : 'New scheduled agent';
+  $('#se-name').value = s.name || '';
+  $('#se-agent').innerHTML = S.agents.map((a) => `<option value="${esc(a.id)}"${a.id === (s.agentId || 'kenzo') ? ' selected' : ''}>${esc(a.icon)} ${esc(a.name)}</option>`).join('');
+  $('#se-prompt').value = s.prompt || '';
+  const t = s.trigger || { type: 'daily', time: '08:00' };
+  $('#se-trigger').value = t.type;
+  $('#se-minutes').value = t.minutes || 60;
+  $('#se-time').value = t.time || '08:00';
+  $('#se-folder').textContent = t.folder || 'No folder chosen';
+  $('#se-folder').dataset.path = t.folder || '';
+  $('#se-workspace').textContent = s.workspace || 'Same as Settings';
+  $('#se-workspace').dataset.path = s.workspace || '';
+  $('#se-allow').checked = !!s.allowChanges;
+  showTriggerFields();
+}
+
+function showTriggerFields() {
+  const type = $('#se-trigger').value;
+  $('#se-interval-row').classList.toggle('hidden', type !== 'interval');
+  $('#se-daily-row').classList.toggle('hidden', type !== 'daily');
+  $('#se-folder-row').classList.toggle('hidden', type !== 'folder');
+  $('#se-workspace-row').classList.toggle('hidden', type === 'folder');
+}
+
+function readScheduleEditor() {
+  const type = $('#se-trigger').value;
+  return {
+    id: S.editingSchedule?.id,
+    name: $('#se-name').value,
+    agentId: $('#se-agent').value,
+    prompt: $('#se-prompt').value,
+    trigger: type === 'interval' ? { type, minutes: Number($('#se-minutes').value) }
+      : type === 'daily' ? { type, time: $('#se-time').value }
+      : { type, folder: $('#se-folder').dataset.path },
+    workspace: $('#se-workspace').dataset.path || null,
+    allowChanges: $('#se-allow').checked,
+    enabled: S.editingSchedule?.enabled ?? true,
+  };
+}
+
+async function reloadSchedules() {
+  S.schedules = await api.listSchedules();
+  if (S.view === 'schedules') renderSchedules();
+}
+
+const errText = (err) => String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+
 // ---------- settings page ----------
 function renderSettings() {
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
@@ -207,7 +373,7 @@ function renderSettings() {
 }
 
 function renderAll() {
-  renderThreads(); renderTopbar(); renderModels(); renderDocs(); renderMemory(); renderSettings(); renderMessages();
+  renderThreads(); renderTopbar(); renderModels(); renderDocs(); renderMemory(); renderAgents(); renderSchedules(); renderSettings(); renderMessages();
 }
 
 // ---------- actions ----------
@@ -216,11 +382,13 @@ async function openThread(id) {
   renderPlanPanel.shown = false;
   setView('chat');
   renderThreads();
+  renderTopbar();
   renderMessages();
 }
 
-async function newThread() {
-  S.thread = await api.createThread();
+async function newThread(agentId) {
+  S.thread = await api.createThread(typeof agentId === 'string' ? agentId : S.newChatAgent);
+  renderTopbar();
   S.threads.unshift({ id: S.thread.id, title: S.thread.title, updatedAt: Date.now() });
   renderPlanPanel.shown = false;
   setView('chat'); renderThreads(); renderMessages();
@@ -234,7 +402,7 @@ async function sendMessage(text) {
   if (!S.thread) await newThread();
   const thread = S.thread;
   if (S.running.has(thread.id)) return;
-  thread.messages.push({ role: 'user', text }, { role: 'assistant', blocks: [], model: base(S.engine?.chatModel || S.settings.chatModel).replace(/\.gguf$/i, '') });
+  thread.messages.push({ role: 'user', text }, { role: 'assistant', blocks: [], agentId: thread.agentId, model: base(S.engine?.chatModel || S.settings.chatModel).replace(/\.gguf$/i, '') });
   S.running.add(thread.id);
   $('#input').value = ''; autosize();
   renderThreads(); renderMessages();
@@ -256,29 +424,23 @@ function applyChatEvent(ev) {
     renderThreads();
     api.state().then((s) => { S.engine = s.engine; renderTopbar(); });
   }
+  if (ev.type === 'tool-result') S.pending.delete(ev.id);
+  if (ev.type === 'start') {
+    // Runs started elsewhere (scheduled agents) show up live too.
+    S.running.add(ev.threadId);
+    renderThreads();
+    if (S.thread?.id === ev.threadId && S.thread.messages.at(-1)?.role !== 'assistant') {
+      api.getThread(ev.threadId).then((t) => { if (S.thread?.id === t.id) { S.thread = t; renderMessages(); } });
+    }
+    return;
+  }
   if (S.thread?.id !== ev.threadId) return;
   const msg = S.thread.messages.at(-1);
   if (!msg || msg.role !== 'assistant') return;
-  const blocks = msg.blocks;
-  const last = blocks.at(-1);
-  switch (ev.type) {
-    case 'text': case 'thought':
-      if (last?.type === ev.type) last.text += ev.delta; else blocks.push({ type: ev.type, text: ev.delta });
-      break;
-    case 'tool': blocks.push({ type: 'tool', id: ev.id, name: ev.name, access: ev.access, summary: ev.summary, args: ev.args, status: 'running' }); break;
-    case 'tool-result': {
-      const b = blocks.find((x) => x.type === 'tool' && x.id === ev.id);
-      if (b) Object.assign(b, { status: ev.ok ? 'ok' : 'error', output: ev.output });
-      S.pending.delete(ev.id);
-      break;
-    }
-    case 'plan': {
-      const p = blocks.find((x) => x.type === 'plan');
-      if (p) p.steps = ev.steps; else blocks.push({ type: 'plan', steps: ev.steps });
-      break;
-    }
-    case 'done': if (ev.error) msg.error = ev.error; if (ev.stopped) msg.stopped = true; break;
-  }
+  if (ev.type === 'done') {
+    if (ev.error) msg.error = ev.error;
+    if (ev.stopped) msg.stopped = true;
+  } else applyEvent(msg.blocks, ev);
   scheduleRender();
 }
 
@@ -406,6 +568,67 @@ function wire() {
   $('#temperature').onchange = (e) => setSetting({ temperature: Number(e.target.value) });
   $('#save-prompt').onclick = () => { setSetting({ systemPrompt: $('#system-prompt').value }); toast('Saved.'); };
 
+  // agent picker: switches this chat's agent, or sets the agent for the next chat
+  $('#agent-picker').onchange = async (e) => {
+    const agentId = e.target.value;
+    if (!S.thread || !S.thread.messages.length) S.newChatAgent = agentId;
+    if (S.thread) {
+      if (S.running.has(S.thread.id)) { toast('Wait for the current answer to finish.'); renderTopbar(); return; }
+      S.thread = await api.setThreadAgent({ id: S.thread.id, agentId });
+    }
+    renderTopbar();
+    toast(`${agentById(agentId).icon} ${agentById(agentId).name} is answering in this chat.`, 2500);
+  };
+
+  $('#view-agents').onclick = async (e) => {
+    const d = e.target.dataset;
+    if (d.chatAgent) { S.newChatAgent = d.chatAgent; await newThread(d.chatAgent); }
+    else if (d.dupAgent) { const a = agentById(d.dupAgent); S.editingAgent = { ...a, id: undefined, builtin: false, name: `${a.name} copy` }; renderAgentEditor(); $('#ae-name').focus(); }
+    else if (d.editAgent) { S.editingAgent = structuredClone(agentById(d.editAgent)); renderAgentEditor(); }
+    else if (d.delAgent) {
+      if (!confirm(`Delete the agent "${agentById(d.delAgent).name}"? Chats that use it switch to Kenzo.`)) return;
+      await api.deleteAgent(d.delAgent); refresh();
+    }
+  };
+  $('#new-agent').onclick = () => { S.editingAgent = { name: '', icon: '🤖', description: '', instructions: '', tools: ['*'], temperature: 0.6 }; renderAgentEditor(); $('#ae-name').focus(); };
+  $('#ae-all-tools').onchange = (e) => document.querySelectorAll('#ae-tools input').forEach((i) => { i.disabled = e.target.checked; if (e.target.checked) i.checked = true; });
+  $('#ae-temp').oninput = (e) => { $('#ae-temp-val').textContent = e.target.value; };
+  $('#ae-cancel').onclick = () => { S.editingAgent = null; renderAgentEditor(); };
+  $('#agent-editor').onsubmit = async (e) => {
+    e.preventDefault();
+    try { await api.saveAgent(readAgentEditor()); S.editingAgent = null; toast('Agent saved.'); refresh(); } catch (err) { toast(errText(err)); }
+  };
+
+  $('#new-schedule').onclick = () => { S.editingSchedule = { agentId: 'kenzo', trigger: { type: 'daily', time: '08:00' } }; renderScheduleEditor(); $('#se-name').focus(); };
+  $('#se-trigger').onchange = showTriggerFields;
+  $('#se-pick-folder').onclick = async () => { const f = await api.chooseFolder(); if (f) { $('#se-folder').textContent = f; $('#se-folder').dataset.path = f; } };
+  $('#se-pick-workspace').onclick = async () => { const f = await api.chooseFolder(); if (f) { $('#se-workspace').textContent = f; $('#se-workspace').dataset.path = f; } };
+  $('#se-cancel').onclick = () => { S.editingSchedule = null; renderScheduleEditor(); };
+  $('#schedule-editor').onsubmit = async (e) => {
+    e.preventDefault();
+    const data = readScheduleEditor();
+    if (data.allowChanges && !S.editingSchedule?.allowChanges && !confirm('This agent will change files and run programs on its own, without asking. Allow that?')) return;
+    try { await api.saveSchedule(data); S.editingSchedule = null; toast('Schedule saved.'); reloadSchedules(); renderScheduleEditor(); } catch (err) { toast(errText(err)); }
+  };
+  $('#schedule-list').addEventListener('click', async (e) => {
+    const d = e.target.dataset;
+    if (d.runSched) { await api.runSchedule(d.runSched); toast('Started. Results appear in its chat.'); setTimeout(reloadSchedules, 500); }
+    else if (d.openSched) openThread(d.openSched);
+    else if (d.editSched) { S.editingSchedule = structuredClone(S.schedules.find((s) => s.id === d.editSched)); renderScheduleEditor(); }
+    else if (d.delSched) { if (confirm('Delete this scheduled agent? Its results chat is kept.')) { await api.deleteSchedule(d.delSched); reloadSchedules(); } }
+  });
+  $('#schedule-list').addEventListener('change', async (e) => {
+    const id = e.target.dataset.toggleSched;
+    if (!id) return;
+    const s = S.schedules.find((x) => x.id === id);
+    try { await api.saveSchedule({ ...s, enabled: e.target.checked }); } catch (err) { toast(errText(err)); }
+    reloadSchedules();
+  });
+  $('#open-at-login').onchange = async (e) => { S.openAtLogin = await api.setOpenAtLogin(e.target.checked); };
+
+  api.onThreadsChanged(async () => { S.threads = (await api.state()).threads; renderThreads(); });
+  api.onSchedulesChanged(reloadSchedules);
+  api.onOpenThread((id) => openThread(id));
   api.onChatEvent(applyChatEvent);
   api.onModelStatus((st) => {
     S.modelStatus = st;
