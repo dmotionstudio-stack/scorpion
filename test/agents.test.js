@@ -146,28 +146,24 @@ test('JSON files with a byte-order mark still load', () => {
   assert.equal(agents.getAgent('custom-bom').name, 'Bom');
 });
 
-test('Ollama models are discovered from manifests and used in place', async () => {
-  const { scanOllama } = await import('../src/main/models.js');
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-ollama-'));
-  const dig = (n) => `sha256:${n.padStart(64, '0')}`;
-  const blob = (d) => path.join(root, 'blobs', d.replace(':', '-'));
-  fs.mkdirSync(path.join(root, 'blobs'), { recursive: true });
-  fs.writeFileSync(blob(dig('a1')), 'GGUF...');
-  fs.writeFileSync(blob(dig('b2')), 'projector');
-  const dir = path.join(root, 'manifests', 'registry.ollama.ai', 'library', 'tev1');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, '4b'), JSON.stringify({ format: 'gguf', layers: [
-    { mediaType: 'application/vnd.ollama.image.projector', digest: dig('b2'), size: 9 },
-    { mediaType: 'application/vnd.ollama.image.model', digest: dig('a1'), size: 7 },
-  ] }));
-  const mlx = path.join(root, 'manifests', 'registry.ollama.ai', 'library', 'other');
-  fs.mkdirSync(mlx, { recursive: true });
-  fs.writeFileSync(path.join(mlx, 'latest'), JSON.stringify({ format: 'safetensors', layers: [{ mediaType: 'application/vnd.ollama.image.model', digest: dig('a1') }] }));
-  const found = scanOllama(root);
-  assert.deepEqual(found.map((m) => [m.name, m.source, m.kind]), [['tev1:4b', 'ollama', 'chat']]);
-  assert.equal(found[0].path, blob(dig('a1')));
+test('models can be uninstalled and partial downloads are cleaned up', async () => {
+  const models = await import('../src/main/models.js');
+  const lib = store.paths.models;
+  fs.mkdirSync(lib, { recursive: true });
+  const file = path.join(lib, 'hf_unsloth_Qwen3-4B-Instruct-2507-Q4_K_M.gguf');
+  fs.writeFileSync(file, 'GGUF');
+  fs.writeFileSync(`${file}.ipull`, 'partial');
+  fs.writeFileSync(path.join(lib, 'other.gguf.ipull'), 'partial');
+  const list = models.listLocalModels({ resourcesPath: '', appRoot: fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-noapp-')) });
+  const item = models.CATALOG.find((c) => c.id === 'qwen3-4b');
+  assert.equal(models.findInstalled(item, list)?.path, file);
+  assert.equal(models.cleanPartialDownloads(), 2);
+  assert.ok(fs.existsSync(file)); // complete models are never touched by cleanup
+  models.uninstallModel(file);
+  assert.ok(!fs.existsSync(file));
+  assert.equal(models.findInstalled(item, models.listLocalModels({ resourcesPath: '', appRoot: os.tmpdir() })), null);
+  assert.throws(() => models.uninstallModel(path.join(os.tmpdir(), 'elsewhere.gguf')), /Scorpion library/);
 });
-
 test('chat, plan and build modes offer the right tools and instructions', () => {
   const settings = { ...store.getSettings(), workspace: ws, memoryEnabled: true };
   const rag = { hasDocuments: () => false };
@@ -263,7 +259,7 @@ test('first start picks the best model that fits this PC, not the first file fou
   const GB = 1024 ** 3;
   const hw = { dedicatedVram: 4 * GB, sharedVram: 16 * GB, ram: 32 * GB };
   const fit = (b) => modelFit(b, hw);
-  const ollamaOnly = [
+  const installed = [
     { name: 'gemma4:12b', kind: 'chat', bytes: 6.9 * GB },
     { name: 'pplx-decider:latest', kind: 'chat', bytes: 15.4 * GB },
     { name: 'qwen3.5:4b', kind: 'chat', bytes: 2.5 * GB },
@@ -271,12 +267,19 @@ test('first start picks the best model that fits this PC, not the first file fou
     { name: 'tev1:4b', kind: 'chat', bytes: 4.3 * GB },
     { name: 'nomic-embed', kind: 'embedding', bytes: 0.14 * GB },
   ];
-  assert.equal(pickDefaultChatModel(ollamaOnly, fit).name, 'qwen3.5:4b');
+  assert.equal(pickDefaultChatModel(installed, fit).name, 'qwen3.5:4b');
   // A recommended catalog model wins among those that fit.
-  const withCatalog = [...ollamaOnly, { name: 'Qwen3-4B-Instruct-2507-Q4_K_M', kind: 'chat', bytes: 2.3 * GB }];
+  const withCatalog = [...installed, { name: 'Qwen3-4B-Instruct-2507-Q4_K_M', kind: 'chat', bytes: 2.3 * GB }];
   assert.equal(pickDefaultChatModel(withCatalog, fit).name, 'Qwen3-4B-Instruct-2507-Q4_K_M');
   // Nothing fits the GPU (CPU-only PC): smallest usable model.
   const cpu = (b) => modelFit(b, { dedicatedVram: 0, sharedVram: 0, ram: 16 * GB });
-  assert.equal(pickDefaultChatModel(ollamaOnly, cpu).name, 'qwen3.5:4b');
+  assert.equal(pickDefaultChatModel(installed, cpu).name, 'qwen3.5:4b');
   assert.equal(pickDefaultChatModel([], fit), null);
+});
+
+test('a damaged model file gives a clear, actionable error', async () => {
+  const engine = await import('../src/main/engine.js');
+  const bad = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-bad-')), 'broken.gguf');
+  fs.writeFileSync(bad, 'GGUF');
+  await assert.rejects(engine.loadChatModel(bad, { name: 'Broken model', gpuLayers: 0 }), /Broken model could not be loaded.*download it again/);
 });

@@ -60,12 +60,12 @@ test('data from the old Kenzo folder moves to Scorpion once, with model paths up
   fs.mkdirSync(path.join(oldDir, 'threads'));
   fs.writeFileSync(path.join(oldDir, 'models', 'm.gguf'), 'x');
   fs.writeFileSync(path.join(oldDir, 'threads', 't.json'), '{}');
-  const ollama = path.join(base, 'ollama', 'blob');
-  fs.writeFileSync(path.join(oldDir, 'settings.json'), JSON.stringify({ chatModel: path.join(oldDir, 'models', 'm.gguf'), embedModel: ollama }));
+  const outside = path.join(base, 'elsewhere', 'model.gguf');
+  fs.writeFileSync(path.join(oldDir, 'settings.json'), JSON.stringify({ chatModel: path.join(oldDir, 'models', 'm.gguf'), embedModel: outside }));
   assert.equal(store.migrateFromKenzo(newDir, oldDir), true);
   const s = JSON.parse(fs.readFileSync(path.join(newDir, 'settings.json'), 'utf8'));
   assert.equal(s.chatModel, path.join(newDir, 'models', 'm.gguf'));
-  assert.equal(s.embedModel, ollama); // paths outside the old folder are untouched
+  assert.equal(s.embedModel, outside); // paths outside the old folder are untouched
   assert.ok(fs.existsSync(path.join(newDir, 'threads', 't.json')));
   assert.equal(store.migrateFromKenzo(newDir, oldDir), false); // only once
 });

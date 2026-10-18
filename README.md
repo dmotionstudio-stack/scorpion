@@ -50,17 +50,16 @@ Choose a workspace folder (📁 in the top bar), then try:
 
 ## Getting a model with no internet at all
 
+Scorpion keeps its own model library and doesn't share models with other apps,
+so any model can be uninstalled (Models → Uninstall) and installed again at any
+time. Partly downloaded files are cleaned up automatically.
+
 Scorpion needs a model file once. You can get one in any of three ways:
 
 1. **Download inside the app**: a one-time download from Hugging Face.
 2. **Import**: on another computer, download a `.gguf` and copy it over on a USB
    drive, then use **Models → Import .gguf file**.
-3. **Use your Ollama models**: if Ollama is installed, Scorpion finds every model
-   you've pulled (for example `tev1:4b` or `qwen3.5:4b`) and lists it on the
-   Models page with an "ollama" tag. Scorpion loads the model file in place and
-   never copies, changes or deletes Ollama's data. Ollama itself doesn't need to
-   be running.
-4. **Bundle it in the installer**: put `.gguf` files in `resources/models/` before you
+3. **Bundle it in the installer**: put `.gguf` files in `resources/models/` before you
    build. The installer then ships with the model, and Scorpion picks it automatically
    the first time it starts.
    ```bash

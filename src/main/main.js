@@ -220,15 +220,33 @@ async function state() {
 async function autoSelectModels() {
   const s = store.getSettings();
   const local = models.listLocalModels(modelEnv());
-  const exists = (p) => p && fs.existsSync(p);
+  // A model only counts if it's in Scorpion's own library (or bundled). That
+  // also drops paths that pointed into other apps' folders in older versions.
+  const known = (p) => p && fs.existsSync(p) && local.some((m) => m.path === p);
   const patch = {};
-  if (!exists(s.chatModel)) {
+  if (!known(s.chatModel)) {
     // Pick what runs well on this machine, not just the first file found.
     const hw = await engine.hardwareInfo().catch(() => null);
     patch.chatModel = models.pickDefaultChatModel(local, (bytes) => engine.modelFit(bytes, hw))?.path ?? null;
   }
-  if (!exists(s.embedModel)) patch.embedModel = local.find((m) => m.kind === 'embedding')?.path ?? null;
+  if (!known(s.embedModel)) patch.embedModel = local.find((m) => m.kind === 'embedding')?.path ?? null;
   if (Object.keys(patch).length) store.updateSettings(patch);
+}
+
+// Uninstall a library model. If it was in use, switch to the next best model
+// that's installed (or none) so the app never points at a missing file.
+async function uninstall(file, { pickNext = true } = {}) {
+  const s = store.getSettings();
+  if (s.chatModel === file) { await engine.unloadChatModel(); store.updateSettings({ chatModel: null }); }
+  if (s.embedModel === file) store.updateSettings({ embedModel: null });
+  models.uninstallModel(file);
+  if (pickNext) {
+    models.cleanPartialDownloads();
+  await autoSelectModels();
+    if (store.getSettings().chatModel && !engine.isChatReady()) loadChat().catch(() => {});
+  }
+  send('model:status', { loading: false, info: await engine.engineInfo() });
+  return true;
 }
 
 async function loadChat() {
@@ -410,11 +428,22 @@ function registerIpc() {
     if (r.canceled || !r.filePaths[0]) return null;
     return models.importModel(r.filePaths[0]);
   });
-  h('model:delete', async (file) => {
-    const s = store.getSettings();
-    if (s.chatModel === file) { await engine.unloadChatModel(); store.updateSettings({ chatModel: null }); }
-    if (s.embedModel === file) store.updateSettings({ embedModel: null });
-    models.deleteModel(file);
+  h('model:delete', (file) => uninstall(file));
+  h('model:uninstallCatalog', (id) => {
+    const item = models.CATALOG.find((c) => c.id === id);
+    const local = item && models.findInstalled(item, models.listLocalModels(modelEnv()));
+    if (!local) throw new Error('That model is not installed');
+    return uninstall(local.path);
+  });
+  // Reinstall = fresh copy: remove the file, then download it again.
+  h('model:reinstall', async (id) => {
+    const item = models.CATALOG.find((c) => c.id === id);
+    const local = item && models.findInstalled(item, models.listLocalModels(modelEnv()));
+    const wasChat = local && store.getSettings().chatModel === local.path;
+    if (local) await uninstall(local.path, { pickNext: false });
+    const file = await models.downloadModel(id, (p) => send('model:download', p));
+    if (wasChat || !store.getSettings().chatModel) { store.updateSettings({ [item.kind === 'embedding' ? 'embedModel' : 'chatModel']: file }); if (item.kind === 'chat') loadChat().catch(() => {}); }
+    return file;
   });
 
   h('workspace:choose', async () => {

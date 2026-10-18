@@ -124,3 +124,4 @@ html.glass-css[data-theme] body {
 .tag.fit-ok { background: color-mix(in srgb, #58a6ff 22%, transparent); color: var(--text); }
 .tag.fit-slow { background: color-mix(in srgb, #f0a830 24%, transparent); color: var(--text); }
 .tag.fit-big { background: color-mix(in srgb, #f85149 24%, transparent); color: var(--text); }
+.installed { color: var(--accent-text, var(--accent)); font-weight: 600; }

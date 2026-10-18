@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('scorpion', {
   cancelDownload: invoke('model:cancelDownload'),
   importModel: invoke('model:import'),
   deleteModel: invoke('model:delete'),
+  uninstallCatalogModel: invoke('model:uninstallCatalog'),
+  reinstallModel: invoke('model:reinstall'),
 
   chooseWorkspace: invoke('workspace:choose'),
   openWorkspace: invoke('workspace:open'),

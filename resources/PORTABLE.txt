@@ -10,8 +10,7 @@ to the computer, so you can carry your whole AI around.
 
 Fully offline from the start:
   Copy a .gguf model file into scorpion-data\models before you run Scorpion.
-  Scorpion picks it automatically. If Ollama is installed on the computer, Scorpion
-  also lists its models (it uses them in place).
+  Scorpion picks it automatically.
 
 Otherwise, open Models in Scorpion and download one (a one-time download).
 

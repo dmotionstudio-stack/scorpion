@@ -83,7 +83,13 @@ export async function loadChatModel(modelPath, { contextSize = 8192, gpuLayers: 
       break;
     } catch (err) { loadErr = err; }
   }
-  if (!chat.model) throw loadErr;
+  if (!chat.model) {
+    // Even CPU-only failed, so the file itself is the problem (often a cut-off
+    // download). Say so plainly instead of llama.cpp's internal error.
+    const err = new Error(`${name || path.basename(modelPath)} could not be loaded. The file looks damaged or incomplete: uninstall it in Models and download it again.`);
+    err.cause = loadErr;
+    throw err;
+  }
   chat.name = name;
   chat.requestedGpuLayers = requested;
   // A second sequence lets a helper agent run while the main chat waits on it,
@@ -126,7 +132,7 @@ export function isChatReady() {
   return Boolean(chat.session);
 }
 
-// Ollama blobs are named by hash, so callers pass a friendly name when loading.
+// Callers pass the display name shown in the model list when loading.
 export function chatModelName() {
   return chat.path ? chat.name || path.basename(chat.path, '.gguf') : null;
 }

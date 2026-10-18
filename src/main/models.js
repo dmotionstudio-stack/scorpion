@@ -1,7 +1,8 @@
-// Model files: a curated catalog, local discovery, one-time download, and import.
-// After a model file is on disk Scorpion never touches the network again.
+// Model files: a curated catalog, Scorpion's own library, one-time download,
+// import, uninstall and reinstall. Scorpion only uses models it manages itself
+// (no sharing with other apps), so every model can be removed and re-added at
+// any time. After a model file is on disk Scorpion never touches the network again.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { createModelDownloader } from 'node-llama-cpp';
 import { paths } from './store.js';
@@ -82,54 +83,6 @@ function scan(dir, source) {
   return out;
 }
 
-// ---------- models already installed by Ollama ----------
-// Ollama stores each model as content-addressed blobs plus a manifest per
-// "name:tag". The manifest's `model` layer is a plain GGUF file, so Scorpion can
-// load it in place (read-only, never copied or deleted).
-function ollamaRoot() {
-  const candidates = [process.env.OLLAMA_MODELS, path.join(os.homedir(), '.ollama', 'models')];
-  return candidates.find((d) => d && fs.existsSync(path.join(d, 'manifests'))) || null;
-}
-
-function readJsonFile(file) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, '')); } catch { return null; }
-}
-
-export function scanOllama(root = ollamaRoot()) {
-  if (!root) return [];
-  const blob = (digest) => path.join(root, 'blobs', String(digest).replace(':', '-'));
-  const out = [];
-  const seen = new Set();
-  // manifests/<host>/<namespace>/<model>/<tag>
-  const base = path.join(root, 'manifests');
-  for (const host of safeDir(base)) {
-    for (const ns of safeDir(path.join(base, host))) {
-      for (const model of safeDir(path.join(base, host, ns))) {
-        for (const tag of safeDir(path.join(base, host, ns, model))) {
-          let manifest = readJsonFile(path.join(base, host, ns, model, tag));
-          // Newer manifest lists point at a per-runner manifest; take the GGUF one.
-          if (manifest?.manifests) {
-            const gguf = manifest.manifests.find((m) => m.format === 'gguf');
-            manifest = gguf ? readJsonFile(blob(gguf.digest)) : null;
-          }
-          if (manifest?.format && manifest.format !== 'gguf') continue;
-          const layer = manifest?.layers?.find((l) => l.mediaType === 'application/vnd.ollama.image.model');
-          const file = layer && blob(layer.digest);
-          if (!file || seen.has(file) || !fs.existsSync(file)) continue;
-          seen.add(file);
-          const name = `${ns === 'library' ? '' : `${ns}/`}${model}:${tag}`;
-          out.push({ path: file, name, bytes: layer.size ?? fs.statSync(file).size, kind: isEmbeddingFile(name) ? 'embedding' : 'chat', source: 'ollama' });
-        }
-      }
-    }
-  }
-  return out;
-}
-
-function safeDir(dir) {
-  try { return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() || e.isFile()).map((e) => e.name); } catch { return []; }
-}
-
 // Position in the catalog (recommended first); unknown files sort last.
 export function catalogRank(model) {
   const i = CATALOG.findIndex((c) => model.name.toLowerCase() === c.uri.split('/').pop().replace(/\.gguf$/i, '').toLowerCase());
@@ -142,7 +95,6 @@ export function listLocalModels({ resourcesPath, appRoot }) {
   return [
     ...bundledDirs(resourcesPath, appRoot).flatMap((d) => scan(d, 'bundled')),
     ...scan(paths.models, 'library'),
-    ...scanOllama(),
   ].filter((m) => !seen.has(m.path) && seen.add(m.path))
     .sort((a, b) => catalogRank(a) - catalogRank(b));
 }
@@ -163,10 +115,40 @@ export async function downloadModel(id, onProgress) {
       skipExisting: true,
       onProgress: ({ totalSize, downloadedSize }) => onProgress?.({ id, totalSize, downloadedSize }),
     });
-    return await downloader.download({ signal: controller.signal });
+    try {
+      return await downloader.download({ signal: controller.signal });
+    } catch (err) {
+      // A cancelled or failed download leaves a partial file; don't keep it.
+      removePartial(downloader.entrypointFilePath);
+      throw err;
+    }
   } finally {
     active.delete(id);
   }
+}
+
+function removePartial(file) {
+  if (file) fs.rmSync(`${file}.ipull`, { force: true });
+}
+
+// The library file for a catalog entry, if it's installed.
+export function catalogFileName(item) {
+  return item.uri.split('/').pop().replace(/.gguf$/i, '').toLowerCase();
+}
+export function findInstalled(item, list) {
+  const want = catalogFileName(item);
+  return list.find((m) => m.source === 'library' && m.name.toLowerCase() === want) || null;
+}
+
+// Partial downloads left from a crash or an older version are useless; clear
+// them at start-up (no download can be running yet).
+export function cleanPartialDownloads() {
+  fs.mkdirSync(paths.models, { recursive: true });
+  let removed = 0;
+  for (const f of fs.readdirSync(paths.models)) {
+    if (f.endsWith('.ipull')) { fs.rmSync(path.join(paths.models, f), { force: true }); removed++; }
+  }
+  return removed;
 }
 
 export function cancelDownload(id) {
@@ -182,11 +164,15 @@ export async function importModel(srcPath) {
   return dest;
 }
 
-export function deleteModel(file) {
+// Uninstall: delete a model from Scorpion's library (plus any partial copy).
+// Models bundled with the installer are read-only and come back on reinstall.
+export function uninstallModel(file) {
   const rel = path.relative(paths.models, path.resolve(file));
-  if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('Only library models can be deleted');
+  if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('Only models in the Scorpion library can be uninstalled');
   fs.rmSync(file, { force: true });
+  fs.rmSync(`${file}.ipull`, { force: true });
 }
+export const deleteModel = uninstallModel;
 
 // Best default chat model for this computer. Models that fit in graphics
 // memory come first (known recommended ones, then the largest that fits, as

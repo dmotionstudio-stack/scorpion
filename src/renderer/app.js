@@ -68,7 +68,7 @@ function renderTopbar() {
   $('#agent-picker').title = agentById(current).description || '';
 }
 
-// Model switcher: every chat model on this computer (library, bundled, Ollama).
+// Model switcher: every chat model in Scorpion's library (and bundled ones).
 function renderModelSwitch() {
   const st = S.modelStatus;
   const selected = S.settings.chatModel;
@@ -85,7 +85,7 @@ function renderModelSwitch() {
   else if (selected) note = 'not loaded';
   const sel = $('#model-picker');
   sel.innerHTML = chatModels.length
-    ? chatModels.map((m) => `<option value="${esc(m.path)}"${m.path === selected ? ' selected' : ''}>${esc(m.name)}${m.bytes ? ` · ${gb(m.bytes)}` : ''}${m.source === 'ollama' ? ' · ollama' : ''}</option>`).join('')
+    ? chatModels.map((m) => `<option value="${esc(m.path)}"${m.path === selected ? ' selected' : ''}>${esc(m.name)}${m.bytes ? ` · ${gb(m.bytes)}` : ''}</option>`).join('')
       + '<option value="__manage">Manage models…</option>'
     : '<option value="__manage">No models — get one…</option>';
   sel.disabled = Boolean(st?.loading) || S.running.size > 0;
@@ -259,21 +259,23 @@ function renderModels() {
       <div class="title">${esc(m.name)}</div>
       <div><span class="tag">${m.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${gb(m.bytes)}</span><span class="tag">${m.source}</span>${fitTag(m.fit)}${selected ? '<span class="tag on">in use</span>' : ''}</div>
       <div class="row">${selected ? '' : `<button class="btn small primary" data-use="${esc(m.path)}" data-kind="${m.kind}">Use</button>`}
-      ${m.source === 'library' ? `<button class="btn small" data-delmodel="${esc(m.path)}">Delete</button>` : ''}</div>${m.source === 'ollama' ? '<div class="muted small">Shared with Ollama. Used in place, never copied or deleted.</div>' : ''}</div>`;
-  }).join('') || '<div class="muted">No models yet. Download one below or import a .gguf file.</div>';
+      ${m.source === 'library' ? `<button class="btn small" data-delmodel="${esc(m.path)}" data-size="${m.bytes}">Uninstall</button>` : '<span class="muted small">Comes with the installer</span>'}</div></div>`;
+  }).join('') || '<div class="muted">No models installed. Download one below (⚡ runs best on this PC) or import a .gguf file.</div>';
 
-  const names = S.models.map((m) => m.name.toLowerCase());
-  const have = { has: (file) => names.includes(file) };
+  const installed = (c) => {
+    const want = c.uri.split('/').pop().replace(/\.gguf$/i, '').toLowerCase();
+    return S.models.find((m) => m.source === 'library' && m.name.toLowerCase() === want);
+  };
   $('#catalog').innerHTML = S.catalog.map((c) => {
-    const file = c.uri.split('/').pop().replace(/\.gguf$/i, '').toLowerCase();
     const d = S.downloads[c.id];
     const pct = d?.totalSize ? Math.round((d.downloadedSize / d.totalSize) * 100) : 0;
-    return `<div class="card"><div class="title">${esc(c.name)}</div>
+    const local = installed(c);
+    return `<div class="card${local ? ' selected' : ''}"><div class="title">${esc(c.name)}</div>
       <div><span class="tag">${c.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${esc(c.size)}</span>${fitTag(c.fit)}</div>
       <div class="muted small">${esc(c.note)}</div>
-      ${have.has(file) ? '<div class="small" style="color:var(--accent)">✓ Installed</div>'
-        : d ? `<div class="progress"><div style="width:${pct}%"></div></div><div class="row"><span class="small muted">${pct}% of ${d.totalSize ? gb(d.totalSize) : '…'}</span><button class="btn small" data-cancel="${c.id}">Cancel</button></div>`
-        : `<div class="row"><button class="btn small" data-download="${c.id}">Download</button></div>`}
+      ${d ? `<div class="progress"><div style="width:${pct}%"></div></div><div class="row"><span class="small muted">${pct}% of ${d.totalSize ? gb(d.totalSize) : '…'}</span><button class="btn small" data-cancel="${c.id}">Cancel</button></div>`
+        : local ? `<div class="row"><span class="small installed">✓ Installed</span><button class="btn small" data-uninstall="${c.id}" data-size="${local.bytes}">Uninstall</button><button class="btn small" data-reinstall="${c.id}" title="Delete and download a fresh copy">Reinstall</button></div>`
+        : `<div class="row"><button class="btn small primary" data-download="${c.id}">Download</button></div>`}
     </div>`;
   }).join('');
 }
@@ -636,12 +638,24 @@ function wire() {
     const t = e.target;
     if (t.dataset.use) {
       await setSetting(t.dataset.kind === 'embedding' ? { embedModel: t.dataset.use } : { chatModel: t.dataset.use });
-    } else if (t.dataset.delmodel) {
-      if (confirm(`Delete ${base(t.dataset.delmodel)} from disk?`)) { await api.deleteModel(t.dataset.delmodel); refresh(); }
-    } else if (t.dataset.download) {
-      const id = t.dataset.download;
+    } else if (t.dataset.delmodel || t.dataset.uninstall) {
+      const name = t.dataset.delmodel ? modelName(t.dataset.delmodel) : S.catalog.find((c) => c.id === t.dataset.uninstall)?.name;
+      const size = Number(t.dataset.size) ? ` and free ${gb(Number(t.dataset.size))}` : '';
+      if (!confirm(`Uninstall ${name}${size}? You can download it again any time.`)) return;
+      try {
+        await (t.dataset.delmodel ? api.deleteModel(t.dataset.delmodel) : api.uninstallCatalogModel(t.dataset.uninstall));
+        toast(`${name} uninstalled.`);
+      } catch (err) { toast(errText(err)); }
+      refresh();
+    } else if (t.dataset.download || t.dataset.reinstall) {
+      const id = t.dataset.download || t.dataset.reinstall;
+      const item = S.catalog.find((c) => c.id === id);
+      if (t.dataset.reinstall && !confirm(`Reinstall ${item.name}? It will be deleted and downloaded again (${item.size}).`)) return;
       S.downloads[id] = { downloadedSize: 0, totalSize: 0 }; renderModels();
-      try { await api.downloadModel(id); toast('Download complete.'); } catch (err) { if (!/abort/i.test(err.message)) toast(`Download failed: ${err.message}`); }
+      try {
+        await (t.dataset.reinstall ? api.reinstallModel(id) : api.downloadModel(id));
+        toast(`${item.name} ${t.dataset.reinstall ? 'reinstalled' : 'installed'}.`);
+      } catch (err) { if (!/abort/i.test(err.message)) toast(`Download failed: ${errText(err)}`); }
       delete S.downloads[id];
       refresh();
     } else if (t.dataset.cancel) api.cancelDownload(t.dataset.cancel);
