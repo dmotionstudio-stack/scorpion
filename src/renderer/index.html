@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
+  <title>Kenzo</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="logo" aria-hidden="true"></span>Kenzo</div>
+      <button class="btn primary wide" id="new-chat">＋ New chat</button>
+      <nav class="threads" id="threads" aria-label="Chats"></nav>
+      <nav class="sidenav" aria-label="Sections">
+        <button data-view="chat" class="navbtn active">💬 Chat</button>
+        <button data-view="models" class="navbtn">🧠 Models</button>
+        <button data-view="docs" class="navbtn">📄 Documents</button>
+        <button data-view="settings" class="navbtn">⚙️ Settings</button>
+      </nav>
+      <div class="offline-badge" title="Kenzo makes no network requests while you chat">● Offline &amp; private</div>
+    </aside>
+
+    <main class="main">
+      <!-- CHAT -->
+      <section class="view" id="view-chat">
+        <header class="topbar">
+          <div class="model-pill" id="model-pill">No model</div>
+          <div class="spacer"></div>
+          <button class="chip" id="workspace-chip" title="Folder the agent can work in">📁 No workspace</button>
+          <label class="toggle" title="Read-only: the agent can explore and plan but not change anything">
+            <input type="checkbox" id="plan-mode"><span>Plan mode</span>
+          </label>
+          <label class="toggle" title="Run file edits and commands without asking">
+            <input type="checkbox" id="auto-approve"><span>Auto-approve</span>
+          </label>
+          <button class="chip" id="toggle-plan" title="Show plan panel">☰ Plan</button>
+        </header>
+        <div class="chat-body">
+          <div class="messages" id="messages"></div>
+          <aside class="plan-panel hidden" id="plan-panel">
+            <h3>Plan</h3>
+            <ol id="plan-list"><li class="muted">The agent's step-by-step plan appears here for multi-step tasks.</li></ol>
+          </aside>
+        </div>
+        <form class="composer" id="composer">
+          <textarea id="input" rows="1" placeholder="Ask anything, or give the agent a task…  (Enter to send, Shift+Enter for a new line)"></textarea>
+          <button type="submit" class="btn primary" id="send">Send</button>
+          <button type="button" class="btn danger hidden" id="stop">Stop</button>
+        </form>
+      </section>
+
+      <!-- MODELS -->
+      <section class="view hidden" id="view-models">
+        <div class="page">
+          <h1>Models</h1>
+          <p class="muted">Models run entirely on this computer with llama.cpp. Get one once (download, or import a <code>.gguf</code> file from a USB drive) and Kenzo works with no internet forever after.</p>
+          <div class="engine-info" id="engine-info"></div>
+          <h2>On this computer</h2>
+          <div class="cards" id="local-models"></div>
+          <div class="row"><button class="btn" id="import-model">Import .gguf file…</button></div>
+          <h2>Get a model <span class="muted small">(one-time download)</span></h2>
+          <div class="cards" id="catalog"></div>
+        </div>
+      </section>
+
+      <!-- DOCUMENTS -->
+      <section class="view hidden" id="view-docs">
+        <div class="page">
+          <h1>Documents</h1>
+          <p class="muted">Add PDFs, Word files or text. Kenzo indexes them locally so you can ask questions about them in any chat. Requires an embedding model (see Models).</p>
+          <div class="row"><button class="btn primary" id="add-docs">Add documents…</button><span class="muted" id="docs-progress"></span></div>
+          <div class="cards" id="doc-list"></div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="view hidden" id="view-settings">
+        <div class="page">
+          <h1>Settings</h1>
+          <div class="field">
+            <label>Workspace folder</label>
+            <div class="row"><code id="ws-path">Not set</code><button class="btn" id="choose-ws">Choose…</button><button class="btn" id="open-ws">Open</button></div>
+            <p class="muted small">The agent can only read, write and run commands inside this folder.</p>
+          </div>
+          <div class="field">
+            <label for="ctx-size">Context size (tokens)</label>
+            <select id="ctx-size"><option>4096</option><option>8192</option><option>16384</option><option>32768</option></select>
+            <p class="muted small">Larger remembers more but uses more memory. Kenzo lowers it automatically if it doesn't fit.</p>
+          </div>
+          <div class="field">
+            <label for="temperature">Creativity (temperature): <span id="temp-val"></span></label>
+            <input type="range" id="temperature" min="0" max="1.5" step="0.05">
+          </div>
+          <div class="field">
+            <label for="system-prompt">Custom instructions</label>
+            <textarea id="system-prompt" rows="5" placeholder="Optional. Replaces Kenzo's default personality, e.g. 'You are a senior Python engineer. Answer briefly.'"></textarea>
+            <div class="row"><button class="btn" id="save-prompt">Save</button></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast hidden" id="toast" role="status"></div>
+</body>
+</html>

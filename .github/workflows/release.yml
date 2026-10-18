@@ -1,0 +1,53 @@
+# Builds installers for Windows (.exe) and macOS (.dmg, Apple Silicon + Intel).
+# Run it from the Actions tab, or push a tag like v0.1.0.
+# Set the input "bundle_model" to ship a model inside the installer (fully offline install).
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_model:
+        description: 'Catalog model ids to bundle (space separated, empty for none), e.g. "qwen3-4b nomic-embed"'
+        required: false
+        default: ''
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win --x64
+          # npm installs only the llama.cpp binary for the runner's CPU, so each
+          # Mac architecture is built on its own runner.
+          - os: macos-latest
+            target: --mac --arm64
+          - os: macos-15-intel
+            target: --mac --x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Bundle models
+        if: ${{ github.event.inputs.bundle_model != '' }}
+        run: node scripts/fetch-models.mjs resources/models ${{ github.event.inputs.bundle_model }}
+      - name: Build installer
+        # macOS output is unsigned unless you add CSC_LINK / CSC_KEY_PASSWORD / APPLE_ID secrets.
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npx electron-builder ${{ matrix.target }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kenzo-${{ matrix.os }}
+          path: |
+            release/*.exe
+            release/*.dmg
+          if-no-files-found: error
