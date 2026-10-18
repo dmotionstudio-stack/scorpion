@@ -128,6 +128,33 @@ async function setMode(mode) {
   renderMessages(true);
 }
 
+// "Please wait" window while a model loads. Loading has two parts: reading
+// the file into memory (with progress), then setting up the model's working
+// memory (no progress available, so the bar sweeps instead).
+S.wait = { start: 0, timer: 0, hidden: false };
+function renderWait(st) {
+  const box = $('#wait');
+  if (!st?.loading) {
+    clearInterval(S.wait.timer);
+    S.wait = { start: 0, timer: 0, hidden: false };
+    box.classList.add('hidden');
+    return;
+  }
+  if (!S.wait.start) {
+    S.wait.start = Date.now();
+    S.wait.timer = setInterval(() => { $('#wait-time').textContent = `${Math.round((Date.now() - S.wait.start) / 1000)}s`; }, 1000);
+    $('#wait-time').textContent = '0s';
+  }
+  $('#wait-model').textContent = st.name || 'model';
+  const p = typeof st.progress === 'number' ? st.progress : null;
+  const reading = p !== null && p < 0.999;
+  $('#wait-bar').style.width = `${Math.round((p ?? 0) * 100)}%`;
+  document.querySelector('.wait-progress').classList.toggle('indeterminate', !reading);
+  $('#wait-step').textContent = reading ? `Reading the model into memory… ${Math.round(p * 100)}%` : p === null ? 'Starting…' : 'Preparing the model to chat…';
+  $('#wait-hint').textContent = st.bytes > 3 * 1024 ** 3 ? `This is a large model (${gb(st.bytes)}), so it can take a minute or more.` : '';
+  if (!S.wait.hidden) box.classList.remove('hidden');
+}
+
 // ---------- messages ----------
 const STATUS = { running: '⏳ running', ok: '✓ done', error: '✕ failed' };
 const TOOL_LABEL = {
@@ -793,12 +820,16 @@ function wire() {
   api.onOpenThread((id) => openThread(id));
   api.onChatEvent(applyChatEvent);
   api.onModelStatus((st) => {
+    const wasLoading = S.modelStatus?.loading;
     S.modelStatus = st;
     if (st.info) S.engine = st.info;
     if (st.error) toast(`Could not load model: ${st.error}`, 8000);
+    else if (wasLoading && !st.loading && st.info?.chatModelName) toast(`${st.info.chatModelName} is ready.`, 2500);
+    renderWait(st);
     renderTopbar();
     if (!st.loading) renderModels();
   });
+  $('#wait-hide').onclick = () => { S.wait.hidden = true; $('#wait').classList.add('hidden'); };
   api.onDownload((p) => { S.downloads[p.id] = p; if (S.view === 'models') renderModels(); });
   api.onDocsProgress((p) => { $('#docs-progress').textContent = p ? `Indexing ${p.name}: ${p.done}/${p.total}` : ''; });
 }

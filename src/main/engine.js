@@ -1,6 +1,7 @@
 // The only module that touches llama.cpp. Loads GGUF models in-process via
 // node-llama-cpp's prebuilt binaries (Metal on macOS, CUDA/Vulkan/CPU on Windows),
 // so inference needs no server, no port and no network.
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { getLlama, LlamaChatSession, LlamaLogLevel } from 'node-llama-cpp';
@@ -13,6 +14,22 @@ async function ensureLlama() {
   // build: 'never' — an installed app must never try to compile llama.cpp.
   llama ??= await getLlama({ build: 'never', logLevel: LlamaLogLevel.error });
   return llama;
+}
+
+// A pure-CPU llama.cpp. With zero layers on the GPU, the GPU build still routes
+// work through the graphics driver; the CPU build measured 3x faster writing
+// for a 17 GB model on a 4 GB card (13 vs 4 tokens/s).
+let cpuLlama = null;
+async function ensureCpuLlama() {
+  cpuLlama ??= await getLlama({ build: 'never', gpu: false, logLevel: LlamaLogLevel.error });
+  return cpuLlama;
+}
+
+// Models far bigger than the graphics card gain nothing from a partial
+// offload (measured: 8 of 49 layers ran slower than none), so they go
+// straight to the CPU build.
+function prefersCpu(bytes, hw) {
+  return !hw?.dedicatedVram || bytes > hw.dedicatedVram * 1.5;
 }
 
 // What this computer has, for "fits on this PC" hints. Dedicated video memory
@@ -48,7 +65,8 @@ export function modelFit(bytes, hw) {
 export async function engineInfo() {
   const l = await ensureLlama();
   return {
-    gpu: l.gpu || 'cpu',
+    // The backend the loaded model actually runs on (pure-CPU build or the GPU one).
+    gpu: chat.model ? chat.backend : (l.gpu || 'cpu'),
     maxToolChars: chat.context ? Math.max(3000, chat.context.contextSize) : null,
     contextSize: chat.context?.contextSize ?? null,
     flashAttention: chat.context ? chat.context.flashAttention : null,
@@ -71,15 +89,21 @@ async function disposeChat() {
 export async function loadChatModel(modelPath, { contextSize = 8192, gpuLayers: requested = 'auto', name = null, onProgress } = {}) {
   if (chat.path === modelPath && chat.model && chat.requestedGpuLayers === requested) return engineInfo();
   await disposeChat();
-  const l = await ensureLlama();
   // The automatic GPU-offload estimate can overshoot on shared-memory GPUs. If
   // it fails, fall back conservatively (generation needs memory beyond what
   // loading does), down to CPU-only. A number from Settings is tried first.
+  // "CPU only" (0 layers) always uses the pure-CPU build, which is faster.
+  const hw = await hardwareInfo();
+  const bytes = fs.statSync(modelPath).size;
   let loadErr;
-  const attempts = typeof requested === 'number' ? [requested, ...[8, 0].filter((n) => n < requested)] : [requested, 16, 8, 0];
+  const attempts = requested === 0 || (requested === 'auto' && prefersCpu(bytes, hw)) ? [0]
+    : typeof requested === 'number' ? [requested, ...[8, 0].filter((n) => n < requested)]
+    : [requested, 16, 8, 0];
   for (const gpuLayers of attempts) {
     try {
+      const l = gpuLayers === 0 ? await ensureCpuLlama() : await ensureLlama();
       chat.model = await l.loadModel({ modelPath, gpuLayers, onLoadProgress: (p) => onProgress?.(p) });
+      chat.backend = gpuLayers === 0 ? 'cpu' : (l.gpu || 'cpu');
       break;
     } catch (err) { loadErr = err; }
   }
@@ -103,7 +127,6 @@ export async function loadChatModel(modelPath, { contextSize = 8192, gpuLayers: 
   let fa = chat.model.flashAttentionSupported && !process.env.SCORPION_NO_FLASH_ATTENTION;
   // Two full contexts never fit on small cards; trying costs seconds of
   // failed allocations, so only try with 8 GB or more of video memory.
-  const hw = await hardwareInfo();
   if (hw.dedicatedVram >= 8 * 1024 ** 3) {
     try {
       const two = await chat.model.createContext({ sequences: 2, contextSize: { min: 2048, max: contextSize }, flashAttention: fa });
@@ -224,6 +247,28 @@ export function compactHistory(history, { hard = false } = {}) {
 }
 
 const MAX_SEGMENTS = 8;
+const MAX_TEXT_TOOL_RESCUES = 6;
+
+// Text of the model's most recent reply in a chat history.
+export function lastModelText(history) {
+  const item = [...history].reverse().find((i) => i.type === 'model');
+  return item ? item.response.filter((p) => typeof p === 'string').join('') : '';
+}
+
+// Tool calls the model wrote as text, in the <tool_call>{"name", "arguments"}
+// format these models use. Only tools that are actually available are kept.
+export function parseTextToolCalls(text, functions) {
+  const calls = [];
+  for (const m of String(text).matchAll(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g)) {
+    let call;
+    try { call = JSON.parse(m[1]); } catch { continue; }
+    const name = call?.name;
+    let params = call?.arguments ?? call?.parameters ?? {};
+    if (typeof params === 'string') { try { params = JSON.parse(params); } catch { continue; } }
+    if (name && functions[name] && params && typeof params === 'object') calls.push({ name, params });
+  }
+  return calls;
+}
 // A long turn pauses (and compacts) once this segment alone has used a good
 // share of the context, or when the context is nearly full. Measuring growth
 // rather than total use matters: the system prompt and tool descriptions can
@@ -255,6 +300,7 @@ async function runTurnUnlocked({ threadId, history, systemPrompt, text, function
     let prompt = text;
     let stalled = 0;
     let recoveries = 0;
+    let textToolRescues = 0;
     for (let segment = 0; segment < MAX_SEGMENTS; segment++) {
       const segmentStop = new AbortController();
       const relay = () => segmentStop.abort();
@@ -296,7 +342,26 @@ async function runTurnUnlocked({ threadId, history, systemPrompt, text, function
         prompt = continuation?.() || 'Continue where you left off with the next unfinished step.';
         continue;
       }
-      if (!pausedForRoom || signal?.aborted) break;
+      if (signal?.aborted) break;
+      // Small models sometimes write a tool call as plain text (e.g. pretty-
+      // printed JSON the call detector doesn't recognise), and the task stalls.
+      // Run such calls ourselves and continue with their results.
+      if (!pausedForRoom && functions && textToolRescues < MAX_TEXT_TOOL_RESCUES) {
+        const calls = parseTextToolCalls(lastModelText(session.getChatHistory()), functions);
+        if (calls.length) {
+          textToolRescues++;
+          const results = [];
+          for (const { name, params } of calls) {
+            let result;
+            try { result = await functions[name].handler(params); } catch (err) { result = `Error: ${err.message}`; }
+            results.push(`- ${name}: ${typeof result === 'string' ? result : JSON.stringify(result)}`);
+          }
+          onText?.('\n\n');
+          prompt = `(Scorpion ran the tool call${calls.length > 1 ? 's' : ''} you wrote as text.)\nResults:\n${results.join('\n')}\nContinue the task. Call tools directly instead of writing them as text.`;
+          continue;
+        }
+      }
+      if (!pausedForRoom) break;
       // A segment that only managed a single tool call made no real progress;
       // twice in a row means the model is looping, so let it stop there.
       stalled = calls <= 1 ? stalled + 1 : 0;

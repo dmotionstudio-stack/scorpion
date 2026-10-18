@@ -296,3 +296,14 @@ test('every catalog entry is well formed and fast models carry a tested skill', 
   assert.equal(CATALOG[0].skill, 'agent'); // the default pick must handle Build mode
   for (const id of ['gemma3-4b', 'qwen3-1.7b', 'llama3.2-1b', 'gemma3-1b', 'qwen2.5-0.5b', 'qwen2.5-coder-1.5b']) assert.ok(ids.has(id), id);
 });
+
+test('tool calls written as text are recognised so the task does not stall', async () => {
+  const { parseTextToolCalls, lastModelText } = await import('../src/main/engine.js');
+  const fns = { update_plan: {}, write_file: {} };
+  const text = `I'll plan first.\n<tool_call>\n{\n  "name": "update_plan",\n  "arguments": {\n    "steps": [{ "title": "Write index.html", "status": "pending" }]\n  }\n}\n</tool_call>\n<tool_call>{"name": "rm_rf", "arguments": {}}</tool_call>\n<tool_call>{"name": "write_file", "arguments": "{\\"path\\": \\"a.txt\\"}"}</tool_call>\n<tool_call>{broken</tool_call>`;
+  const calls = parseTextToolCalls(text, fns);
+  assert.deepEqual(calls.map((c) => c.name), ['update_plan', 'write_file']); // unknown tools and broken JSON are ignored
+  assert.equal(calls[0].params.steps[0].title, 'Write index.html');
+  assert.equal(calls[1].params.path, 'a.txt');
+  assert.equal(lastModelText([{ type: 'user', text: 'x' }, { type: 'model', response: ['a', { type: 'functionCall' }, 'b'] }]), 'ab');
+});

@@ -252,14 +252,17 @@ async function uninstall(file, { pickNext = true } = {}) {
 async function loadChat() {
   const s = store.getSettings();
   if (!s.chatModel) return engine.engineInfo();
-  const display = models.listLocalModels(modelEnv()).find((m) => m.path === s.chatModel)?.name || path.basename(s.chatModel);
-  send('model:status', { loading: true, name: display });
+  const entry = models.listLocalModels(modelEnv()).find((m) => m.path === s.chatModel);
+  const display = entry?.name || path.basename(s.chatModel);
+  const bytes = entry?.bytes ?? 0;
+  // The UI shows a "Please wait" window from these events until loading ends.
+  send('model:status', { loading: true, name: display, bytes });
   try {
     const info = await engine.loadChatModel(s.chatModel, {
       contextSize: s.contextSize,
       gpuLayers: s.gpuLayers,
-      name: models.listLocalModels(modelEnv()).find((m) => m.path === s.chatModel)?.name,
-      onProgress: (p) => send('model:status', { loading: true, progress: p, name: display }),
+      name: entry?.name,
+      onProgress: (p) => send('model:status', { loading: true, progress: p, name: display, bytes }),
     });
     send('model:status', { loading: false, info });
     return info;

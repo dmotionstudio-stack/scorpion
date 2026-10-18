@@ -238,5 +238,18 @@
     </main>
   </div>
   <div class="toast hidden" id="toast" role="status"></div>
+
+  <!-- Shown while a model loads (start-up, switching models, reinstall). -->
+  <div class="wait-overlay hidden" id="wait" role="alertdialog" aria-modal="true" aria-labelledby="wait-title" aria-describedby="wait-step">
+    <div class="wait-card">
+      <div class="wait-spinner" aria-hidden="true"></div>
+      <h2 id="wait-title">Please wait</h2>
+      <div class="wait-model">Loading <strong id="wait-model"></strong></div>
+      <div class="progress wait-progress"><div id="wait-bar"></div></div>
+      <div class="wait-meta"><span id="wait-step">Starting…</span><span id="wait-time">0s</span></div>
+      <p class="muted small" id="wait-hint"></p>
+      <button class="btn small" id="wait-hide" type="button">Keep using Scorpion</button>
+    </div>
+  </div>
 </body>
 </html>
