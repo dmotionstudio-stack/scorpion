@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS = {
   embedModel: null, // absolute path to an embedding .gguf (for documents)
   workspace: null, // folder the agent may read/write/run commands in
   contextSize: 8192,
+  gpuLayers: 'auto', // 'auto' or how many model layers to run on the GPU (0 = CPU only)
   temperature: 0.6,
   autoApprove: false, // run write/exec tools without asking
   planMode: false, // read-only: hide every mutating tool from the model

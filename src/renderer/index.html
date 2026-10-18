@@ -169,6 +169,16 @@
             <p class="muted small">Turn off to make every chat start fresh. Your saved memories are kept until you delete them.</p>
           </div>
           <div class="field">
+            <label for="gpu-layers">GPU offload</label>
+            <select id="gpu-layers">
+              <option value="auto">Auto (recommended)</option>
+              <option value="max">All layers on GPU</option>
+              <option value="32">32 layers</option><option value="24">24 layers</option><option value="16">16 layers</option><option value="8">8 layers</option>
+              <option value="0">CPU only</option>
+            </select>
+            <p class="muted small">How much of the model runs on the graphics card. Lower it if a model fails to load or crashes while answering; Kenzo already steps down automatically when loading fails.</p>
+          </div>
+          <div class="field">
             <label for="ctx-size">Context size (tokens)</label>
             <select id="ctx-size"><option>4096</option><option>8192</option><option>16384</option><option>32768</option></select>
             <p class="muted small">Larger remembers more but uses more memory. Kenzo lowers it automatically if it doesn't fit.</p>

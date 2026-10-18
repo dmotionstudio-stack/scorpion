@@ -1,6 +1,7 @@
 // Model files: a curated catalog, local discovery, one-time download, and import.
 // After a model file is on disk Kenzo never touches the network again.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { createModelDownloader } from 'node-llama-cpp';
 import { paths } from './store.js';
@@ -81,6 +82,54 @@ function scan(dir, source) {
   return out;
 }
 
+// ---------- models already installed by Ollama ----------
+// Ollama stores each model as content-addressed blobs plus a manifest per
+// "name:tag". The manifest's `model` layer is a plain GGUF file, so Kenzo can
+// load it in place (read-only, never copied or deleted).
+function ollamaRoot() {
+  const candidates = [process.env.OLLAMA_MODELS, path.join(os.homedir(), '.ollama', 'models')];
+  return candidates.find((d) => d && fs.existsSync(path.join(d, 'manifests'))) || null;
+}
+
+function readJsonFile(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, '')); } catch { return null; }
+}
+
+export function scanOllama(root = ollamaRoot()) {
+  if (!root) return [];
+  const blob = (digest) => path.join(root, 'blobs', String(digest).replace(':', '-'));
+  const out = [];
+  const seen = new Set();
+  // manifests/<host>/<namespace>/<model>/<tag>
+  const base = path.join(root, 'manifests');
+  for (const host of safeDir(base)) {
+    for (const ns of safeDir(path.join(base, host))) {
+      for (const model of safeDir(path.join(base, host, ns))) {
+        for (const tag of safeDir(path.join(base, host, ns, model))) {
+          let manifest = readJsonFile(path.join(base, host, ns, model, tag));
+          // Newer manifest lists point at a per-runner manifest; take the GGUF one.
+          if (manifest?.manifests) {
+            const gguf = manifest.manifests.find((m) => m.format === 'gguf');
+            manifest = gguf ? readJsonFile(blob(gguf.digest)) : null;
+          }
+          if (manifest?.format && manifest.format !== 'gguf') continue;
+          const layer = manifest?.layers?.find((l) => l.mediaType === 'application/vnd.ollama.image.model');
+          const file = layer && blob(layer.digest);
+          if (!file || seen.has(file) || !fs.existsSync(file)) continue;
+          seen.add(file);
+          const name = `${ns === 'library' ? '' : `${ns}/`}${model}:${tag}`;
+          out.push({ path: file, name, bytes: layer.size ?? fs.statSync(file).size, kind: isEmbeddingFile(name) ? 'embedding' : 'chat', source: 'ollama' });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function safeDir(dir) {
+  try { return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() || e.isFile()).map((e) => e.name); } catch { return []; }
+}
+
 // Position in the catalog (recommended first); unknown files sort last.
 export function catalogRank(model) {
   const i = CATALOG.findIndex((c) => model.name.toLowerCase() === c.uri.split('/').pop().replace(/\.gguf$/i, '').toLowerCase());
@@ -93,6 +142,7 @@ export function listLocalModels({ resourcesPath, appRoot }) {
   return [
     ...bundledDirs(resourcesPath, appRoot).flatMap((d) => scan(d, 'bundled')),
     ...scan(paths.models, 'library'),
+    ...scanOllama(),
   ].filter((m) => !seen.has(m.path) && seen.add(m.path))
     .sort((a, b) => catalogRank(a) - catalogRank(b));
 }

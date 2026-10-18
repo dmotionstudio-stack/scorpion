@@ -16,6 +16,7 @@ const VIEWS = ['chat', 'models', 'docs', 'memory', 'agents', 'schedules', 'setti
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const md = (text) => DOMPurify.sanitize(marked.parse(text || '', { breaks: true, gfm: true }));
 const base = (p) => String(p || '').split(/[\\/]/).pop();
+const modelName = (p) => S.models.find((m) => m.path === p)?.name || base(p).replace(/\.gguf$/i, '');
 const gb = (bytes) => (bytes / 1024 ** 3 >= 1 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`);
 
 function toast(text, ms = 4000) {
@@ -52,9 +53,9 @@ function renderTopbar() {
   const st = S.modelStatus;
   const loaded = S.engine?.chatModel;
   let cls = '', label = 'No model — open Models';
-  if (st?.loading) { cls = 'loading'; label = `Loading ${base(st.name)}${st.progress != null ? ` ${Math.round(st.progress * 100)}%` : '…'}`; }
-  else if (loaded) { cls = 'ready'; label = base(loaded).replace(/\.gguf$/i, ''); }
-  else if (S.settings.chatModel) label = `${base(S.settings.chatModel).replace(/\.gguf$/i, '')} (not loaded)`;
+  if (st?.loading) { cls = 'loading'; label = `Loading ${st.name}${st.progress != null ? ` ${Math.round(st.progress * 100)}%` : '…'}`; }
+  else if (loaded) { cls = 'ready'; label = S.engine.chatModelName || modelName(loaded); }
+  else if (S.settings.chatModel) label = `${modelName(S.settings.chatModel)} (not loaded)`;
   $('#model-pill').innerHTML = `<span class="status ${cls}"></span>${esc(label)}`;
   $('#workspace-chip').textContent = S.settings.workspace ? `📁 ${base(S.settings.workspace)}` : '📁 No workspace';
   $('#workspace-chip').title = S.settings.workspace || 'Choose a folder the agent can work in';
@@ -178,14 +179,14 @@ function scheduleRender() {
 // ---------- models page ----------
 function renderModels() {
   const e = S.engine || {};
-  $('#engine-info').innerHTML = e.error ? `<span class="err">Engine error: ${esc(e.error)}</span>` : `Hardware acceleration: <strong>${esc(e.gpu === 'cpu' ? 'CPU only' : String(e.gpu).toUpperCase())}</strong>`;
+  $('#engine-info').innerHTML = e.error ? `<span class="err">Engine error: ${esc(e.error)}</span>` : `Hardware acceleration: <strong>${esc(e.gpu === 'cpu' ? 'CPU only' : String(e.gpu).toUpperCase())}</strong>${e.totalLayers ? ` · ${e.gpuLayers} of ${e.totalLayers} layers on GPU · ${e.contextSize} token context` : ''}`;
   $('#local-models').innerHTML = S.models.map((m) => {
     const selected = m.path === S.settings.chatModel || m.path === S.settings.embedModel;
     return `<div class="card ${selected ? 'selected' : ''}">
       <div class="title">${esc(m.name)}</div>
       <div><span class="tag">${m.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${gb(m.bytes)}</span><span class="tag">${m.source}</span>${selected ? '<span class="tag on">in use</span>' : ''}</div>
       <div class="row">${selected ? '' : `<button class="btn small primary" data-use="${esc(m.path)}" data-kind="${m.kind}">Use</button>`}
-      ${m.source === 'library' ? `<button class="btn small" data-delmodel="${esc(m.path)}">Delete</button>` : ''}</div></div>`;
+      ${m.source === 'library' ? `<button class="btn small" data-delmodel="${esc(m.path)}">Delete</button>` : ''}</div>${m.source === 'ollama' ? '<div class="muted small">Shared with Ollama. Used in place, never copied or deleted.</div>' : ''}</div>`;
   }).join('') || '<div class="muted">No models yet. Download one below or import a .gguf file.</div>';
 
   const names = S.models.map((m) => m.name.toLowerCase());
@@ -364,6 +365,7 @@ const errText = (err) => String(err?.message || err).replace(/^Error invoking re
 function renderSettings() {
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
   $('#ctx-size').value = String(S.settings.contextSize);
+  $('#gpu-layers').value = String(S.settings.gpuLayers ?? 'auto');
   $('#temperature').value = S.settings.temperature;
   $('#temp-val').textContent = S.settings.temperature;
   $('#memory-enabled').checked = !!S.settings.memoryEnabled;
@@ -402,7 +404,7 @@ async function sendMessage(text) {
   if (!S.thread) await newThread();
   const thread = S.thread;
   if (S.running.has(thread.id)) return;
-  thread.messages.push({ role: 'user', text }, { role: 'assistant', blocks: [], agentId: thread.agentId, model: base(S.engine?.chatModel || S.settings.chatModel).replace(/\.gguf$/i, '') });
+  thread.messages.push({ role: 'user', text }, { role: 'assistant', blocks: [], agentId: thread.agentId, model: S.engine?.chatModelName || modelName(S.settings.chatModel) });
   S.running.add(thread.id);
   $('#input').value = ''; autosize();
   renderThreads(); renderMessages();
@@ -564,6 +566,7 @@ function wire() {
   $('#recall-enabled').onchange = (e) => setSetting({ recallEnabled: e.target.checked });
 
   $('#ctx-size').onchange = (e) => setSetting({ contextSize: Number(e.target.value) });
+  $('#gpu-layers').onchange = (e) => { const v = e.target.value; setSetting({ gpuLayers: v === 'auto' || v === 'max' ? v : Number(v) }); toast('Reloading the model…'); };
   $('#temperature').oninput = (e) => { $('#temp-val').textContent = e.target.value; };
   $('#temperature').onchange = (e) => setSetting({ temperature: Number(e.target.value) });
   $('#save-prompt').onclick = () => { setSetting({ systemPrompt: $('#system-prompt').value }); toast('Saved.'); };
@@ -635,6 +638,7 @@ function wire() {
     if (st.info) S.engine = st.info;
     if (st.error) toast(`Could not load model: ${st.error}`, 8000);
     renderTopbar();
+    if (!st.loading) renderModels();
   });
   api.onDownload((p) => { S.downloads[p.id] = p; if (S.view === 'models') renderModels(); });
   api.onDocsProgress((p) => { $('#docs-progress').textContent = p ? `Indexing ${p.name}: ${p.done}/${p.total}` : ''; });

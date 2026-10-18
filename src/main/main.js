@@ -103,7 +103,7 @@ function createWindow() {
     win.webContents.on('console-message', (e) => console.log(`[renderer] ${e.message}`));
     win.webContents.once('did-finish-load', async () => {
       if (process.env.KENZO_VIEW) await win.webContents.executeJavaScript(`document.querySelector('[data-view="${process.env.KENZO_VIEW}"]')?.click()`);
-      await new Promise((r) => setTimeout(r, 2500));
+      await new Promise((r) => setTimeout(r, Number(process.env.KENZO_SCREENSHOT_DELAY) || 2500));
       fs.writeFileSync(process.env.KENZO_SCREENSHOT, (await win.webContents.capturePage()).toPNG());
       app.quit();
     });
@@ -171,11 +171,14 @@ function autoSelectModels() {
 async function loadChat() {
   const s = store.getSettings();
   if (!s.chatModel) return engine.engineInfo();
-  send('model:status', { loading: true, name: path.basename(s.chatModel) });
+  const display = models.listLocalModels(modelEnv()).find((m) => m.path === s.chatModel)?.name || path.basename(s.chatModel);
+  send('model:status', { loading: true, name: display });
   try {
     const info = await engine.loadChatModel(s.chatModel, {
       contextSize: s.contextSize,
-      onProgress: (p) => send('model:status', { loading: true, progress: p, name: path.basename(s.chatModel) }),
+      gpuLayers: s.gpuLayers,
+      name: models.listLocalModels(modelEnv()).find((m) => m.path === s.chatModel)?.name,
+      onProgress: (p) => send('model:status', { loading: true, progress: p, name: display }),
     });
     send('model:status', { loading: false, info });
     return info;
@@ -303,7 +306,7 @@ function registerIpc() {
     const before = store.getSettings();
     const next = store.updateSettings(patch);
     if (patch.chatModel && patch.chatModel !== before.chatModel) loadChat().catch(() => {});
-    else if (patch.contextSize && patch.contextSize !== before.contextSize && engine.isChatReady()) {
+    else if (((patch.contextSize && patch.contextSize !== before.contextSize) || (patch.gpuLayers !== undefined && patch.gpuLayers !== before.gpuLayers)) && engine.isChatReady()) {
       await engine.unloadChatModel();
       loadChat().catch(() => {});
     }

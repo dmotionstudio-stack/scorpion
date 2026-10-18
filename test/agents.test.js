@@ -145,3 +145,25 @@ test('JSON files with a byte-order mark still load', () => {
   fs.writeFileSync(path.join(store.paths.data, 'agents.json'), '﻿[{"id":"custom-bom","name":"Bom","tools":["*"]}]');
   assert.equal(agents.getAgent('custom-bom').name, 'Bom');
 });
+
+test('Ollama models are discovered from manifests and used in place', async () => {
+  const { scanOllama } = await import('../src/main/models.js');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kenzo-ollama-'));
+  const dig = (n) => `sha256:${n.padStart(64, '0')}`;
+  const blob = (d) => path.join(root, 'blobs', d.replace(':', '-'));
+  fs.mkdirSync(path.join(root, 'blobs'), { recursive: true });
+  fs.writeFileSync(blob(dig('a1')), 'GGUF...');
+  fs.writeFileSync(blob(dig('b2')), 'projector');
+  const dir = path.join(root, 'manifests', 'registry.ollama.ai', 'library', 'tev1');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, '4b'), JSON.stringify({ format: 'gguf', layers: [
+    { mediaType: 'application/vnd.ollama.image.projector', digest: dig('b2'), size: 9 },
+    { mediaType: 'application/vnd.ollama.image.model', digest: dig('a1'), size: 7 },
+  ] }));
+  const mlx = path.join(root, 'manifests', 'registry.ollama.ai', 'library', 'other');
+  fs.mkdirSync(mlx, { recursive: true });
+  fs.writeFileSync(path.join(mlx, 'latest'), JSON.stringify({ format: 'safetensors', layers: [{ mediaType: 'application/vnd.ollama.image.model', digest: dig('a1') }] }));
+  const found = scanOllama(root);
+  assert.deepEqual(found.map((m) => [m.name, m.source, m.kind]), [['tev1:4b', 'ollama', 'chat']]);
+  assert.equal(found[0].path, blob(dig('a1')));
+});

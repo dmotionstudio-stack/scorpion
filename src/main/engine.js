@@ -19,8 +19,11 @@ export async function engineInfo() {
   return {
     gpu: l.gpu || 'cpu',
     contextSize: chat.context?.contextSize ?? null,
+    gpuLayers: chat.model ? chat.model.gpuLayers : null,
+    totalLayers: chat.model ? chat.model.fileInsights.totalLayers : null,
     parallelHelpers: chat.context ? chat.context.totalSequences > 1 : null,
     chatModel: chat.path,
+    chatModelName: chatModelName(),
     embedModel: embed.path,
   };
 }
@@ -32,14 +35,24 @@ async function disposeChat() {
   Object.assign(chat, { path: null, model: null, context: null, session: null, threadId: null, systemPrompt: null });
 }
 
-export async function loadChatModel(modelPath, { contextSize = 8192, onProgress } = {}) {
-  if (chat.path === modelPath && chat.model) return engineInfo();
+export async function loadChatModel(modelPath, { contextSize = 8192, gpuLayers: requested = 'auto', name = null, onProgress } = {}) {
+  if (chat.path === modelPath && chat.model && chat.requestedGpuLayers === requested) return engineInfo();
   await disposeChat();
   const l = await ensureLlama();
-  chat.model = await l.loadModel({
-    modelPath,
-    onLoadProgress: (p) => onProgress?.(p),
-  });
+  // The automatic GPU-offload estimate can overshoot on shared-memory GPUs. If
+  // it fails, fall back conservatively (generation needs memory beyond what
+  // loading does), down to CPU-only. A number from Settings is tried first.
+  let loadErr;
+  const attempts = typeof requested === 'number' ? [requested, ...[8, 0].filter((n) => n < requested)] : [requested, 16, 8, 0];
+  for (const gpuLayers of attempts) {
+    try {
+      chat.model = await l.loadModel({ modelPath, gpuLayers, onLoadProgress: (p) => onProgress?.(p) });
+      break;
+    } catch (err) { loadErr = err; }
+  }
+  if (!chat.model) throw loadErr;
+  chat.name = name;
+  chat.requestedGpuLayers = requested;
   // A second sequence lets a helper agent run while the main chat waits on it,
   // but each sequence costs a full context of memory. The main chat's context
   // matters more, so keep 2 sequences only if the main one still gets (almost)
@@ -71,8 +84,9 @@ export function isChatReady() {
   return Boolean(chat.session);
 }
 
+// Ollama blobs are named by hash, so callers pass a friendly name when loading.
 export function chatModelName() {
-  return chat.path ? path.basename(chat.path, '.gguf') : null;
+  return chat.path ? chat.name || path.basename(chat.path, '.gguf') : null;
 }
 
 /**
