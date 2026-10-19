@@ -11,7 +11,7 @@ import * as memory from './memory.js';
 import * as agents from './agents.js';
 import * as scheduler from './scheduler.js';
 import * as voice from './voice.js';
-import { TOOLS } from './tools.js';
+import { TOOLS, fileSystemRoots } from './tools.js';
 import { applyEvent } from '../shared/events.js';
 import { buildFunctions, buildSystemPrompt, withDocumentContext, withConversationRecall } from './agent.js';
 
@@ -314,11 +314,13 @@ async function loadChat() {
  * `approve` decides write/exec actions; chats ask the user in the UI, schedules
  * use their "allow changes" setting. `workspace` overrides the folder.
  */
-async function runAgentTurn({ thread, text, displayText = text, approve, workspace, mode, interactive = false }) {
+async function runAgentTurn({ thread, text, displayText = text, approve, workspace, mode, interactive = false, spoken = false }) {
   const threadId = thread.id;
   if (running.has(threadId)) throw new Error('Scorpion is still answering in this chat');
   const base = store.getSettings();
-  const settings = { ...base, workspace: workspace ?? base.workspace, mode: mode || thread.mode || 'build' };
+  const full = base.fileAccess === 'full';
+  // Full access: every drive is allowed, and relative paths start at home.
+  const settings = { ...base, workspace: workspace ?? base.workspace ?? (full ? os.homedir() : null), mode: mode || thread.mode || 'build' };
   const agent = agents.getAgent(thread.agentId || 'scorpion');
   if (!engine.isChatReady()) await loadChat();
 
@@ -338,7 +340,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
   // Only a chat someone is watching can ask for folders; scheduled runs keep
   // to their workspace and the folders already allowed for good.
   const requestFolderAccess = interactive ? (req) => askFolderAccess(req, controller.signal) : null;
-  const allowedFolders = [...(base.allowedFolders || []), ...sessionFolders];
+  const allowedFolders = full ? fileSystemRoots() : [...(base.allowedFolders || []), ...sessionFolders];
 
   const searcher = rag.createSearcher(settings);
   let streamed = '';
@@ -353,12 +355,14 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
         memoryBlock: settings.memoryEnabled ? memory.memoryPromptBlock() : '',
         agent,
         canAskForFolders: Boolean(requestFolderAccess),
+        spoken,
       }),
       text: await withDocumentContext(recall, searcher),
       temperature: agent.temperature ?? settings.temperature,
       // Building writes whole files and iterates on errors, so it gets more room.
       // A single reply also has to fit in the context, so cap it at half of it.
-      maxTokens: Math.min(settings.mode === 'build' ? 6144 : 3072, Math.floor((info.contextSize || 8192) / 2)),
+      // A spoken conversation wants short, quick turns, like talking to a person.
+      maxTokens: spoken ? 400 : Math.min(settings.mode === 'build' ? 6144 : 3072, Math.floor((info.contextSize || 8192) / 2)),
       signal: controller.signal,
       functions: buildFunctions({
         settings, agent, rag: searcher, memory, threadId, emit, requestApproval, requestFolderAccess, allowedFolders,
@@ -441,10 +445,10 @@ async function askFolderAccess({ folder, name, summary }, signal) {
   return { folder };
 }
 
-async function chatSend({ threadId, text }) {
+async function chatSend({ threadId, text, spoken = false }) {
   const thread = store.getThread(threadId);
   if (!thread) throw new Error('Chat not found');
-  const result = await runAgentTurn({ thread, text, approve: askUser, interactive: true });
+  const result = await runAgentTurn({ thread, text, approve: askUser, interactive: true, spoken });
   return { ok: !result.error };
 }
 
@@ -490,14 +494,23 @@ function registerIpc() {
     await voice.installVoice((p) => send('voice:download', p));
     return voice.voiceStatus();
   });
-  h('voice:warm', () => { voice.warmUp(); return true; });
+  h('voice:warm', () => { voice.warmUp(store.getSettings().voiceLanguage); return true; });
+  h('voice:installLanguage', async (lang) => {
+    await voice.installLanguageVoice(lang, (p) => send('voice:download', { ...p, lang }));
+    return voice.voiceStatus();
+  });
   h('voice:uninstall', async () => { await voice.uninstallVoice(); return voice.voiceStatus(); });
   h('voice:transcribe', async (pcm) => voice.transcribe(pcm, store.getSettings().voiceLanguage));
   h('voice:speak', async (text) => {
     const s = store.getSettings();
-    return voice.speak(text, { voice: s.voiceName, speed: s.voiceSpeed });
+    return voice.speak(text, { voice: s.voiceName, speed: s.voiceSpeed, language: s.voiceLanguage });
   });
   // macOS asks the user once; Windows uses its own privacy setting.
+  // Interact takes over the whole screen (no title bar or taskbar).
+  h('window:fullscreen', (on) => {
+    if (win && !win.isDestroyed()) win.setFullScreen(Boolean(on));
+    return Boolean(win?.isFullScreen());
+  });
   h('voice:micAccess', async () => {
     if (process.platform !== 'darwin') return true;
     if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true;

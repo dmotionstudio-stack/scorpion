@@ -29,7 +29,7 @@ export const CATALOG = [
     uri: 'hf:bartowski/google_gemma-3-4b-it-GGUF/google_gemma-3-4b-it-Q4_K_M.gguf',
     size: '2.3 GB',
     skill: 'tools',
-    note: 'Good writing and many languages. Gemma licence.',
+    note: 'Best for other languages: the most natural Haitian Creole, French and Spanish in our tests. Good writing. Gemma licence.',
   },
   {
     id: 'llama3.2-3b',

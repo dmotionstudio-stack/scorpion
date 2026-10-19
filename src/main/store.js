@@ -9,6 +9,8 @@ const DEFAULT_SETTINGS = {
   embedModel: null, // absolute path to an embedding .gguf (for documents)
   workspace: null, // folder the agent may read/write/run commands in
   allowedFolders: [], // other folders the user chose "Always allow" for
+  online: false, // Online mode: web search and page reading for the agent
+  fileAccess: 'ask', // 'ask' = workspace + allowed folders; 'full' = every file on the computer
   contextSize: 8192,
   gpuLayers: 'auto', // 'auto' or how many model layers to run on the GPU (0 = CPU only)
   temperature: 0.6,
@@ -21,7 +23,7 @@ const DEFAULT_SETTINGS = {
   voiceSpeak: false, // read replies aloud
   voiceName: 'af_heart', // Kokoro voice id
   voiceSpeed: 1, // 0.5–2
-  voiceLanguage: 'english', // what the user speaks (Whisper)
+  voiceLanguage: 'en', // the language you speak and Scorpion replies in (see voice.js LANGUAGES)
 };
 
 let dataDir = null;

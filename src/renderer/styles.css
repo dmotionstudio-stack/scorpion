@@ -51,7 +51,9 @@ code, pre { font-family: var(--mono); }
 .sidenav { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--border); padding-top: 8px; }
 .navbtn { text-align: left; background: none; border: 0; padding: 7px 8px; border-radius: 8px; cursor: pointer; color: var(--muted); }
 .navbtn:hover, .navbtn.active { background: var(--panel-2); color: var(--text); }
-.offline-badge { font-size: 12px; color: var(--accent); padding: 4px 8px; }
+.offline-badge { font-size: 12px; color: var(--accent); padding: 4px 8px; background: none; border: 0; cursor: pointer; text-align: left; border-radius: 6px; }
+.offline-badge:hover { background: var(--panel-2); }
+.offline-badge.online { color: #4cc38a; }
 
 /* buttons */
 .btn { background: var(--panel-2); border: 1px solid var(--border); padding: 7px 14px; border-radius: 8px; cursor: pointer; }
@@ -323,3 +325,5 @@ html.glass-native .thread, html.glass-css .thread { color: color-mix(in srgb, va
 .ix-hint .key { display: inline-block; padding: 0 4px; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); border-radius: 3px; margin: 0 2px 0 6px; font-size: 10px; }
 @media (max-width: 900px) { .ix-hint { display: none; } }
 @media (prefers-reduced-motion: reduce) { .ix-talk[aria-pressed="true"], .interact .ix-dot { animation: none !important; } }
+.ix-lang { max-width: 210px; padding: 0 8px; text-overflow: ellipsis; }
+.ix-lang option { background: #111; color: #eee; }

@@ -51,7 +51,8 @@ export class Recorder {
       this.chunks.push(data);
       spokenMs += ms;
       quietMs = loud ? 0 : quietMs + ms;
-      if (quietMs > 1200 || spokenMs > 30000) onEnd?.(this.stop());
+      // ~0.8 s of quiet ends your turn: quick, like a person waiting for you to finish.
+      if (quietMs > 800 || spokenMs > 30000) onEnd?.(this.stop());
     };
     source.connect(node);
     node.connect(this.ctx.destination);
@@ -85,6 +86,7 @@ export class Speaker {
     this.generation = 0;
     this.onIdle = null;
     this.onChange = null; // speaking started or stopped
+    this.spokeYet = false; // first piece of a reply is cut early so speech starts sooner
   }
 
   get busy() { return this.playing || this.queue.length > 0; }
@@ -92,7 +94,8 @@ export class Speaker {
   feed(delta) {
     this.buffer += delta;
     let cut;
-    while ((cut = nextCut(this.buffer)) > 0) {
+    while ((cut = nextCut(this.buffer, !this.spokeYet)) > 0) {
+      this.spokeYet = true;
       this.enqueue(this.buffer.slice(0, cut));
       this.buffer = this.buffer.slice(cut);
     }
@@ -127,7 +130,8 @@ export class Speaker {
     while (pending && gen === this.generation) {
       const clip = await pending;
       pending = next(); // synthesize the next sentence while this one plays
-      if (clip?.audio?.length && gen === this.generation) await this.play(clip);
+      if (clip?.system && gen === this.generation) await this.playSystem(clip);
+      else if (clip?.audio?.length && gen === this.generation) await this.play(clip);
       pending ??= next();
     }
     if (gen !== this.generation) return;
@@ -155,6 +159,22 @@ export class Speaker {
     });
   }
 
+  // Languages without a downloaded voice use the computer's own voice for
+  // that language, if it has one (Windows and macOS language packs).
+  playSystem({ text, lang }) {
+    return new Promise((resolve) => {
+      const synth = window.speechSynthesis;
+      const voice = synth?.getVoices().find((v) => v.lang.toLowerCase().startsWith(lang));
+      if (!voice) { this.onNoVoice?.(lang); resolve(); return; }
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = voice;
+      u.lang = voice.lang;
+      u.onend = u.onerror = () => resolve();
+      this.utterance = u;
+      synth.speak(u);
+    });
+  }
+
   // How loud the current speech is right now, 0..1 (drives the orb).
   level() {
     if (!this.playing || !this.analyser) return 0;
@@ -171,21 +191,25 @@ export class Speaker {
     this.buffer = '';
     this.playing = false;
     try { this.source?.stop(); } catch { /* not playing */ }
+    if (this.utterance) { window.speechSynthesis?.cancel(); this.utterance = null; }
+    this.spokeYet = false;
     this.onChange?.();
   }
 }
 
 // Where the next speakable piece ends: after a sentence of at least ~30
 // characters or a paragraph break. Code blocks are held until they close.
-export function nextCut(text) {
+// The first piece of a reply may also end at a comma, so speech starts sooner.
+export function nextCut(text, first = false) {
   const fences = text.split('```').length - 1;
   if (fences % 2) return -1;
   if (fences) return text.lastIndexOf('```') + 3;
-  const re = /[.!?…]["')\]*_]*\s+|\n\s*\n/g;
+  const re = first ? /[.!?…,;:]["')\]*_]*\s+|\n\s*\n/g : /[.!?…]["')\]*_]*\s+|\n\s*\n/g;
+  const min = first ? 18 : 30;
   let m;
   while ((m = re.exec(text))) {
     const end = m.index + m[0].length;
-    if (end >= 30 || m[0].includes('\n')) return end;
+    if (end >= min || m[0].includes('\n')) return end;
   }
   return -1;
 }

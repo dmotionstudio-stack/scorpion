@@ -69,5 +69,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   speak: invoke('voice:speak'),
   micAccess: invoke('voice:micAccess'),
   warmVoice: invoke('voice:warm'),
+  installLanguageVoice: invoke('voice:installLanguage'),
+  setFullScreen: invoke('window:fullscreen'),
   onVoiceDownload: on('voice:download'),
 });

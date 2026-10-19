@@ -30,7 +30,7 @@
       <div class="sidebar-foot">
         <button class="navbtn interact-open" id="open-interact" title="Talk to Scorpion face to face: a full-screen orb with voice (Ctrl+I)">◉ Interact</button>
         <button class="navbtn" id="open-settings" title="Models, documents, agents, schedules, memory and preferences">⚙️ Settings</button>
-        <div class="offline-badge" title="Scorpion makes no network requests while you chat">● Offline &amp; private</div>
+        <button type="button" class="offline-badge" id="online-badge" title="Click to switch Online mode">● Offline &amp; private</button>
       </div>
     </aside>
 
@@ -211,6 +211,19 @@
             <p class="muted small">The agent reads, writes and runs commands in this folder. For files anywhere else, Scorpion asks you first.</p>
           </div>
           <div class="field">
+            <label>Online mode</label>
+            <label class="toggle"><input type="checkbox" id="online-mode"><span>Let Scorpion search the internet and read web pages</span></label>
+            <p class="muted small">Off: Scorpion never uses the network while you chat. On: the agent can look things up (DuckDuckGo, Wikipedia) and read pages for current information, and names its sources. Your chats, files and voice still stay on this computer.</p>
+          </div>
+          <div class="field">
+            <label for="file-access">File access</label>
+            <select id="file-access">
+              <option value="ask">Ask before using folders outside the workspace (recommended)</option>
+              <option value="full">Full access to every file on this computer</option>
+            </select>
+            <p class="muted small" id="file-access-hint"></p>
+          </div>
+          <div class="field" id="allowed-folders-field">
             <label>Always allowed folders</label>
             <div id="allowed-folders"></div>
             <p class="muted small">Folders outside the workspace you chose "Always allow" for. Remove one to be asked again.</p>
@@ -226,9 +239,10 @@
             <div id="voice-setup"></div>
             <div id="voice-options" class="hidden">
               <label class="toggle"><input type="checkbox" id="voice-speak"><span>Read replies aloud</span></label>
-              <div class="row"><span>Voice</span><select id="voice-name"></select><button class="btn small" id="voice-test" type="button">▶ Test</button></div>
+              <div class="row" id="voice-name-row"><span>Voice</span><select id="voice-name"></select></div>
               <div class="row"><span>Speed</span><input type="range" id="voice-speed" min="0.7" max="1.5" step="0.05"><span id="voice-speed-val"></span></div>
-              <div class="row"><span>I speak</span><select id="voice-language"></select></div>
+              <div class="row"><span>Language</span><select id="voice-language"></select><button class="btn small" id="voice-test" type="button">▶ Test</button></div>
+              <p class="muted small" id="voice-language-note"></p>
               <div class="row"><button class="btn small" id="voice-uninstall" type="button">Uninstall voice</button></div>
             </div>
             <p class="muted small">Talk with 🎤 (one message) or 🗣 (a hands-free conversation). Listening and speaking run on this computer: a one-time download of about 230 MB, then no internet. Scorpion's voices speak English; it understands the language you choose.</p>
@@ -277,13 +291,14 @@
       <div class="ix-row">
         <button type="button" class="ix-btn ix-talk" id="ix-talk" aria-pressed="false">● TALK</button>
         <button type="button" class="ix-btn" id="ix-voice" aria-pressed="false" title="Read replies aloud">VOICE OFF</button>
+        <select class="ix-btn ix-lang" id="ix-lang" aria-label="Language" title="The language you speak and Scorpion replies in"></select>
         <span class="ix-gap"></span>
         <button type="button" class="ix-btn" id="ix-zoom-in" aria-label="Zoom in">+</button>
         <button type="button" class="ix-btn" id="ix-zoom-out" aria-label="Zoom out">−</button>
         <button type="button" class="ix-btn" id="ix-reset">RESET</button>
       </div>
     </div>
-    <div class="ix-hud ix-hint"><span class="key">SPACE</span> talk <span class="key">DRAG</span> spin <span class="key">SCROLL</span> zoom <span class="key">R</span> reset <span class="key">ESC</span> exit</div>
+    <div class="ix-hud ix-hint"><span class="key">SPACE</span> talk / interrupt <span class="key">DRAG</span> spin <span class="key">SCROLL</span> zoom <span class="key">R</span> reset <span class="key">ESC</span> exit</div>
   </div>
   <div class="toast hidden" id="toast" role="status"></div>
 

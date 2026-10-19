@@ -107,7 +107,7 @@ function currentMode() {
 function renderModes() {
   const mode = currentMode();
   document.querySelectorAll('#modes [data-mode]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === mode)));
-  const needsWs = mode !== 'chat' && !S.settings.workspace;
+  const needsWs = mode !== 'chat' && !S.settings.workspace && S.settings.fileAccess !== 'full';
   $('#mode-hint').textContent = needsWs ? `${MODE_HINTS[mode]} Scorpion asks for a folder when it needs one.` : MODE_HINTS[mode];
 }
 
@@ -569,7 +569,7 @@ async function talkTurn() {
     if (!V.talk) return;
     if (!text) { talkTurn(); return; } // silence or noise: keep listening
     if (/^(stop|goodbye|bye|end (the )?conversation)[.!]?$/i.test(text.trim())) { stopTalk(); toast('Conversation ended.'); return; }
-    sendMessage(text);
+    sendMessage(text, { spoken: true });
   });
 }
 
@@ -613,6 +613,55 @@ function stopTalk() {
   renderVoiceButtons();
 }
 
+// ---- languages ----
+function currentLanguage() {
+  const langs = S.voice?.languages || [];
+  const v = String(S.settings.voiceLanguage || 'en').toLowerCase();
+  return langs.find((l) => l.id === v || l.name.toLowerCase() === v) || langs[0] || { id: 'en', name: 'English', native: 'English', speech: 'kokoro', voiceReady: true };
+}
+function languageOptions() {
+  const cur = currentLanguage().id;
+  return (S.voice?.languages || []).map((l) => {
+    const tag = l.speech === 'system' ? ' · computer voice' : l.approximate ? ' · approximate voice' : l.speech !== 'kokoro' && !l.voiceReady ? ' · voice download' : '';
+    return `<option value="${l.id}"${l.id === cur ? ' selected' : ''}>${esc(l.native)}${l.native !== l.name ? ` (${esc(l.name)})` : ''}${tag}</option>`;
+  }).join('');
+}
+function languageNote(l) {
+  if (V.langDownload) return `Downloading the ${l.name} voice… ${Math.min(100, Math.round(((V.langDownload.loaded || 0) / (V.langDownload.total || 1)) * 100))}%`;
+  if (l.id === 'en') return 'Scorpion listens, replies and speaks in English.';
+  const base = `Scorpion listens to ${l.name} and replies in ${l.name}.`;
+  if (l.speech === 'system') return `${base} It speaks with your computer's ${l.name} voice, if one is installed (Windows: Settings → Time & language → Speech).`;
+  const tip = l.id === 'ht' && !/gemma/i.test(S.settings.chatModel || '') ? ' Tip: Gemma 3 4B (Models) writes the most natural Creole.' : '';
+  if (l.approximate) return `${base} There is no ${l.name} voice yet, so the French voice reads the replies: understandable, but with a French accent.${tip}`;
+  return `${base} ${l.voiceReady ? `Its ${l.name} voice is installed.` : `Its ${l.name} voice is a one-time download of about ${gb(S.voice?.languageVoiceBytes || 0)}.`}`;
+}
+async function setLanguage(id) {
+  speaker.stop();
+  S.settings = await api.updateSettings({ voiceLanguage: id });
+  const lang = currentLanguage();
+  renderVoiceSettings();
+  renderInteract();
+  if (S.voice?.installed && lang.speech !== 'kokoro' && lang.speech !== 'system' && !lang.voiceReady) {
+    V.langDownload = { loaded: 0, total: S.voice.languageVoiceBytes };
+    renderVoiceSettings();
+    try {
+      S.voice = await api.installLanguageVoice(id);
+      toast(`${lang.name} voice installed.`);
+    } catch (err) {
+      toast(`The ${lang.name} voice could not be downloaded: ${errText(err)}`, 8000);
+    }
+    V.langDownload = null;
+    renderVoiceSettings();
+    renderInteract();
+  }
+  api.warmVoice();
+}
+speaker.onNoVoice = (lang) => {
+  if (V.warnedNoVoice === lang) return;
+  V.warnedNoVoice = lang;
+  toast(`Your computer has no voice for this language, so replies are shown but not spoken. Windows: Settings → Time & language → Speech → Add voices.`, 9000);
+};
+
 function renderVoiceSettings() {
   const v = S.voice || {};
   const d = V.download;
@@ -628,7 +677,10 @@ function renderVoiceSettings() {
   const speed = Number(S.settings.voiceSpeed ?? 1);
   $('#voice-speed').value = String(speed);
   $('#voice-speed-val').textContent = `${speed.toFixed(2)}×`;
-  $('#voice-language').innerHTML = v.languages.map((l) => `<option value="${l}"${l === S.settings.voiceLanguage ? ' selected' : ''}>${l[0].toUpperCase()}${l.slice(1)}</option>`).join('');
+  $('#voice-language').innerHTML = languageOptions();
+  const lang = currentLanguage();
+  $('#voice-name-row').classList.toggle('hidden', lang.id !== 'en');
+  $('#voice-language-note').textContent = languageNote(lang);
 }
 
 function wireVoice() {
@@ -638,7 +690,7 @@ function wireVoice() {
     if (!voiceReady()) return;
     speaker.stop();
     await listen((text) => {
-      if (text) sendMessage(text);
+      if (text) sendMessage(text, { spoken: true });
       else toast('Didn\'t catch that. Try again a little closer to the microphone.');
     });
   };
@@ -659,6 +711,13 @@ function wireVoice() {
     if (e.target.closest('#voice-install')) installVoice();
   };
   api.onVoiceDownload((p) => {
+    if (p.lang) {
+      if (p.done || !V.langDownload) return;
+      V.langDownload = p;
+      if (S.view === 'settings') renderVoiceSettings();
+      renderInteract();
+      return;
+    }
     if (p.done || !V.download) return;
     V.download = p;
     if (S.view === 'settings') renderVoiceSettings();
@@ -675,7 +734,7 @@ function wireVoice() {
   };
   $('#voice-speed').oninput = (e) => { $('#voice-speed-val').textContent = `${Number(e.target.value).toFixed(2)}×`; };
   $('#voice-speed').onchange = async (e) => { S.settings = await api.updateSettings({ voiceSpeed: Number(e.target.value) }); };
-  $('#voice-language').onchange = async (e) => { S.settings = await api.updateSettings({ voiceLanguage: e.target.value }); };
+  $('#voice-language').onchange = (e) => setLanguage(e.target.value);
   $('#voice-test').onclick = () => speaker.say('Hi, I\'m Scorpion. This is how I sound. I run entirely on your computer.');
   $('#voice-uninstall').onclick = async () => {
     if (!confirm('Remove the voice models (about 230 MB)? You can install them again any time.')) return;
@@ -699,6 +758,7 @@ const STATE_LABEL = { standby: 'STANDBY', listening: 'LISTENING', thinking: 'THI
 async function openInteract() {
   if (IX.open) return;
   IX.open = true;
+  api.setFullScreen(true);
   $('#interact').classList.remove('hidden');
   $('#interact').dataset.state = '';
   $('#ix-you').textContent = '';
@@ -725,6 +785,7 @@ async function openInteract() {
 function closeInteract() {
   if (!IX.open) return;
   IX.open = false;
+  api.setFullScreen(false);
   clearInterval(IX.timer);
   IX.orb?.stop();
   if (V.talk) stopTalk();
@@ -761,6 +822,8 @@ function renderInteract() {
     ? `DOWNLOADING VOICE ${Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100))}%`
     : state === 'standby' && V.talk ? 'READY' : STATE_LABEL[state] || 'STANDBY';
   $('#ix-model').textContent = S.engine?.chatModelName ? `· ${S.engine.chatModelName}` : '';
+  if (document.activeElement !== $('#ix-lang')) $('#ix-lang').innerHTML = languageOptions();
+  if (V.langDownload) $('#ix-state').textContent = `DOWNLOADING VOICE ${Math.min(100, Math.round(((V.langDownload.loaded || 0) / (V.langDownload.total || 1)) * 100))}%`;
   const talk = $('#ix-talk');
   talk.setAttribute('aria-pressed', String(V.talk));
   talk.textContent = V.talk ? '■ STOP' : S.voice?.installed ? '● TALK' : d ? 'INSTALLING…' : '⬇ INSTALL VOICE';
@@ -790,6 +853,7 @@ function wireInteract() {
   $('#open-interact').onclick = openInteract;
   $('#ix-close').onclick = closeInteract;
   $('#ix-talk').onclick = () => (V.talk ? stopTalk() : startTalk());
+  $('#ix-lang').onchange = (e) => setLanguage(e.target.value);
   $('#ix-voice').onclick = () => $('#read-aloud').onclick();
   $('#ix-zoom-in').onclick = () => IX.orb?.zoomIn();
   $('#ix-zoom-out').onclick = () => IX.orb?.zoomOut();
@@ -801,24 +865,45 @@ function wireInteract() {
     $('#ix-input').value = '';
     if (!S.settings.chatModel) closeInteract();
     speaker.stop();
-    sendMessage(text);
+    sendMessage(text, { spoken: V.talk || speaksReplies() });
   };
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); IX.open ? closeInteract() : openInteract(); return; }
     if (!IX.open) return;
     if (e.key === 'Escape') { e.preventDefault(); closeInteract(); return; }
     if (e.target.closest?.('input, textarea, select')) return;
-    if (e.key === ' ') { e.preventDefault(); $('#ix-talk').click(); }
+    if (e.key === ' ') {
+      e.preventDefault();
+      // Talking over Scorpion interrupts it, like in a real conversation.
+      if (V.talk && speaker.playing) { speaker.stop(); talkTurn(); return; }
+      $('#ix-talk').click();
+    }
     else if (e.key === 'r' || e.key === 'R') IX.orb?.resetView();
     else if (e.key === '+' || e.key === '=') IX.orb?.zoomIn();
     else if (e.key === '-' || e.key === '_') IX.orb?.zoomOut();
   });
 }
 
+function renderOnlineBadge() {
+  const on = Boolean(S.settings.online);
+  const b = $('#online-badge');
+  b.textContent = on ? '● Online: web search on' : '● Offline & private';
+  b.classList.toggle('online', on);
+  b.title = on ? 'Scorpion may search the web and read pages. Click to go offline.' : 'Scorpion makes no network requests while you chat. Click to go online.';
+}
+
 // ---------- settings page ----------
 function renderSettings() {
   renderVoiceSettings();
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
+  $('#online-mode').checked = Boolean(S.settings.online);
+  renderOnlineBadge();
+  const full = S.settings.fileAccess === 'full';
+  $('#file-access').value = full ? 'full' : 'ask';
+  $('#file-access-hint').textContent = full
+    ? 'Scorpion can read, create, edit and move files anywhere on this computer. Changes and commands still ask first unless Auto-approve is on. System folders (Windows, Program Files) stay read-only.'
+    : 'Scorpion works in the workspace folder and asks before touching files anywhere else.';
+  $('#allowed-folders-field').classList.toggle('hidden', full);
   const allowed = S.settings.allowedFolders || [];
   $('#allowed-folders').innerHTML = allowed.length
     ? allowed.map((f) => `<div class="row"><code>${esc(f)}</code><button class="btn small" data-unallow="${esc(f)}">Remove</button></div>`).join('')
@@ -894,7 +979,7 @@ async function newThread(agentId) {
   $('#input').focus();
 }
 
-async function sendMessage(text) {
+async function sendMessage(text, { spoken = false } = {}) {
   text = text.trim();
   if (!text) return;
   if (IX.open) $('#ix-you').textContent = text;
@@ -906,7 +991,7 @@ async function sendMessage(text) {
   S.running.add(thread.id);
   $('#input').value = ''; autosize();
   renderThreads(); renderModelSwitch(); renderMessages();
-  try { await api.send({ threadId: thread.id, text }); } catch (err) {
+  try { await api.send({ threadId: thread.id, text, spoken }); } catch (err) {
     S.running.delete(thread.id);
     thread.messages.at(-1).error = String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
     renderMessages();
@@ -1175,6 +1260,23 @@ function wire() {
   api.onOpenThread((id) => openThread(id));
   // The agent can set the workspace or allow a folder mid-chat.
   api.onSettingsChanged((settings) => { S.settings = settings; renderTopbar(); renderModes(); renderSettings(); renderVoiceButtons(); });
+  const setOnline = async (on) => {
+    S.settings = await api.updateSettings({ online: on });
+    renderSettings();
+    toast(on ? 'Online mode on: Scorpion can search the web and read pages.' : 'Offline: Scorpion makes no network requests while you chat.');
+  };
+  $('#online-mode').onchange = (e) => setOnline(e.target.checked);
+  $('#online-badge').onclick = () => setOnline(!S.settings.online);
+  $('#file-access').onchange = async (e) => {
+    const full = e.target.value === 'full';
+    if (full && !confirm('Give Scorpion access to every file on this computer?\n\nIt can then read, create, edit and move any of your files. Changes and commands still ask for your approval unless Auto-approve is on. System folders stay read-only.')) {
+      e.target.value = 'ask';
+      return;
+    }
+    S.settings = await api.updateSettings({ fileAccess: full ? 'full' : 'ask' });
+    renderSettings();
+    renderModes();
+  };
   $('#allowed-folders').onclick = async (e) => {
     const f = e.target.closest('[data-unallow]')?.dataset.unallow;
     if (!f) return;

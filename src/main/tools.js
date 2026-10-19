@@ -9,6 +9,7 @@ import os from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import { evaluate } from './calc.js';
 import { extractText } from './rag.js';
+import { webSearch, readWebpage, UNTRUSTED } from './web.js';
 
 // Python is optional; find whichever launcher this computer has, once.
 let pythonCmd;
@@ -98,6 +99,25 @@ export class FolderAccessNeeded extends Error {
     super(message);
     this.folder = folder;
   }
+}
+
+// Every drive (Windows) or "/" elsewhere: what "Full access" allows.
+export function fileSystemRoots() {
+  if (process.platform !== 'win32') return ['/'];
+  const roots = [];
+  for (let c = 65; c <= 90; c++) { const d = `${String.fromCharCode(c)}:\\`; if (fs.existsSync(d)) roots.push(d); }
+  return roots;
+}
+
+// Operating-system folders the agent may read but never change, whatever the
+// access setting: a confused model must not be able to break the computer.
+const PROTECTED = process.platform === 'win32'
+  ? [process.env.SystemRoot || 'C:\\Windows', process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.ProgramData].filter(Boolean)
+  : ['/System', '/usr', '/bin', '/sbin', '/etc', '/private/etc', '/Library', '/boot', '/proc', '/sys', '/dev'];
+export function isProtectedPath(p) {
+  const norm = (x) => (process.platform === 'win32' ? path.resolve(x).toLowerCase() : path.resolve(x));
+  const target = norm(p);
+  return PROTECTED.some((dir) => { const d = norm(dir); return target === d || target.startsWith(d + path.sep); });
 }
 
 // Resolves a tool path inside the workspace or a folder the user allowed
@@ -345,6 +365,28 @@ export const TOOLS = {
       } finally {
         fs.rmSync(dir, { recursive: true, force: true });
       }
+    },
+  },
+
+  // Online mode only (see agent.js): nothing here runs while Scorpion is offline.
+  web_search: {
+    access: 'web',
+    description: 'Search the internet for current information. Returns titles, links and snippets; read the best page with read_webpage.',
+    params: { type: 'object', properties: { query: { type: 'string' } } },
+    async run({ query }) {
+      const results = await webSearch(String(query || '').slice(0, 300));
+      if (!results.length) return 'No results.';
+      return `${UNTRUSTED}\n\n${results.map((r, i) => `[${i + 1}] ${r.title}\n${r.url}\n${r.snippet}`).join('\n\n')}`;
+    },
+  },
+
+  read_webpage: {
+    access: 'web',
+    description: 'Read the text of a web page (http/https link). Cite the link when you use it.',
+    params: { type: 'object', properties: { url: { type: 'string' } } },
+    async run({ url }) {
+      const page = await readWebpage(String(url || '').trim());
+      return `${UNTRUSTED}\n\n${page.title ? `${page.title}\n` : ''}${page.url}\n\n${page.text || '(no readable text)'}`;
     },
   },
 

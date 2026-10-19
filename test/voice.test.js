@@ -29,7 +29,8 @@ test('voice is reported as not installed before the download', () => {
   const s = voiceStatus();
   assert.equal(s.installed, false);
   assert.ok(s.voices.some((v) => v.id === 'af_heart'));
-  assert.ok(s.languages.includes('english'));
+  for (const id of ['en', 'fr', 'ht', 'es']) assert.ok(s.languages.some((l) => l.id === id), id);
+  assert.equal(s.languages.find((l) => l.id === 'fr').voiceReady, false); // French voice is its own download
 });
 
 test('silent recordings are not sent to Whisper', async () => {
@@ -38,4 +39,19 @@ test('silent recordings are not sent to Whisper', async () => {
   assert.ok(loudness(Float32Array.from({ length: 16000 }, (_, i) => Math.sin(i / 5) * 0.1)) > 0.05);
   // Voice must be installed before anything is transcribed.
   await assert.rejects(() => transcribe(new Float32Array(16000)), /not installed/);
+});
+
+test('languages: old setting names still work, and every language has a voice plan', async () => {
+  const { languageOf, LANGUAGES } = await import('../src/main/voice.js');
+  assert.equal(languageOf('english').id, 'en');
+  assert.equal(languageOf('french').id, 'fr');
+  assert.equal(languageOf('nonsense').id, 'en');
+  assert.equal(languageOf('ht').native, 'Kreyòl ayisyen');
+  for (const l of LANGUAGES) assert.ok(['kokoro', 'system'].includes(l.speech) || /^[a-z]{3}$/.test(l.speech), l.id);
+});
+
+test('the first piece of a reply is cut early so speech starts sooner', () => {
+  const t = 'Bonjour, je vais bien merci, et vous aujourd hui';
+  assert.equal(nextCut(t), -1);
+  assert.equal(t.slice(0, nextCut(t, true)), 'Bonjour, je vais bien merci, ');
 });

@@ -1,7 +1,8 @@
 // Speech, fully offline: Whisper turns the microphone into text and Kokoro
-// reads replies aloud. Both run on ONNX Runtime in-process. The models are a
-// one-time ~230 MB download into Scorpion's own model library; after that no
-// network is ever used (remote loading stays switched off).
+// reads English replies aloud; Meta's MMS voices speak other languages. All
+// run on ONNX Runtime in-process. The base install is a one-time ~230 MB
+// download into Scorpion's own model library, plus ~38 MB per extra language
+// voice; after that no network is ever used (remote loading stays off).
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -26,15 +27,50 @@ export const VOICES = [
   { id: 'bm_fable', name: 'Fable (UK, male)' },
 ];
 
-// Whisper's language names for the "I speak" setting.
-export const LANGUAGES = ['english', 'spanish', 'french', 'german', 'italian', 'portuguese', 'dutch', 'russian', 'chinese',
-  'japanese', 'korean', 'arabic', 'hindi', 'turkish', 'polish', 'ukrainian', 'vietnamese', 'indonesian', 'thai', 'swedish'];
+// The languages Scorpion listens to (Whisper code), replies in, and speaks:
+// 'kokoro' (English), an MMS voice code (one ~38 MB download each), or
+// 'system' (the computer's own voice for that language, if it has one).
+// Haitian Creole has no ready-made MMS voice yet, so the French one stands in.
+export const LANGUAGES = [
+  { id: 'en', name: 'English', native: 'English', speech: 'kokoro' },
+  { id: 'fr', name: 'French', native: 'Français', speech: 'fra' },
+  { id: 'ht', name: 'Haitian Creole', native: 'Kreyòl ayisyen', speech: 'fra', approximate: true },
+  { id: 'es', name: 'Spanish', native: 'Español', speech: 'spa' },
+  { id: 'pt', name: 'Portuguese', native: 'Português', speech: 'por' },
+  { id: 'de', name: 'German', native: 'Deutsch', speech: 'deu' },
+  { id: 'it', name: 'Italian', native: 'Italiano', speech: 'system' },
+  { id: 'ru', name: 'Russian', native: 'Русский', speech: 'rus' },
+  { id: 'ar', name: 'Arabic', native: 'العربية', speech: 'ara' },
+  { id: 'hi', name: 'Hindi', native: 'हिन्दी', speech: 'hin' },
+  { id: 'vi', name: 'Vietnamese', native: 'Tiếng Việt', speech: 'vie' },
+  { id: 'ko', name: 'Korean', native: '한국어', speech: 'kor' },
+  { id: 'ro', name: 'Romanian', native: 'Română', speech: 'ron' },
+  { id: 'yo', name: 'Yoruba', native: 'Yorùbá', speech: 'yor' },
+  { id: 'zh', name: 'Chinese', native: '中文', speech: 'system' },
+  { id: 'ja', name: 'Japanese', native: '日本語', speech: 'system' },
+  { id: 'nl', name: 'Dutch', native: 'Nederlands', speech: 'system' },
+  { id: 'pl', name: 'Polish', native: 'Polski', speech: 'system' },
+  { id: 'tr', name: 'Turkish', native: 'Türkçe', speech: 'system' },
+  { id: 'uk', name: 'Ukrainian', native: 'Українська', speech: 'system' },
+  { id: 'id', name: 'Indonesian', native: 'Bahasa Indonesia', speech: 'system' },
+  { id: 'sw', name: 'Swahili', native: 'Kiswahili', speech: 'system' },
+];
+export const MMS_VOICE_BYTES = 38 * 1024 ** 2;
+const mmsId = (code) => `Xenova/mms-tts-${code}`;
+
+// Settings from before languages had codes stored Whisper's English names.
+export function languageOf(value) {
+  const v = String(value || 'en').toLowerCase();
+  return LANGUAGES.find((l) => l.id === v || l.name.toLowerCase() === v) || LANGUAGES[0];
+}
 
 let dir = null;
 let transformers = null;
 let asr = null;
 let tts = null;
 let installing = null;
+const mms = new Map(); // MMS voice code -> loaded pipeline
+const mmsInstalling = new Map();
 
 export function initVoice(modelsDir) {
   dir = path.join(modelsDir, 'voice');
@@ -54,9 +90,49 @@ const has = (id) => REQUIRED[id].every((f) => fs.existsSync(path.join(dir, id, f
 // halfway (files written as they stream in) never counts as installed.
 const marker = () => path.join(dir, 'installed.json');
 
+const mmsMarker = (code) => path.join(dir, `voice-${code}.json`);
+const mmsReady = (code) => Boolean(dir) && fs.existsSync(mmsMarker(code));
+
 export function voiceStatus() {
   const installed = Boolean(dir) && fs.existsSync(marker()) && has(WHISPER.id) && has(KOKORO.id);
-  return { installed, installing: Boolean(installing), voices: VOICES, languages: LANGUAGES, bytes: VOICE_DOWNLOAD_BYTES };
+  return {
+    installed,
+    installing: Boolean(installing),
+    voices: VOICES,
+    languages: LANGUAGES.map((l) => ({ ...l, voiceReady: l.speech === 'kokoro' ? installed : l.speech === 'system' ? true : mmsReady(l.speech) })),
+    bytes: VOICE_DOWNLOAD_BYTES,
+    languageVoiceBytes: MMS_VOICE_BYTES,
+  };
+}
+
+async function loadMms(code, progress_callback, download = false) {
+  const { pipeline } = await lib(download);
+  return pipeline('text-to-speech', mmsId(code), { dtype: 'q8', device: 'cpu', progress_callback });
+}
+
+// Downloads one language's MMS voice (~38 MB). Same rule as installVoice:
+// the marker is written only once the voice has loaded.
+export function installLanguageVoice(languageId, onProgress) {
+  const code = languageOf(languageId).speech;
+  if (code === 'kokoro' || code === 'system' || mmsReady(code)) return Promise.resolve();
+  if (!mmsInstalling.has(code)) {
+    mmsInstalling.set(code, (async () => {
+      const report = (p) => { if (p.status === 'progress') onProgress?.({ loaded: p.loaded ?? 0, total: Math.max(p.total ?? 0, MMS_VOICE_BYTES), done: false }); };
+      try {
+        fs.rmSync(path.join(dir, mmsId(code)), { recursive: true, force: true });
+        mms.set(code, await loadMms(code, report, true));
+        fs.writeFileSync(mmsMarker(code), JSON.stringify({ model: mmsId(code), at: new Date().toISOString() }));
+        onProgress?.({ done: true });
+      } catch (err) {
+        fs.rmSync(path.join(dir, mmsId(code)), { recursive: true, force: true });
+        throw err;
+      } finally {
+        transformers.env.allowRemoteModels = false;
+        mmsInstalling.delete(code);
+      }
+    })());
+  }
+  return mmsInstalling.get(code);
 }
 
 // One-time download of both models. onProgress gets { file, loaded, total, done }.
@@ -101,6 +177,8 @@ export async function unloadVoice() {
   await asr?.dispose?.().catch(() => {});
   asr = null;
   tts = null;
+  for (const p of mms.values()) await p?.dispose?.().catch(() => {});
+  mms.clear();
 }
 
 async function loadAsr(progress_callback, download = false) {
@@ -117,10 +195,12 @@ async function loadTts(progress_callback, download = false) {
 // Load both models ahead of time (they take a few seconds), so the first
 // spoken sentence or transcription doesn't wait for them.
 let warming = null;
-export function warmUp() {
+export function warmUp(language = 'en') {
   if (!voiceStatus().installed || installing) return Promise.resolve();
+  const code = languageOf(language).speech;
   warming ??= (async () => {
-    tts ??= await loadTts();
+    if (code === 'kokoro') tts ??= await loadTts();
+    else if (mmsReady(code) && !mms.has(code)) mms.set(code, await loadMms(code));
     asr ??= await loadAsr();
   })().catch(() => {}).finally(() => { warming = null; });
   return warming;
@@ -131,12 +211,12 @@ function needInstalled() {
 }
 
 // pcm: 16 kHz mono Float32Array from the microphone.
-export async function transcribe(pcm, language = 'english') {
+export async function transcribe(pcm, language = 'en') {
   needInstalled();
   asr ??= await loadAsr();
   const audio = pcm instanceof Float32Array ? pcm : new Float32Array(pcm);
   if (audio.length < 16000 * 0.3 || loudness(audio) < 0.004) return ''; // silence: Whisper would invent words
-  const out = await asr(audio, { language, task: 'transcribe', chunk_length_s: 30, stride_length_s: 5 });
+  const out = await asr(audio, { language: languageOf(language).id, task: 'transcribe', chunk_length_s: 30, stride_length_s: 5 });
   return cleanTranscript(out.text);
 }
 
@@ -153,26 +233,34 @@ export function cleanTranscript(text) {
   return NOISE.test(t) ? '' : t;
 }
 
-// Returns { sampleRate, audio: Float32Array } for one piece of text.
-export async function speak(text, { voice = 'af_heart', speed = 1 } = {}) {
+// Returns { sampleRate, audio: Float32Array } for one piece of text, or
+// { system, text, lang } when the computer's own voice should say it.
+export async function speak(text, { voice = 'af_heart', speed = 1, language = 'en' } = {}) {
   needInstalled();
-  tts ??= await loadTts();
-  const spoken = speakable(text);
+  const lang = languageOf(language);
+  const spoken = speakable(text, lang.id);
   if (!spoken) return { sampleRate: 24000, audio: new Float32Array(0) };
+  if (lang.speech !== 'kokoro') {
+    if (lang.speech === 'system' || !mmsReady(lang.speech)) return { system: true, text: spoken, lang: lang.id };
+    if (!mms.has(lang.speech)) mms.set(lang.speech, await loadMms(lang.speech));
+    const out = await mms.get(lang.speech)(spoken);
+    return { sampleRate: out.sampling_rate, audio: out.audio };
+  }
+  tts ??= await loadTts();
   const known = VOICES.some((v) => v.id === voice) ? voice : 'af_heart';
   const out = await tts.generate(spoken, { voice: known, speed: Math.min(Math.max(Number(speed) || 1, 0.5), 2) });
   return { sampleRate: out.sampling_rate, audio: out.audio };
 }
 
 // Markdown and code read badly aloud: keep the words, drop the syntax.
-export function speakable(text) {
+export function speakable(text, language = 'en') {
   return String(text ?? '')
     .replace(/<think>[\s\S]*?<\/think>/g, ' ')
-    .replace(/```[\s\S]*?(```|$)/g, ' (code shown on screen) ')
+    .replace(/```[\s\S]*?(```|$)/g, language === 'en' ? ' (code shown on screen) ' : ' ')
     .replace(/`([^`]*)`/g, '$1')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/https?:\/\/\S+/g, ' a link ')
+    .replace(/https?:\/\/\S+/g, language === 'en' ? ' a link ' : ' ')
     .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, '')
     .replace(/[*_~|#]+/g, ' ')
     .replace(/\s+/g, ' ')

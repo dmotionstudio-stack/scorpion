@@ -30,16 +30,34 @@ account, or an internet connection to chat.
   machine and the agent searches them and names its sources.
 - **Voice**: talk to Scorpion and hear it answer. 🎤 speaks one message, 🗣 starts a
   hands-free conversation (talk, it answers aloud, then listens again; say "stop" to
-  end), and 🔊 reads every reply aloud. Listening uses Whisper and speaking uses
-  Kokoro, both on your computer. They're a one-time ~230 MB download (Settings →
-  Voice → Install). Scorpion understands 20 languages and speaks English.
-- **Interact**: a full-screen holographic orb for talking face to face (◉ Interact in
-  the sidebar, or Ctrl+I). The orb shows what Scorpion is doing (standby, listening,
-  thinking, speaking) and pulses with your voice and its own. Captions show what you
-  said and the reply. Drag to spin, scroll to zoom, Space to talk, Esc to leave. Its
+  end), and 🔊 reads every reply aloud. Spoken replies are short and quick, like
+  talking to a person, and you can interrupt Scorpion with Space. Listening uses
+  Whisper and speaking uses Kokoro (English) or Meta's MMS voices, all on your
+  computer: a one-time ~230 MB download (Settings → Voice → Install) plus ~38 MB
+  per extra language voice.
+- **Languages**: English, French, Haitian Creole, Spanish, Portuguese, German,
+  Russian, Arabic, Hindi, Vietnamese, Korean, Romanian and Yoruba with their own
+  voice; Italian, Chinese, Japanese, Dutch, Polish, Turkish, Ukrainian, Indonesian
+  and Swahili use your computer's voice for that language. Scorpion listens in the
+  language you choose and replies in it, typed or spoken. Haitian Creole has no
+  dedicated voice yet, so the French voice reads it (with a French accent), and
+  Gemma 3 4B writes the most natural Creole.
+- **Interact**: a holographic orb that takes over the whole screen for talking face
+  to face (◉ Interact in the sidebar, or Ctrl+I). The orb shows what Scorpion is
+  doing (standby, listening, thinking, speaking) and pulses with your voice and its
+  own. Captions show what you said and the reply. Switch language right there.
+  Drag to spin, scroll to zoom, Space to talk or interrupt, Esc to leave. Its
   colours follow your theme.
+- **Online mode** (off by default): the agent can search the web (DuckDuckGo, with
+  Wikipedia as a fallback) and read pages for current information, and names its
+  sources. Turn it on in Settings or by clicking the Offline badge in the sidebar.
+- **Full file access** (optional): Settings → File access → *Full access* lets the
+  agent read, create, edit and move files anywhere on the computer without asking
+  which folder. Changes and commands still need your OK unless Auto-approve is on,
+  and system folders (Windows, Program Files, /System, /usr…) stay read-only.
 - **Private by design**: Scorpion stores data only in your OS app-data folder, makes no
-  network calls while you chat, has a sandboxed UI and a locked-down IPC bridge.
+  network calls while you chat unless you turn on Online mode, has a sandboxed UI and
+  a locked-down IPC bridge.
 
 Architecture notes, and what Scorpion learned from studying [Jan](https://github.com/janhq/jan),
 are in [docs/JAN_STUDY.md](docs/JAN_STUDY.md).
@@ -136,9 +154,14 @@ Choose a workspace folder (📁 in the top bar), then try:
    again. Say "stop" or click 🗣 to end it.
 4. 🔊 reads every reply aloud. While it's speaking, click it to stop.
 
-Choose the voice, speed and the language you speak in **Settings → Voice**. The
-microphone is only used while 🎤 or 🗣 is listening. Audio never leaves the
-computer, and the page can't use the camera or screen.
+Choose your language, the voice and the speed in **Settings → Voice** (or the
+language menu in Interact). Picking a language with its own voice downloads that
+voice once (~38 MB). The microphone is only used while 🎤 or 🗣 is listening.
+Audio never leaves the computer, and the page can't use the camera or screen.
+
+Spoken turns are answered in one to three short sentences, and Scorpion starts
+talking as soon as the first phrase is ready. For the quickest replies use Qwen3
+4B; it starts answering in about a quarter of a second on a 4 GB graphics card.
 
 If Scorpion says the microphone is muted or blocked: on Windows, check the mic
 key on your keyboard and **Settings → Privacy & security → Microphone** ("Let
@@ -246,7 +269,12 @@ when it continues. This works on any machine; it's just slower.
 - File tools resolve every path and follow symlinks, so the agent can only reach
   the workspace and folders you allowed. Any other folder needs your *Allow*
   first, and scheduled agents never ask: they only get the workspace and the
-  folders you marked *Always allow*.
+  folders you marked *Always allow*. With *Full access* every drive is allowed.
+- Operating-system folders (Windows, Program Files, ProgramData; /System, /usr,
+  /bin, /etc, /Library…) can be read but never changed, whatever the setting.
+- Online mode is off until you turn it on. Web pages are treated as untrusted
+  data, and addresses on your own computer or local network (localhost, router,
+  NAS, 192.168.x.x and the like) are refused, including through redirects.
 - `write_file`, `edit_file` and `run_command` need your approval unless you turn on
   Auto-approve. Plan mode hides those tools from the model completely.
 - `run_command` and `run_code` run real programs. Approval is the only safeguard,
