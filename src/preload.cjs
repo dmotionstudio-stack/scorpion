@@ -61,4 +61,5 @@ contextBridge.exposeInMainWorld('scorpion', {
   onThreadsChanged: on('threads:changed'),
   onSchedulesChanged: on('schedules:changed'),
   onOpenThread: on('open-thread'),
+  onSettingsChanged: on('settings:changed'),
 });

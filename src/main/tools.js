@@ -90,17 +90,37 @@ const MAX_OUTPUT_CHARS = 16_000;
 const COMMAND_TIMEOUT_MS = 120_000;
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'release', '.venv', '__pycache__', '.next']);
 
-export function resolveInside(root, p) {
-  if (!root) throw new Error('No workspace folder is set. Ask the user to choose one in Settings.');
-  const base = fs.realpathSync(root);
-  const abs = path.resolve(base, p || '.');
+// Thrown when a path needs a folder the user hasn't allowed yet. `folder` is
+// the folder to ask about, or null when there's no workspace to resolve a
+// relative path against. The agent asks the user and retries.
+export class FolderAccessNeeded extends Error {
+  constructor(message, folder) {
+    super(message);
+    this.folder = folder;
+  }
+}
+
+// Resolves a tool path inside the workspace or a folder the user allowed
+// (`allowed`). Relative paths are relative to the workspace.
+export function resolveInside(root, p, allowed = []) {
+  const target = p || '.';
+  if (!root && !path.isAbsolute(target)) throw new FolderAccessNeeded('No workspace folder is set. Ask the user to choose one in Settings.', null);
+  const abs = root ? path.resolve(fs.realpathSync(root), target) : path.resolve(target);
   // Follow symlinks for the deepest existing ancestor so links can't escape.
   let probe = abs;
   while (!fs.existsSync(probe) && path.dirname(probe) !== probe) probe = path.dirname(probe);
-  const real = path.join(fs.realpathSync(probe), path.relative(probe, abs));
-  const rel = path.relative(base, real);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error(`Path "${p}" is outside the workspace`);
-  return real;
+  const existing = fs.realpathSync(probe);
+  const real = path.join(existing, path.relative(probe, abs));
+  for (const dir of [root, ...allowed]) {
+    let base;
+    try { base = dir && fs.realpathSync(dir); } catch { continue; }
+    if (!base) continue;
+    const rel = path.relative(base, real);
+    if (!rel.startsWith('..') && !path.isAbsolute(rel)) return real;
+  }
+  // Ask about the folder itself, or the existing folder that would hold it.
+  const folder = probe !== abs || fs.statSync(existing).isDirectory() ? existing : path.dirname(existing);
+  throw new FolderAccessNeeded(`Path "${p}" is outside the workspace`, folder);
 }
 
 function clip(text, max) {
@@ -161,8 +181,8 @@ export const TOOLS = {
     access: 'read',
     description: 'List files and folders in the workspace. Use path "." for the workspace root. depth 1-4.',
     params: { type: 'object', properties: { path: { type: 'string' }, depth: { type: 'integer' } } },
-    run({ path: p, depth }, { workspace }) {
-      const dir = resolveInside(workspace, p);
+    run({ path: p, depth }, { workspace, allowed }) {
+      const dir = resolveInside(workspace, p, allowed);
       const out = [];
       walk(dir, Math.min(Math.max(depth || 2, 1), 4), out, dir);
       return out.length ? out.join('\n') : '(empty folder)';
@@ -173,8 +193,8 @@ export const TOOLS = {
     access: 'read',
     description: 'Read a text file from the workspace. startLine is 1-based (use 1 for the start).',
     params: { type: 'object', properties: { path: { type: 'string' }, startLine: { type: 'integer' } } },
-    run({ path: p, startLine }, { workspace }) {
-      const file = resolveInside(workspace, p);
+    run({ path: p, startLine }, { workspace, allowed }) {
+      const file = resolveInside(workspace, p, allowed);
       const buf = fs.readFileSync(file);
       if (isProbablyBinary(buf)) return 'This is a binary file and cannot be shown as text.';
       const lines = buf.toString('utf8').split(/\r?\n/);
@@ -188,8 +208,8 @@ export const TOOLS = {
     access: 'read',
     description: 'Search file contents in the workspace for text (case-insensitive). Use path "." to search everything.',
     params: { type: 'object', properties: { query: { type: 'string' }, path: { type: 'string' } } },
-    run({ query, path: p }, { workspace }) {
-      const dir = resolveInside(workspace, p);
+    run({ query, path: p }, { workspace, allowed }) {
+      const dir = resolveInside(workspace, p, allowed);
       const needle = String(query).toLowerCase();
       const files = [];
       walk(dir, 12, files, dir, 5000);
@@ -233,8 +253,8 @@ export const TOOLS = {
       }
       return { ...args, content };
     },
-    run({ path: p, content }, { workspace }) {
-      const file = resolveInside(workspace, p);
+    run({ path: p, content }, { workspace, allowed }) {
+      const file = resolveInside(workspace, p, allowed);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       const existed = fs.existsSync(file);
       fs.writeFileSync(file, content ?? '');
@@ -246,8 +266,8 @@ export const TOOLS = {
     access: 'write',
     description: 'Replace one exact, unique snippet of text in a workspace file. "find" must match exactly once.',
     params: { type: 'object', properties: { path: { type: 'string' }, find: { type: 'string' }, replace: { type: 'string' } } },
-    run({ path: p, find, replace }, { workspace }) {
-      const file = resolveInside(workspace, p);
+    run({ path: p, find, replace }, { workspace, allowed }) {
+      const file = resolveInside(workspace, p, allowed);
       if (!fs.existsSync(file)) throw new Error(`${p} does not exist. Use write_file to create a new file.`);
       const text = fs.readFileSync(file, 'utf8');
       const count = find ? text.split(find).length - 1 : 0;
@@ -262,8 +282,8 @@ export const TOOLS = {
     access: 'exec',
     description: `Run a shell command (${process.platform === 'win32' ? 'PowerShell' : 'bash'}) in the workspace and return its output. Times out after 120 seconds. Use subdir "." for the workspace root.`,
     params: { type: 'object', properties: { command: { type: 'string' }, subdir: { type: 'string' } } },
-    async run({ command, subdir }, { workspace, signal }) {
-      const cwd = resolveInside(workspace, subdir);
+    async run({ command, subdir }, { workspace, allowed, signal }) {
+      const cwd = resolveInside(workspace, subdir, allowed);
       const { exitCode, output } = await runCommand(command, cwd, signal);
       return `exit code ${exitCode}\n${output}`;
     },
@@ -284,9 +304,9 @@ export const TOOLS = {
     access: 'write',
     description: 'Move or rename a file or folder in the workspace (never overwrites).',
     params: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } } },
-    run({ from, to }, { workspace }) {
-      const src = resolveInside(workspace, from);
-      const dest = resolveInside(workspace, to);
+    run({ from, to }, { workspace, allowed }) {
+      const src = resolveInside(workspace, from, allowed);
+      const dest = resolveInside(workspace, to, allowed);
       if (!fs.existsSync(src)) throw new Error(`${from} does not exist`);
       if (fs.existsSync(dest)) throw new Error(`${to} already exists; choose another name`);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -304,7 +324,7 @@ export const TOOLS = {
       if (code == null) throw new Error('No code block found. Write the program in a fenced code block first, then call run_code again.');
       return { ...args, code };
     },
-    async run({ language, code }, { workspace, signal }) {
+    async run({ language, code }, { workspace, allowed, signal }) {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-run-'));
       const cwd = workspace ? resolveInside(workspace, '.') : dir;
       try {
@@ -343,8 +363,8 @@ export const TOOLS = {
     access: 'read',
     description: 'Summarize a .xlsx/.csv/.tsv in the workspace: columns, first 30 rows, numeric totals. sheet "" = first sheet.',
     params: { type: 'object', properties: { path: { type: 'string' }, sheet: { type: 'string' } } },
-    async run({ path: p, sheet }, { workspace }) {
-      const file = resolveInside(workspace, p);
+    async run({ path: p, sheet }, { workspace, allowed }) {
+      const file = resolveInside(workspace, p, allowed);
       const { sheets, sheet: used, rows } = await readSheetRows(file, sheet);
       const head = sheets.length > 1 ? `Sheets: ${sheets.join(', ')} (showing "${used}")\n` : '';
       return clip(head + summarizeTable(rows), MAX_READ_CHARS);
@@ -355,8 +375,8 @@ export const TOOLS = {
     access: 'read',
     description: 'Read the text of a PDF, Word (.docx) or text document in the workspace.',
     params: { type: 'object', properties: { path: { type: 'string' } } },
-    async run({ path: p }, { workspace }) {
-      const text = await extractText(resolveInside(workspace, p));
+    async run({ path: p }, { workspace, allowed }) {
+      const text = await extractText(resolveInside(workspace, p, allowed));
       return clip(text.trim() || '(no text found — scanned PDFs need OCR)', MAX_READ_CHARS);
     },
   },

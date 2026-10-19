@@ -302,7 +302,7 @@ async function loadChat() {
  * `approve` decides write/exec actions; chats ask the user in the UI, schedules
  * use their "allow changes" setting. `workspace` overrides the folder.
  */
-async function runAgentTurn({ thread, text, displayText = text, approve, workspace, mode }) {
+async function runAgentTurn({ thread, text, displayText = text, approve, workspace, mode, interactive = false }) {
   const threadId = thread.id;
   if (running.has(threadId)) throw new Error('Scorpion is still answering in this chat');
   const base = store.getSettings();
@@ -323,6 +323,10 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
     send('chat:event', { threadId, ...ev });
   };
   const requestApproval = (info) => approve(info, controller.signal, threadId);
+  // Only a chat someone is watching can ask for folders; scheduled runs keep
+  // to their workspace and the folders already allowed for good.
+  const requestFolderAccess = interactive ? (req) => askFolderAccess(req, controller.signal) : null;
+  const allowedFolders = [...(base.allowedFolders || []), ...sessionFolders];
 
   const searcher = rag.createSearcher(settings);
   let streamed = '';
@@ -336,6 +340,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
         docNames: rag.listDocuments().map((d) => d.name),
         memoryBlock: settings.memoryEnabled ? memory.memoryPromptBlock() : '',
         agent,
+        canAskForFolders: Boolean(requestFolderAccess),
       }),
       text: await withDocumentContext(recall, searcher),
       temperature: agent.temperature ?? settings.temperature,
@@ -344,7 +349,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
       maxTokens: Math.min(settings.mode === 'build' ? 6144 : 3072, Math.floor((info.contextSize || 8192) / 2)),
       signal: controller.signal,
       functions: buildFunctions({
-        settings, agent, rag: searcher, memory, threadId, emit, requestApproval,
+        settings, agent, rag: searcher, memory, threadId, emit, requestApproval, requestFolderAccess, allowedFolders,
         signal: controller.signal, streamedText: () => streamed, runHelper: engine.runHelperTurn,
         maxToolChars: info.maxToolChars ?? undefined,
       }),
@@ -384,10 +389,50 @@ function askUser(info, signal, threadId) {
   });
 }
 
+// Folders allowed until Scorpion quits ("Allow" without "Always allow").
+const sessionFolders = new Set();
+
+// The agent needs a folder the user hasn't allowed: ask with a native dialog.
+// folder null means there's no workspace yet, so let the user choose one.
+async function askFolderAccess({ folder, name, summary }, signal) {
+  if (signal.aborted || !win || win.isDestroyed()) return null;
+  showWindow();
+  if (!folder) {
+    const r = await dialog.showMessageBox(win, {
+      type: 'question', title: 'Scorpion', noLink: true, buttons: ['Choose folder…', 'Not now'], defaultId: 0, cancelId: 1,
+      message: 'Scorpion needs a folder to work in',
+      detail: `The agent wants to work with files (${summary}).\n\nChoose the folder it may read and work in. You can change it any time with 📁 in the top bar.`,
+    });
+    if (r.response !== 0 || signal.aborted) return null;
+    const pick = await dialog.showOpenDialog(win, { title: 'Choose the folder Scorpion may work in', properties: ['openDirectory', 'createDirectory'] });
+    if (pick.canceled || !pick.filePaths[0]) return null;
+    send('settings:changed', store.updateSettings({ workspace: pick.filePaths[0] }));
+    return { workspace: pick.filePaths[0] };
+  }
+  const access = TOOLS[name]?.access;
+  const verb = access === 'exec' ? 'run commands in' : access === 'write' ? 'change files in' : 'read files in';
+  const broad = folder === path.parse(folder).root || folder === os.homedir();
+  const later = access === 'read' || store.getSettings().autoApprove ? '' : '\n\nYou will still be asked before each change or command.';
+  const r = await dialog.showMessageBox(win, {
+    type: broad ? 'warning' : 'question', title: 'Scorpion', noLink: true, buttons: ['Allow', 'Don\'t allow'], defaultId: 0, cancelId: 1,
+    message: `Allow Scorpion to ${verb} this folder?`,
+    detail: `${folder}\n\nThe agent wants to: ${summary}\nThis folder is outside your workspace.${broad ? '\n\nThis gives access to everything in it, including all subfolders.' : ''}${later}`,
+    checkboxLabel: 'Always allow this folder',
+  });
+  if (r.response !== 0 || signal.aborted) return null;
+  if (r.checkboxChecked) {
+    const list = store.getSettings().allowedFolders || [];
+    if (!list.includes(folder)) send('settings:changed', store.updateSettings({ allowedFolders: [...list, folder] }));
+  } else {
+    sessionFolders.add(folder);
+  }
+  return { folder };
+}
+
 async function chatSend({ threadId, text }) {
   const thread = store.getThread(threadId);
   if (!thread) throw new Error('Chat not found');
-  const result = await runAgentTurn({ thread, text, approve: askUser });
+  const result = await runAgentTurn({ thread, text, approve: askUser, interactive: true });
   return { ok: !result.error };
 }
 

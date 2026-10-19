@@ -107,7 +107,7 @@ function renderModes() {
   const mode = currentMode();
   document.querySelectorAll('#modes [data-mode]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === mode)));
   const needsWs = mode !== 'chat' && !S.settings.workspace;
-  $('#mode-hint').textContent = needsWs ? `${MODE_HINTS[mode]} Choose a workspace folder first (📁).` : MODE_HINTS[mode];
+  $('#mode-hint').textContent = needsWs ? `${MODE_HINTS[mode]} Scorpion asks for a folder when it needs one.` : MODE_HINTS[mode];
 }
 
 // Spell the plan out so the model starts building instead of assuming the
@@ -472,6 +472,10 @@ const errText = (err) => String(err?.message || err).replace(/^Error invoking re
 // ---------- settings page ----------
 function renderSettings() {
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
+  const allowed = S.settings.allowedFolders || [];
+  $('#allowed-folders').innerHTML = allowed.length
+    ? allowed.map((f) => `<div class="row"><code>${esc(f)}</code><button class="btn small" data-unallow="${esc(f)}">Remove</button></div>`).join('')
+    : '<span class="muted small">None</span>';
   $('#ctx-size').value = String(S.settings.contextSize);
   $('#gpu-layers').value = String(S.settings.gpuLayers ?? 'auto');
   $('#glass').value = S.settings.glass === 'off' ? 'off' : 'auto';
@@ -818,6 +822,14 @@ function wire() {
   api.onThreadsChanged(async () => { S.threads = (await api.state()).threads; renderThreads(); });
   api.onSchedulesChanged(reloadSchedules);
   api.onOpenThread((id) => openThread(id));
+  // The agent can set the workspace or allow a folder mid-chat.
+  api.onSettingsChanged((settings) => { S.settings = settings; renderTopbar(); renderModes(); renderSettings(); });
+  $('#allowed-folders').onclick = async (e) => {
+    const f = e.target.closest('[data-unallow]')?.dataset.unallow;
+    if (!f) return;
+    S.settings = await api.updateSettings({ allowedFolders: (S.settings.allowedFolders || []).filter((x) => x !== f) });
+    renderSettings();
+  };
   api.onChatEvent(applyChatEvent);
   api.onModelStatus((st) => {
     const wasLoading = S.modelStatus?.loading;

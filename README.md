@@ -6,8 +6,10 @@ account, or an internet connection to chat.
 
 - **Chat** with local models (Qwen, Llama, any GGUF file), with streaming and Markdown.
 - **Agent**: Scorpion reads, writes and edits files and runs terminal commands inside a
-  workspace folder you choose. Changes and commands wait for your approval unless
-  you turn on Auto-approve.
+  workspace folder you choose. For files anywhere else it asks first: *Allow*,
+  *Don't allow*, or *Always allow this folder* (you can remove those in Settings).
+  With no workspace set, it asks you to choose one the first time it needs files.
+  Changes and commands wait for your approval unless you turn on Auto-approve.
 - **Multi-step planning**: for bigger tasks the agent writes a plan, then updates it
   live as it works. Plan mode is read-only: it explores and plans but can't change anything.
 - **Specialist agents**: you choose who answers each chat. Scorpion (general) or a
@@ -213,8 +215,10 @@ when it continues. This works on any machine; it's just slower.
 
 ## Security model
 
-- File tools resolve every path inside the workspace and follow symlinks, so the
-  agent can't escape the folder.
+- File tools resolve every path and follow symlinks, so the agent can only reach
+  the workspace and folders you allowed. Any other folder needs your *Allow*
+  first, and scheduled agents never ask: they only get the workspace and the
+  folders you marked *Always allow*.
 - `write_file`, `edit_file` and `run_command` need your approval unless you turn on
   Auto-approve. Plan mode hides those tools from the model completely.
 - `run_command` and `run_code` run real programs. Approval is the only safeguard,

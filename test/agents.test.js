@@ -6,7 +6,7 @@ import path from 'node:path';
 import * as store from '../src/main/store.js';
 import * as agents from '../src/main/agents.js';
 import * as scheduler from '../src/main/scheduler.js';
-import { TOOLS } from '../src/main/tools.js';
+import { TOOLS, resolveInside as resolveInsideFn } from '../src/main/tools.js';
 import { evaluate } from '../src/main/calc.js';
 import { buildFunctions, buildSystemPrompt } from '../src/main/agent.js';
 import { applyEvent, findTool } from '../src/shared/events.js';
@@ -306,4 +306,51 @@ test('tool calls written as text are recognised so the task does not stall', asy
   assert.equal(calls[0].params.steps[0].title, 'Write index.html');
   assert.equal(calls[1].params.path, 'a.txt');
   assert.equal(lastModelText([{ type: 'user', text: 'x' }, { type: 'model', response: ['a', { type: 'functionCall' }, 'b'] }]), 'ab');
+});
+
+test('files outside the workspace need the user to allow their folder', async () => {
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-outside-'));
+  fs.writeFileSync(path.join(outside, 'notes.txt'), 'secret plans');
+  const asked = [];
+  let answer = null;
+  const settings = { ...store.getSettings(), workspace: ws, mode: 'build', autoApprove: true };
+  const make = () => buildFunctions({
+    settings, agent: agents.getAgent('scorpion'), rag: { hasDocuments: () => false }, emit() {}, requestApproval: async () => true,
+    requestFolderAccess: async (req) => { asked.push(req); return answer; },
+  });
+  // Denied: nothing is read, and the model is told not to retry.
+  let fns = make();
+  assert.match(await fns.read_file.handler({ path: path.join(outside, 'notes.txt'), startLine: 1 }), /did not allow access/);
+  assert.equal(asked[0].folder, fs.realpathSync(outside));
+  // Allowed: the read goes through, and later calls in the turn don't ask again.
+  answer = { folder: fs.realpathSync(outside) };
+  fns = make();
+  assert.match(await fns.read_file.handler({ path: path.join(outside, 'notes.txt'), startLine: 1 }), /secret plans/);
+  assert.match(await fns.list_files.handler({ path: outside, depth: 1 }), /notes\.txt/);
+  assert.equal(asked.length, 2);
+  // Paths inside the workspace never ask.
+  fs.writeFileSync(path.join(ws, 'inside.txt'), 'hi');
+  assert.match(await fns.read_file.handler({ path: 'inside.txt', startLine: 1 }), /hi/);
+  assert.equal(asked.length, 2);
+});
+
+test('with no workspace, the agent asks the user to choose one', async () => {
+  const chosen = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-chosen-'));
+  const settings = { ...store.getSettings(), workspace: null, mode: 'build', autoApprove: true };
+  const base = { settings, agent: agents.getAgent('scorpion'), rag: { hasDocuments: () => false }, emit() {}, requestApproval: async () => true };
+  // Without a way to ask (scheduled runs), file tools stay hidden.
+  assert.ok(!('read_file' in buildFunctions(base)));
+  const fns = buildFunctions({ ...base, requestFolderAccess: async ({ folder }) => (folder === null ? { workspace: chosen } : null) });
+  assert.match(await fns.list_files.handler({ path: '.', depth: 1 }), /empty folder/);
+  assert.equal(settings.workspace, chosen);
+  assert.match(buildSystemPrompt({ ...settings, workspace: null }, { docNames: [], canAskForFolders: true }), /asks the user to choose a folder/);
+});
+
+test('allowed folders cover their subfolders and new files', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-allowed-'));
+  fs.mkdirSync(path.join(root, 'sub'));
+  assert.equal(resolveInsideFn(ws, path.join(root, 'sub', 'new.txt'), [root]), path.join(fs.realpathSync(root), 'sub', 'new.txt'));
+  try { resolveInsideFn(ws, path.join(root, 'missing', 'deep', 'x.txt')); assert.fail('should need access'); } catch (err) {
+    assert.equal(err.folder, fs.realpathSync(root)); // nearest existing folder
+  }
 });

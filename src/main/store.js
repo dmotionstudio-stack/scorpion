@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
   chatModel: null, // absolute path to a .gguf
   embedModel: null, // absolute path to an embedding .gguf (for documents)
   workspace: null, // folder the agent may read/write/run commands in
+  allowedFolders: [], // other folders the user chose "Always allow" for
   contextSize: 8192,
   gpuLayers: 'auto', // 'auto' or how many model layers to run on the GPU (0 = CPU only)
   temperature: 0.6,

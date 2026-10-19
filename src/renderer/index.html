@@ -201,7 +201,12 @@
           <div class="field">
             <label>Workspace folder</label>
             <div class="row"><code id="ws-path">Not set</code><button class="btn" id="choose-ws">Choose…</button><button class="btn" id="open-ws">Open</button></div>
-            <p class="muted small">The agent can only read, write and run commands inside this folder.</p>
+            <p class="muted small">The agent reads, writes and runs commands in this folder. For files anywhere else, Scorpion asks you first.</p>
+          </div>
+          <div class="field">
+            <label>Always allowed folders</label>
+            <div id="allowed-folders"></div>
+            <p class="muted small">Folders outside the workspace you chose "Always allow" for. Remove one to be asked again.</p>
           </div>
           <div class="field">
             <label>Memory</label>

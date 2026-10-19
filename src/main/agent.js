@@ -3,11 +3,16 @@
 // functions until the model answers in plain text, which is the agent loop.
 import os from 'node:os';
 import { defineChatSessionFunction } from 'node-llama-cpp';
-import { TOOLS } from './tools.js';
+import { TOOLS, resolveInside, FolderAccessNeeded } from './tools.js';
 import { listAgents, findAgentByName, agentAllows } from './agents.js';
 
 // Tools that work without a workspace folder.
 const NO_WORKSPACE_TOOLS = new Set(['calculator', 'run_code', 'update_plan']);
+// Which arguments of each tool are paths, checked for folder access up front.
+const PATH_ARGS = {
+  list_files: ['path'], read_file: ['path'], search_files: ['path'], write_file: ['path'], edit_file: ['path'],
+  run_command: ['subdir'], move_file: ['from', 'to'], read_spreadsheet: ['path'], read_document: ['path'],
+};
 const MAX_HELPER_OUTPUT = 6000;
 
 const BASE_PROMPT = `You are Scorpion, a helpful AI assistant and agent running fully offline on the user's own computer.
@@ -16,7 +21,7 @@ Be accurate and concise. Use Markdown for formatting and fenced code blocks for 
 // Kept short on purpose: every new chat re-reads these before answering, which
 // is the main start-up delay on CPU-only or slow machines.
 const AGENT_RULES = `Tool rules:
-- Paths are relative to the workspace. Read before editing; never guess file contents. Use edit_file for small changes.
+- Paths are relative to the workspace. For files elsewhere, use the full path: Scorpion asks the user for permission. Read before editing; never guess file contents. Use edit_file for small changes.
 - To create or rewrite a file: put the whole content in one fenced code block, then call write_file with the path.
 - If a tool fails, fix the cause and retry (at most twice), or explain the problem.`;
 
@@ -46,7 +51,7 @@ const BUILD_RULES = `BUILD MODE: build what the user asks for, end to end, witho
 
 const TEAM_RULES = 'ask_agent hands a self-contained subtask to a specialist (include all context; it cannot see this chat). Use it when one clearly fits.';
 
-export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent = null, isHelper = false }) {
+export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent = null, isHelper = false, canAskForFolders = false }) {
   const intro = agent?.instructions?.trim()
     ? `${agent.instructions.trim()}\nYou run fully offline on the user's own computer as part of Scorpion. Use Markdown, and fenced code blocks for code.`
     : settings.systemPrompt?.trim() || BASE_PROMPT;
@@ -58,6 +63,10 @@ export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent 
     parts.push(CHAT_RULES);
   } else if (settings.workspace) {
     parts.push(`Workspace folder: ${settings.workspace}`);
+    parts.push(AGENT_RULES);
+    parts.push(mode === 'plan' ? PLAN_RULES : BUILD_RULES);
+  } else if (canAskForFolders) {
+    parts.push('No workspace folder is set yet. File tools still work: the first time you use one, Scorpion asks the user to choose a folder.');
     parts.push(AGENT_RULES);
     parts.push(mode === 'plan' ? PLAN_RULES : BUILD_RULES);
   } else {
@@ -136,7 +145,32 @@ export function findLastCodeBlockInfo(text) {
  *        emit(event), requestApproval(info) => Promise<boolean>, runHelper(opts) => Promise<string> }
  */
 export function buildFunctions(ctx) {
-  const { settings, rag, emit, requestApproval, signal, streamedText, memory, threadId, agent, isHelper, runHelper, maxToolChars = 16000 } = ctx;
+  const { settings, rag, emit, requestApproval, requestFolderAccess, signal, streamedText, memory, threadId, agent, isHelper, runHelper, maxToolChars = 16000 } = ctx;
+  // Folders the user allowed besides the workspace; shared with helper agents.
+  const allowed = ctx.allowedFolders ?? (ctx.allowedFolders = []);
+  // Make sure every path argument is in a folder the user allowed, asking them
+  // when it isn't. Returns null when all is fine, or a message for the model.
+  const checkFolders = async (name, args) => {
+    for (const key of PATH_ARGS[name] || []) {
+      if (typeof args[key] !== 'string') continue;
+      try {
+        resolveInside(settings.workspace, args[key], allowed);
+        continue;
+      } catch (err) {
+        if (!(err instanceof FolderAccessNeeded)) continue; // the tool reports other problems itself
+        if (!requestFolderAccess) return `Error: ${err.message}`;
+        const grant = await requestFolderAccess({ folder: err.folder, name, summary: summarizeArgs(name, args) });
+        if (!grant) {
+          return err.folder
+            ? `The user did not allow access to ${err.folder}. Do not retry; ask what they would like instead.`
+            : 'The user did not choose a workspace folder, so file tools are unavailable. Ask them to choose one (📁 in the top bar).';
+        }
+        if (grant.workspace) settings.workspace = grant.workspace;
+        if (grant.folder) allowed.push(grant.folder);
+      }
+    }
+    return null;
+  };
   // Each code block can feed one write_file/run_code call. Without this, a
   // model that forgets to write a new block would silently reuse the previous
   // one (e.g. save a JSON snippet as the program).
@@ -156,7 +190,7 @@ export function buildFunctions(ctx) {
     if (tool.access === 'plan') return !isHelper;
     if (tool.access === 'memory' || name === 'search_past_chats') return Boolean(settings.memoryEnabled && memory && !isHelper);
     if (NO_WORKSPACE_TOOLS.has(name)) return true;
-    return Boolean(settings.workspace);
+    return Boolean(settings.workspace || requestFolderAccess);
   });
 
   let seq = 0;
@@ -181,6 +215,12 @@ export function buildFunctions(ctx) {
         }
         emit({ type: 'tool', id, name, access: tool.access, summary: summarizeArgs(name, args), args });
 
+        const refused = await checkFolders(name, args);
+        if (refused) {
+          emit({ type: 'tool-result', id, ok: false, output: refused });
+          return refused;
+        }
+
         if ((tool.access === 'write' || tool.access === 'exec') && !settings.autoApprove) {
           const ok = await requestApproval({ id, name, access: tool.access, summary: summarizeArgs(name, args), args });
           if (!ok) {
@@ -192,6 +232,7 @@ export function buildFunctions(ctx) {
         try {
           const result = await tool.run(args, {
             workspace: settings.workspace,
+            allowed,
             rag,
             signal,
             onPlan: (steps) => emit({ type: 'plan', steps }),
@@ -236,7 +277,7 @@ export function buildFunctions(ctx) {
           const sub = (e) => emit({ ...e, parent: id });
           try {
             const answer = await runHelper({
-              systemPrompt: buildSystemPrompt(settings, { docNames: [], agent: helper, isHelper: true }),
+              systemPrompt: buildSystemPrompt(settings, { docNames: [], agent: helper, isHelper: true, canAskForFolders: Boolean(requestFolderAccess) }),
               text: args.task,
               temperature: helper.temperature ?? settings.temperature,
               functions: buildFunctions({ ...ctx, agent: helper, isHelper: true, emit: sub, streamedText: () => helperText }),
