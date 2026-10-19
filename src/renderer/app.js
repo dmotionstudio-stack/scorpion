@@ -2,6 +2,7 @@ import { marked } from '/vendor/marked.js';
 import DOMPurify from '/vendor/purify.js';
 import { applyEvent } from '/shared/events.js';
 import { Recorder, Speaker } from './voice.js';
+import { HandTracker, cameraError } from './gestures.js';
 
 const api = window.scorpion;
 const $ = (sel) => document.querySelector(sel);
@@ -789,6 +790,7 @@ function closeInteract() {
   clearInterval(IX.timer);
   IX.orb?.stop();
   if (V.talk) stopTalk();
+  stopGestures();
   $('#interact').classList.add('hidden');
   $('#input').focus();
 }
@@ -833,6 +835,93 @@ function renderInteract() {
   $('#ix-voice').textContent = voiceOn ? 'VOICE ON' : 'VOICE OFF';
 }
 
+// Hand gestures (gestures.js): pinch and move one hand to spin the orb, pinch
+// both and spread or close them to zoom. The camera is on only while GESTURES
+// is on and goes off when Interact closes. The hand model is a one-time ~8 MB
+// download; the tracker loads the first time gestures are switched on.
+const G = { on: false, phase: '', tracker: null, error: '', download: null, hands: 0, mode: 'idle' };
+const GESTURE_MODE = { idle: 'OPEN HAND', spin: 'SPIN', zoom: 'ZOOM' };
+const GESTURE_MODEL_URL = '/gestures/hand_landmarker.task';
+
+async function startGestures() {
+  if (G.on) return;
+  Object.assign(G, { on: true, error: '', hands: 0, mode: 'idle' });
+  try {
+    if (!S.gestures?.downloaded) {
+      G.phase = 'download';
+      G.download = { loaded: 0, total: S.gestures?.bytes || 8 * 1024 ** 2 };
+      renderGestures();
+      try {
+        S.gestures = await api.installGestures();
+      } catch (err) {
+        throw new Error(`HAND MODEL DOWNLOAD FAILED (${errText(err)}). Gestures need a one-time 8 MB download: connect to the internet, then press G.`);
+      } finally {
+        G.download = null;
+      }
+    }
+    if (!G.on) return;
+    G.phase = 'loading';
+    renderGestures();
+    G.tracker ??= new HandTracker($('#ix-cam-video'), $('#ix-cam-overlay'), { onFrame: onGestureFrame });
+    G.tracker.color = accentColor();
+    try {
+      await G.tracker.load(GESTURE_MODEL_URL);
+    } catch (err) {
+      // A model that never loaded is downloaded again next time.
+      if (!S.gestures.installed) S.gestures = await api.uninstallGestures();
+      throw new Error(`HAND TRACKER FAILED TO LOAD (${errText(err)}).`);
+    }
+    if (!S.gestures.installed) S.gestures = await api.gesturesLoaded();
+    if (!G.on) return;
+    G.phase = 'camera';
+    renderGestures();
+    try {
+      if (!(await api.gesturesCamera(true))) throw Object.assign(new Error('Camera access denied'), { name: 'NotAllowedError' });
+      await G.tracker.startCamera();
+    } catch (err) {
+      throw new Error(cameraError(err));
+    }
+    if (!G.on) { G.tracker.stopCamera(); api.gesturesCamera(false); return; }
+    G.phase = 'on';
+    renderGestures();
+  } catch (err) {
+    if (G.on) stopGestures(errText(err));
+  }
+}
+
+function stopGestures(error = '') {
+  if (!G.on && !G.error && !error) return;
+  Object.assign(G, { on: false, phase: '', error });
+  G.tracker?.stopCamera();
+  api.gesturesCamera(false);
+  renderGestures();
+}
+
+function onGestureFrame(r) {
+  if (r.rotate) IX.orb?.rotateBy(...r.rotate);
+  if (r.zoom) IX.orb?.zoomBy(r.zoom);
+  if (r.hands !== G.hands || r.mode !== G.mode) {
+    Object.assign(G, { hands: r.hands, mode: r.mode });
+    renderGestures();
+  }
+}
+
+function renderGestures() {
+  const btn = $('#ix-gestures');
+  btn.setAttribute('aria-pressed', String(G.on));
+  btn.textContent = G.on ? 'GESTURES ON' : 'GESTURES OFF';
+  const cam = $('#ix-cam');
+  cam.classList.toggle('hidden', !G.on && !G.error);
+  cam.toggleAttribute('data-error', Boolean(G.error));
+  const d = G.download;
+  $('#ix-cam-status').textContent = G.error
+    || (G.phase === 'download' ? `DOWNLOADING HAND MODEL ${Math.min(100, Math.round(((d?.loaded || 0) / (d?.total || 1)) * 100))}%`
+      : G.phase === 'loading' ? 'LOADING HAND TRACKER…'
+        : G.phase === 'camera' ? 'STARTING CAMERA…'
+          : G.hands ? `${G.hands} HAND${G.hands > 1 ? 'S' : ''} · ${GESTURE_MODE[G.mode]}`
+            : 'NO HANDS · PINCH + MOVE TO SPIN · PINCH BOTH HANDS AND SPREAD TO ZOOM');
+}
+
 // Markdown reads badly as a caption: keep the words.
 const captionText = (text) => text
   .replace(/<think>[\s\S]*?(<\/think>|$)/g, '')
@@ -858,6 +947,12 @@ function wireInteract() {
   $('#ix-zoom-in').onclick = () => IX.orb?.zoomIn();
   $('#ix-zoom-out').onclick = () => IX.orb?.zoomOut();
   $('#ix-reset').onclick = () => IX.orb?.resetView();
+  $('#ix-gestures').onclick = () => (G.on ? stopGestures() : startGestures());
+  api.onGesturesDownload((p) => {
+    if (G.phase !== 'download') return;
+    G.download = p.done ? null : p;
+    renderGestures();
+  });
   $('#ix-ask').onsubmit = (e) => {
     e.preventDefault();
     const text = $('#ix-input').value.trim();
@@ -879,6 +974,7 @@ function wireInteract() {
       $('#ix-talk').click();
     }
     else if (e.key === 'r' || e.key === 'R') IX.orb?.resetView();
+    else if (e.key === 'g' || e.key === 'G') $('#ix-gestures').click();
     else if (e.key === '+' || e.key === '=') IX.orb?.zoomIn();
     else if (e.key === '-' || e.key === '_') IX.orb?.zoomOut();
   });

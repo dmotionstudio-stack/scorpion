@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
+    "@mediapipe/tasks-vision": "0.10.35",
     "dompurify": "3.4.17",
     "exceljs": "4.4.0",
     "kokoro-js": "1.2.1",
@@ -58,7 +59,10 @@
       "!node_modules/three/build/three.cjs",
       "!node_modules/three/build/three.webgpu*.js",
       "!node_modules/three/build/three.tsl.js",
-      "!node_modules/three/examples/**"
+      "!node_modules/three/examples/**",
+      "!node_modules/@mediapipe/tasks-vision/vision_bundle.cjs",
+      "!node_modules/@mediapipe/tasks-vision/wasm/vision_wasm_nosimd_internal.*",
+      "!node_modules/@mediapipe/tasks-vision/wasm/vision_wasm_module_internal.*"
     ],
     "electronLanguages": [
       "en-US"
@@ -114,7 +118,8 @@
         "!node_modules/onnxruntime-node/bin/napi-v3/win32/**"
       ],
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Scorpion listens to your voice so you can talk to it. Speech is processed on this Mac and never sent anywhere."
+        "NSMicrophoneUsageDescription": "Scorpion listens to your voice so you can talk to it. Speech is processed on this Mac and never sent anywhere.",
+        "NSCameraUsageDescription": "Scorpion watches your hands, only while Interact's gestures are on, so you can spin and zoom the orb. Video is processed on this Mac and never sent anywhere."
       }
     },
     "linux": {

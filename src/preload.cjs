@@ -72,4 +72,10 @@ contextBridge.exposeInMainWorld('scorpion', {
   installLanguageVoice: invoke('voice:installLanguage'),
   setFullScreen: invoke('window:fullscreen'),
   onVoiceDownload: on('voice:download'),
+
+  installGestures: invoke('gestures:install'),
+  gesturesLoaded: invoke('gestures:loaded'),
+  uninstallGestures: invoke('gestures:uninstall'),
+  gesturesCamera: invoke('gestures:camera'),
+  onGesturesDownload: on('gestures:download'),
 });

@@ -47,7 +47,8 @@ account, or an internet connection to chat.
   doing (standby, listening, thinking, speaking) and pulses with your voice and its
   own. Captions show what you said and the reply. Switch language right there.
   Drag to spin, scroll to zoom, Space to talk or interrupt, Esc to leave. Its
-  colours follow your theme.
+  colours follow your theme. Optional [hand gestures](#hand-gestures) spin and zoom
+  the orb with your webcam.
 - **Online mode** (off by default): the agent can search the web (DuckDuckGo, with
   Wikipedia as a fallback) and read pages for current information, and names its
   sources. Turn it on in Settings or by clicking the Offline badge in the sidebar.
@@ -157,7 +158,8 @@ Choose a workspace folder (📁 in the top bar), then try:
 Choose your language, the voice and the speed in **Settings → Voice** (or the
 language menu in Interact). Picking a language with its own voice downloads that
 voice once (~38 MB). The microphone is only used while 🎤 or 🗣 is listening.
-Audio never leaves the computer, and the page can't use the camera or screen.
+Audio never leaves the computer. The page can't use the camera (except for
+Interact's hand gestures, while you have them on) or the screen.
 
 Spoken turns are answered in one to three short sentences, and Scorpion starts
 talking as soon as the first phrase is ready. For the quickest replies use Qwen3
@@ -167,6 +169,29 @@ If Scorpion says the microphone is muted or blocked: on Windows, check the mic
 key on your keyboard and **Settings → Privacy & security → Microphone** ("Let
 desktop apps access your microphone"); on a Mac, allow Scorpion in **System
 Settings → Privacy & Security → Microphone**.
+
+## Hand gestures
+
+In Interact, press **G** or click **GESTURES OFF** to steer the orb with your
+hands through the webcam:
+
+- **Spin**: pinch your thumb and index finger together on one hand and move it.
+- **Zoom**: pinch with both hands, then spread them apart to zoom in or bring
+  them together to zoom out.
+- Let go of the pinch to stop. Press **G** again to turn gestures and the camera off.
+
+A small mirrored camera preview shows the hand points Scorpion sees and a status
+line (how many hands, and whether you're spinning or zooming). Hand tracking uses
+Google's MediaPipe hand landmarker, which runs inside Scorpion. The first time you
+turn gestures on, Scorpion downloads its hand model once (about 8 MB); after that
+it works offline.
+
+The camera is off by default. It is only on while gestures are on, and goes off
+when you leave Interact. Video stays on your computer and is never recorded or
+sent anywhere. If the preview says the camera is blocked: on Windows, allow
+**Settings → Privacy & security → Camera** ("Let desktop apps access your
+camera"); on a Mac, allow Scorpion in **System Settings → Privacy & Security →
+Camera**.
 
 ## Getting a model with no internet at all
 
@@ -293,6 +318,9 @@ The Interact orb is adapted from [ULTRON Orb UI](https://github.com/SAGAR-TAMANG
 by Sagar Tamang (MIT, see `src/renderer/ORB-LICENSE.txt`). It uses
 [three.js](https://threejs.org) (MIT); the few add-ons it needs are copied in
 `src/vendor/three-addons` because installers leave out `node_modules` example folders.
+Its hand gestures follow the same project's hand tracker and use
+[MediaPipe Tasks Vision](https://www.npmjs.com/package/@mediapipe/tasks-vision)
+(Apache-2.0, © Google), whose hand model is downloaded from Google on first use.
 
 Scorpion's design was informed by studying Jan (Apache-2.0, © Menlo Research).
 Scorpion contains none of Jan's source code.

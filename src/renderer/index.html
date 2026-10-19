@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-TXQtlLv9hkrPD55l4tCZbV94hPBYXzUd42IGR1ZWUjY='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-TXQtlLv9hkrPD55l4tCZbV94hPBYXzUd42IGR1ZWUjY='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
   <title>Scorpion</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="themes.css">
@@ -292,13 +292,18 @@
         <button type="button" class="ix-btn ix-talk" id="ix-talk" aria-pressed="false">● TALK</button>
         <button type="button" class="ix-btn" id="ix-voice" aria-pressed="false" title="Read replies aloud">VOICE OFF</button>
         <select class="ix-btn ix-lang" id="ix-lang" aria-label="Language" title="The language you speak and Scorpion replies in"></select>
+        <button type="button" class="ix-btn" id="ix-gestures" aria-pressed="false" title="Spin and zoom the orb with your hands, using the camera (G)">GESTURES OFF</button>
         <span class="ix-gap"></span>
         <button type="button" class="ix-btn" id="ix-zoom-in" aria-label="Zoom in">+</button>
         <button type="button" class="ix-btn" id="ix-zoom-out" aria-label="Zoom out">−</button>
         <button type="button" class="ix-btn" id="ix-reset">RESET</button>
       </div>
     </div>
-    <div class="ix-hud ix-hint"><span class="key">SPACE</span> talk / interrupt <span class="key">DRAG</span> spin <span class="key">SCROLL</span> zoom <span class="key">R</span> reset <span class="key">ESC</span> exit</div>
+    <div class="ix-hud ix-hint" id="ix-hint"><span class="key">SPACE</span> talk / interrupt <span class="key">DRAG</span> spin <span class="key">SCROLL</span> zoom <span class="key">G</span> gestures <span class="key">R</span> reset <span class="key">ESC</span> exit</div>
+    <div class="ix-cam hidden" id="ix-cam" aria-live="polite">
+      <div class="ix-cam-view"><video id="ix-cam-video" muted playsinline></video><canvas id="ix-cam-overlay" width="208" height="156"></canvas></div>
+      <div class="ix-cam-status" id="ix-cam-status"></div>
+    </div>
   </div>
   <div class="toast hidden" id="toast" role="status"></div>
 
