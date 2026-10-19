@@ -28,6 +28,11 @@ account, or an internet connection to chat.
 - **Memory across chats**: Scorpion saves lasting facts about you, such as your name, preferences and projects, and knows them in every new chat. Ask it to forget something, or view, edit and delete memories on the Memory page. It also recalls relevant parts of earlier conversations, and you can turn either feature off in Settings.
 - **Chat with documents**: you add PDF, Word or text files. Scorpion indexes them on your
   machine and the agent searches them and names its sources.
+- **Voice**: talk to Scorpion and hear it answer. 🎤 speaks one message, 🗣 starts a
+  hands-free conversation (talk, it answers aloud, then listens again; say "stop" to
+  end), and 🔊 reads every reply aloud. Listening uses Whisper and speaking uses
+  Kokoro, both on your computer. They're a one-time ~230 MB download (Settings →
+  Voice → Install). Scorpion understands 20 languages and speaks English.
 - **Private by design**: Scorpion stores data only in your OS app-data folder, makes no
   network calls while you chat, has a sandboxed UI and a locked-down IPC bridge.
 
@@ -116,6 +121,24 @@ npm start
 Open **Models** and download a model, or import a `.gguf` file you already have.
 Choose a workspace folder (📁 in the top bar), then try:
 *"List the files in my workspace and summarize the project."*
+
+## Voice
+
+1. Open **Settings → Voice** and click **Install voice** (about 230 MB, once).
+2. Click 🎤 below the message box and speak. Scorpion sends your message when you
+   pause. Click 🎤 again to send early.
+3. For a conversation, click 🗣. Scorpion listens, answers aloud, then listens
+   again. Say "stop" or click 🗣 to end it.
+4. 🔊 reads every reply aloud. While it's speaking, click it to stop.
+
+Choose the voice, speed and the language you speak in **Settings → Voice**. The
+microphone is only used while 🎤 or 🗣 is listening. Audio never leaves the
+computer, and the page can't use the camera or screen.
+
+If Scorpion says the microphone is muted or blocked: on Windows, check the mic
+key on your keyboard and **Settings → Privacy & security → Microphone** ("Let
+desktop apps access your microphone"); on a Mac, allow Scorpion in **System
+Settings → Privacy & Security → Microphone**.
 
 ## Getting a model with no internet at all
 

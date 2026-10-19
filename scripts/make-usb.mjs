@@ -1,7 +1,7 @@
 // Assembles a folder to copy onto a USB stick: Scorpion for Windows (no
 // install), the Mac disk images, and one shared scorpion-data folder with
 // models, so the same chats, memory and models work on both systems.
-//   node scripts/make-usb.mjs <out-dir> [--mac-arm <dmg>] [--mac-intel <dmg>] [--models <dir> <file.gguf>...]
+//   node scripts/make-usb.mjs <out-dir> [--mac-arm <dmg>] [--mac-intel <dmg>] [--voice <models/voice dir>] [--models <dir> <file.gguf>...]
 // Build the Windows app first: npx electron-builder --win dir
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,6 +30,12 @@ for (const [flag, name] of [['--mac-arm', 'Scorpion for Apple Silicon Mac.dmg'],
 const data = path.join(out, 'scorpion-data');
 fs.mkdirSync(path.join(data, 'models'), { recursive: true });
 for (const f of modelFiles) copy(path.join(modelDir, f), path.join(data, 'models', f));
+// An installed voice folder (Settings → Voice) makes the stick talk with no download.
+const voiceDir = opt('--voice');
+if (voiceDir) {
+  if (!fs.existsSync(path.join(voiceDir, 'installed.json'))) { console.error(`${voiceDir} is not a complete voice install`); process.exit(1); }
+  copy(voiceDir, path.join(data, 'models', 'voice'));
+}
 copy(path.join(root, 'resources', 'USB-START-HERE.txt'), path.join(out, 'START HERE.txt'));
 
 const size = (p) => fs.statSync(p).isDirectory() ? fs.readdirSync(p).reduce((n, f) => n + size(path.join(p, f)), 0) : fs.statSync(p).size;

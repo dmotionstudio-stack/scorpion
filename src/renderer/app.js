@@ -1,6 +1,7 @@
 import { marked } from '/vendor/marked.js';
 import DOMPurify from '/vendor/purify.js';
 import { applyEvent } from '/shared/events.js';
+import { Recorder, Speaker } from './voice.js';
 
 const api = window.scorpion;
 const $ = (sel) => document.querySelector(sel);
@@ -469,8 +470,205 @@ async function reloadSchedules() {
 
 const errText = (err) => String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
+// ---------- voice ----------
+// 🎤 listens for one message and sends it when you pause. 🗣 is a hands-free
+// conversation: listen → send → speak the reply → listen again. 🔊 reads
+// replies aloud. Whisper and Kokoro run in the main process, offline.
+const speaker = new Speaker((text) => api.speak(text));
+const recorder = new Recorder();
+const V = { talk: false, transcribing: false, replyDone: true, download: null, onText: null };
+const IS_MAC = navigator.userAgent.includes('Macintosh');
+
+function voiceReady() {
+  if (S.voice?.installed) { api.warmVoice(); return true; }
+  toast('Voice needs a one-time download first: Settings → Voice → Install.');
+  setView('settings');
+  return false;
+}
+const speaksReplies = () => Boolean(S.voice?.installed && (S.settings.voiceSpeak || V.talk));
+
+function voiceOnChatEvent(ev) {
+  if (ev.threadId !== S.thread?.id) return;
+  if (ev.type === 'start') { V.replyDone = false; if (speaksReplies()) speaker.stop(); }
+  if (!speaksReplies()) {
+    if (ev.type === 'done') V.replyDone = true;
+    return;
+  }
+  if (ev.type === 'text' && !ev.parent) speaker.feed(ev.delta);
+  if (ev.type === 'done') {
+    V.replyDone = true;
+    if (ev.error || ev.stopped) speaker.stop();
+    speaker.flush(); // continues the conversation once the reply is spoken
+  }
+}
+speaker.onIdle = () => { if (V.replyDone) talkTurn(); };
+speaker.onChange = () => renderVoiceButtons();
+
+function renderVoiceButtons() {
+  const listening = recorder.active;
+  $('#mic').classList.toggle('listening', listening && !V.talk);
+  $('#mic').classList.toggle('busy', V.transcribing && !V.talk);
+  $('#mic').setAttribute('aria-pressed', String(listening && !V.talk));
+  $('#talk').setAttribute('aria-pressed', String(V.talk));
+  $('#talk').classList.toggle('listening', V.talk && listening);
+  $('#talk').title = V.talk ? 'Stop the conversation' : 'Conversation: talk hands-free, Scorpion answers aloud';
+  $('#read-aloud').setAttribute('aria-pressed', String(Boolean(S.settings.voiceSpeak)));
+  $('#read-aloud').textContent = S.settings.voiceSpeak ? '🔊' : '🔇';
+  $('#read-aloud').classList.toggle('speaking', speaker.playing);
+  $('#read-aloud').title = speaker.playing ? 'Stop speaking' : 'Read replies aloud';
+}
+
+async function listen(onText) {
+  if (V.starting) return;
+  V.starting = true;
+  V.onText = onText;
+  try {
+    if (!(await api.micAccess())) throw Object.assign(new Error('Microphone access denied'), { name: 'NotAllowedError' });
+    await recorder.start({ vad: true, onEnd: heard });
+  } catch (err) {
+    micError(err);
+    return;
+  } finally {
+    V.starting = false;
+  }
+  renderVoiceButtons();
+}
+
+async function heard(pcm) {
+  V.transcribing = true;
+  renderVoiceButtons();
+  let text = '';
+  try { text = await api.transcribe(pcm); } catch (err) { toast(errText(err)); }
+  V.transcribing = false;
+  renderVoiceButtons();
+  const done = V.onText;
+  V.onText = null;
+  done?.(text);
+}
+
+function micError(err) {
+  const blocked = err?.name === 'NotAllowedError' || err?.name === 'SecurityError';
+  toast(err?.name === 'MicMuted'
+    ? `Your microphone is muted. Unmute it (the mic key on your keyboard, or ${IS_MAC ? 'System Settings → Sound → Input' : 'Windows Settings → System → Sound → Input'}) and try again.`
+    : blocked
+    ? (IS_MAC
+      ? 'Scorpion can\'t use the microphone. Allow it in System Settings → Privacy & Security → Microphone.'
+      : 'Scorpion can\'t use the microphone. In Windows Settings → Privacy & security → Microphone, turn on microphone access and "Let desktop apps access your microphone".')
+    : err?.name === 'NotFoundError' ? 'No microphone found. Plug one in and try again.' : `Microphone error: ${err?.message || err}`, 9000);
+  V.talk = false;
+  renderVoiceButtons();
+}
+
+async function talkTurn() {
+  if (!V.talk || V.starting || recorder.active || V.transcribing || speaker.busy) return;
+  if (S.thread && S.running.has(S.thread.id)) return; // resumes when the reply is spoken
+  await listen((text) => {
+    if (!V.talk) return;
+    if (!text) { talkTurn(); return; } // silence or noise: keep listening
+    if (/^(stop|goodbye|bye|end (the )?conversation)[.!]?$/i.test(text.trim())) { stopTalk(); toast('Conversation ended.'); return; }
+    sendMessage(text);
+  });
+}
+
+function stopTalk() {
+  V.talk = false;
+  V.onText = null;
+  recorder.stop();
+  speaker.stop();
+  renderVoiceButtons();
+}
+
+function renderVoiceSettings() {
+  const v = S.voice || {};
+  const d = V.download;
+  $('#voice-setup').innerHTML = v.installed
+    ? '<span class="muted small">✅ Installed: Whisper (listening) and Kokoro (speaking).</span>'
+    : d
+      ? `<div class="progress"><div style="width:${Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100))}%"></div></div><span class="muted small">Downloading voice… ${gb(d.loaded || 0)} of about ${gb(d.total || v.bytes)}</span>`
+      : `<button class="btn primary" id="voice-install" type="button">Install voice (${gb(v.bytes || 0)} download)</button>`;
+  $('#voice-options').classList.toggle('hidden', !v.installed);
+  if (!v.installed) return;
+  $('#voice-speak').checked = Boolean(S.settings.voiceSpeak);
+  $('#voice-name').innerHTML = v.voices.map((o) => `<option value="${o.id}"${o.id === S.settings.voiceName ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
+  const speed = Number(S.settings.voiceSpeed ?? 1);
+  $('#voice-speed').value = String(speed);
+  $('#voice-speed-val').textContent = `${speed.toFixed(2)}×`;
+  $('#voice-language').innerHTML = v.languages.map((l) => `<option value="${l}"${l === S.settings.voiceLanguage ? ' selected' : ''}>${l[0].toUpperCase()}${l.slice(1)}</option>`).join('');
+}
+
+function wireVoice() {
+  $('#mic').onclick = async () => {
+    if (V.talk) return;
+    if (recorder.active) { heard(recorder.stop()); return; } // stop early: use what was said
+    if (!voiceReady()) return;
+    speaker.stop();
+    await listen((text) => {
+      if (text) sendMessage(text);
+      else toast('Didn\'t catch that. Try again a little closer to the microphone.');
+    });
+  };
+  $('#talk').onclick = () => {
+    if (V.talk) { stopTalk(); return; }
+    if (!voiceReady()) return;
+    if (!S.settings.chatModel) { toast('Pick or download a chat model first.'); setView('models'); return; }
+    V.talk = true;
+    renderVoiceButtons();
+    toast('Conversation on. Just talk; say "stop" or click 🗣 to end.');
+    talkTurn();
+  };
+  $('#read-aloud').onclick = async () => {
+    if (speaker.playing) { speaker.stop(); return; } // first click just stops the current speech
+    const on = !S.settings.voiceSpeak;
+    if (on && !voiceReady()) return;
+    if (!on) speaker.stop();
+    S.settings = await api.updateSettings({ voiceSpeak: on });
+    renderVoiceButtons();
+    renderVoiceSettings();
+  };
+  $('#voice-setup').onclick = async (e) => {
+    if (!e.target.closest('#voice-install')) return;
+    V.download = { loaded: 0, total: S.voice?.bytes };
+    renderVoiceSettings();
+    try {
+      S.voice = await api.installVoice();
+      toast('Voice installed. Try 🎤 to speak a message, or 🗣 for a conversation.');
+    } catch (err) {
+      toast(`Voice download failed: ${errText(err)}`, 8000);
+    }
+    V.download = null;
+    renderVoiceSettings();
+  };
+  api.onVoiceDownload((p) => {
+    if (p.done || !V.download) return;
+    V.download = p;
+    if (S.view === 'settings') renderVoiceSettings();
+  });
+  $('#voice-speak').onchange = async (e) => {
+    if (!e.target.checked) speaker.stop();
+    S.settings = await api.updateSettings({ voiceSpeak: e.target.checked });
+    renderVoiceButtons();
+  };
+  $('#voice-name').onchange = async (e) => {
+    S.settings = await api.updateSettings({ voiceName: e.target.value });
+    speaker.say('Hi, I\'m Scorpion. This is how I sound.');
+  };
+  $('#voice-speed').oninput = (e) => { $('#voice-speed-val').textContent = `${Number(e.target.value).toFixed(2)}×`; };
+  $('#voice-speed').onchange = async (e) => { S.settings = await api.updateSettings({ voiceSpeed: Number(e.target.value) }); };
+  $('#voice-language').onchange = async (e) => { S.settings = await api.updateSettings({ voiceLanguage: e.target.value }); };
+  $('#voice-test').onclick = () => speaker.say('Hi, I\'m Scorpion. This is how I sound. I run entirely on your computer.');
+  $('#voice-uninstall').onclick = async () => {
+    if (!confirm('Remove the voice models (about 230 MB)? You can install them again any time.')) return;
+    stopTalk();
+    S.voice = await api.uninstallVoice();
+    S.settings = await api.updateSettings({ voiceSpeak: false });
+    renderVoiceSettings();
+    renderVoiceButtons();
+  };
+}
+
 // ---------- settings page ----------
 function renderSettings() {
+  renderVoiceSettings();
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
   const allowed = S.settings.allowedFolders || [];
   $('#allowed-folders').innerHTML = allowed.length
@@ -525,7 +723,7 @@ function renderAll() {
   applyTheme();
   applyGlass();
   renderThemePicker();
-  renderThreads(); renderTopbar(); renderModels(); renderDocs(); renderMemory(); renderAgents(); renderSchedules(); renderSettings(); renderMessages();
+  renderThreads(); renderTopbar(); renderModels(); renderDocs(); renderMemory(); renderAgents(); renderSchedules(); renderSettings(); renderMessages(); renderVoiceButtons();
 }
 
 // ---------- actions ----------
@@ -566,6 +764,7 @@ async function sendMessage(text) {
 }
 
 function applyChatEvent(ev) {
+  voiceOnChatEvent(ev);
   if (ev.type === 'approval') { S.pending.set(ev.id, ev); }
   if (ev.type === 'memory') { reloadMemories(); return; }
   if (ev.type === 'done') {
@@ -635,7 +834,8 @@ function wire() {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage($('#input').value); }
   });
   $('#input').addEventListener('input', autosize);
-  $('#stop').onclick = () => S.thread && api.stop(S.thread.id);
+  $('#stop').onclick = () => { speaker.stop(); if (S.thread) api.stop(S.thread.id); };
+  wireVoice();
 
   $('#messages').onclick = (e) => {
     const s = e.target.closest('.suggestion');
@@ -823,7 +1023,7 @@ function wire() {
   api.onSchedulesChanged(reloadSchedules);
   api.onOpenThread((id) => openThread(id));
   // The agent can set the workspace or allow a folder mid-chat.
-  api.onSettingsChanged((settings) => { S.settings = settings; renderTopbar(); renderModes(); renderSettings(); });
+  api.onSettingsChanged((settings) => { S.settings = settings; renderTopbar(); renderModes(); renderSettings(); renderVoiceButtons(); });
   $('#allowed-folders').onclick = async (e) => {
     const f = e.target.closest('[data-unallow]')?.dataset.unallow;
     if (!f) return;
@@ -850,3 +1050,4 @@ wire();
 await refresh();
 if (S.threads[0]) await openThread(S.threads[0].id);
 if (S.settings.chatModel && !S.engine?.chatModel) api.loadModel().catch(() => {});
+if (S.voice?.installed && S.settings.voiceSpeak) api.warmVoice();

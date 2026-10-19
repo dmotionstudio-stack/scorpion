@@ -267,3 +267,14 @@ html.glass-native .thread.active, html.glass-css .thread.active,
 html.glass-native .navbtn.active, html.glass-css .navbtn.active { background: var(--glass-active); color: var(--text); }
 html.glass-native .sidebar-foot, html.glass-css .sidebar-foot { border-top-color: var(--glass-line); }
 html.glass-native .thread, html.glass-css .thread { color: color-mix(in srgb, var(--text) 78%, transparent); }
+
+/* Voice: mic, conversation and read-aloud buttons in the composer */
+.voice-buttons { margin-left: auto; display: flex; gap: 2px; }
+.voice-btn { border: 0; background: none; padding: 3px 8px; border-radius: 6px; cursor: pointer; font-size: 15px; line-height: 1; opacity: .75; }
+.voice-btn:hover { opacity: 1; background: var(--panel); }
+.voice-btn[aria-pressed="true"] { opacity: 1; background: var(--panel); box-shadow: 0 0 0 1px var(--accent) inset; }
+.voice-btn.listening { animation: pulse .7s ease-in-out infinite alternate; box-shadow: 0 0 0 2px var(--accent) inset; }
+.voice-btn.busy { cursor: progress; opacity: .5; }
+#voice-options .row > span:first-child { min-width: 64px; }
+#voice-options select, #voice-options input[type=range] { width: auto; flex: 1; max-width: 320px; }
+.voice-btn.speaking { animation: pulse .5s ease-in-out infinite alternate; box-shadow: 0 0 0 2px var(--accent) inset; opacity: 1; }

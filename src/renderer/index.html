@@ -78,6 +78,11 @@
                 <button type="button" role="radio" data-mode="build" title="Build it: create files, run and test them, fix errors until it works.">🔨 Build</button>
               </div>
               <span class="mode-hint muted small" id="mode-hint"></span>
+              <div class="voice-buttons" role="group" aria-label="Voice">
+                <button type="button" class="voice-btn" id="mic" title="Speak your message (sends when you pause)" aria-pressed="false">🎤</button>
+                <button type="button" class="voice-btn" id="talk" title="Conversation: talk hands-free, Scorpion answers aloud" aria-pressed="false">🗣</button>
+                <button type="button" class="voice-btn" id="read-aloud" title="Read replies aloud" aria-pressed="false">🔇</button>
+              </div>
             </div>
           </div>
           <button type="submit" class="btn primary" id="send">Send</button>
@@ -213,6 +218,18 @@
             <label class="toggle"><input type="checkbox" id="memory-enabled"><span>Remember facts about me across chats</span></label>
             <label class="toggle"><input type="checkbox" id="recall-enabled"><span>Recall relevant parts of earlier conversations</span></label>
             <p class="muted small">Turn off to make every chat start fresh. Your saved memories are kept until you delete them.</p>
+          </div>
+          <div class="field">
+            <label>Voice</label>
+            <div id="voice-setup"></div>
+            <div id="voice-options" class="hidden">
+              <label class="toggle"><input type="checkbox" id="voice-speak"><span>Read replies aloud</span></label>
+              <div class="row"><span>Voice</span><select id="voice-name"></select><button class="btn small" id="voice-test" type="button">▶ Test</button></div>
+              <div class="row"><span>Speed</span><input type="range" id="voice-speed" min="0.7" max="1.5" step="0.05"><span id="voice-speed-val"></span></div>
+              <div class="row"><span>I speak</span><select id="voice-language"></select></div>
+              <div class="row"><button class="btn small" id="voice-uninstall" type="button">Uninstall voice</button></div>
+            </div>
+            <p class="muted small">Talk with 🎤 (one message) or 🗣 (a hands-free conversation). Listening and speaking run on this computer: a one-time download of about 230 MB, then no internet. Scorpion's voices speak English; it understands the language you choose.</p>
           </div>
           <div class="field">
             <label for="gpu-layers">GPU offload</label>

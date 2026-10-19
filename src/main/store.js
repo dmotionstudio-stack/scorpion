@@ -18,6 +18,10 @@ const DEFAULT_SETTINGS = {
   systemPrompt: '',
   theme: 'classic', // classic | hellfire | bloodmoon | smoke | molten | bone
   glass: 'auto', // 'auto' (native glass where the OS supports it) or 'off'
+  voiceSpeak: false, // read replies aloud
+  voiceName: 'af_heart', // Kokoro voice id
+  voiceSpeed: 1, // 0.5–2
+  voiceLanguage: 'english', // what the user speaks (Whisper)
 };
 
 let dataDir = null;

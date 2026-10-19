@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage, session, systemPreferences } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -10,6 +10,7 @@ import * as rag from './rag.js';
 import * as memory from './memory.js';
 import * as agents from './agents.js';
 import * as scheduler from './scheduler.js';
+import * as voice from './voice.js';
 import { TOOLS } from './tools.js';
 import { applyEvent } from '../shared/events.js';
 import { buildFunctions, buildSystemPrompt, withDocumentContext, withConversationRecall } from './agent.js';
@@ -227,6 +228,7 @@ async function state() {
     schedules: scheduleView(),
     openAtLogin: app.getLoginItemSettings().openAtLogin,
     supportedDocs: rag.SUPPORTED_EXTENSIONS,
+    voice: voice.voiceStatus(),
     engine: await engine.engineInfo().catch((e) => ({ error: e.message })),
     platform: process.platform,
     glass: glassMode(),
@@ -474,6 +476,23 @@ function registerIpc() {
   const h = (channel, fn) => ipcMain.handle(channel, (_e, arg) => fn(arg));
 
   h('app:state', state);
+  h('voice:install', async () => {
+    await voice.installVoice((p) => send('voice:download', p));
+    return voice.voiceStatus();
+  });
+  h('voice:warm', () => { voice.warmUp(); return true; });
+  h('voice:uninstall', async () => { await voice.uninstallVoice(); return voice.voiceStatus(); });
+  h('voice:transcribe', async (pcm) => voice.transcribe(pcm, store.getSettings().voiceLanguage));
+  h('voice:speak', async (text) => {
+    const s = store.getSettings();
+    return voice.speak(text, { voice: s.voiceName, speed: s.voiceSpeed });
+  });
+  // macOS asks the user once; Windows uses its own privacy setting.
+  h('voice:micAccess', async () => {
+    if (process.platform !== 'darwin') return true;
+    if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true;
+    return systemPreferences.askForMediaAccess('microphone');
+  });
   h('settings:update', async (patch) => {
     const before = store.getSettings();
     const next = store.updateSettings(patch);
@@ -599,6 +618,20 @@ function registerIpc() {
   h('memory:clear', () => memory.clearMemories());
 }
 
+// The UI may use the microphone (for voice chat) and nothing else: no camera,
+// screen, location or notifications from the page.
+function allowMicrophoneOnly() {
+  const isOwnPage = (url) => String(url || '').startsWith('scorpion://');
+  const micOnly = (permission, details) => permission === 'media'
+    && (details?.mediaTypes ?? ['audio']).every((t) => t === 'audio');
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
+    callback(isOwnPage(details?.requestingUrl ?? wc.getURL()) && micOnly(permission, details));
+  });
+  session.defaultSession.setPermissionCheckHandler((wc, permission, origin, details) => {
+    return isOwnPage(origin) && (permission === 'media' ? (details?.mediaType ?? 'audio') === 'audio' : false);
+  });
+}
+
 // Starting minimized at login only makes sense if something is scheduled.
 function ensureTrayHint() {
   if (scheduler.hasEnabledSchedules()) ensureTray();
@@ -606,6 +639,8 @@ function ensureTrayHint() {
 
 app.whenReady().then(async () => {
   store.initStore(app.getPath('userData'));
+  voice.initVoice(store.paths.models);
+  allowMicrophoneOnly();
   await autoSelectModels();
   serveApp();
   registerIpc();

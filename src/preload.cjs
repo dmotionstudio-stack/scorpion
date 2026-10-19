@@ -62,4 +62,12 @@ contextBridge.exposeInMainWorld('scorpion', {
   onSchedulesChanged: on('schedules:changed'),
   onOpenThread: on('open-thread'),
   onSettingsChanged: on('settings:changed'),
+
+  installVoice: invoke('voice:install'),
+  uninstallVoice: invoke('voice:uninstall'),
+  transcribe: invoke('voice:transcribe'),
+  speak: invoke('voice:speak'),
+  micAccess: invoke('voice:micAccess'),
+  warmVoice: invoke('voice:warm'),
+  onVoiceDownload: on('voice:download'),
 });
