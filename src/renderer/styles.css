@@ -177,7 +177,6 @@ code, pre { font-family: var(--mono); }
 .editor input[type=range] { accent-color: var(--accent); }
 .grid2 { display: grid; grid-template-columns: 1fr 120px; gap: 12px; }
 .grid2:has(select) { grid-template-columns: 1fr 1fr; }
-.icon-input { text-align: center; font-size: 18px; }
 .narrow { max-width: 120px; min-width: 0; flex: 0 0 auto; }
 .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 12px; margin-top: 6px; }
 .tool-choice code { font-size: 12px; }
@@ -337,3 +336,34 @@ html.glass-native .thread, html.glass-css .thread { color: color-mix(in srgb, va
 .ix-cam-status { padding: 6px 8px; font-size: 10px; line-height: 1.5; letter-spacing: .12em; text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 70%, transparent); }
 .ix-cam[data-error] .ix-cam-view { display: none; }
 .ix-cam[data-error] .ix-cam-status { color: #fff; letter-spacing: .06em; font-size: 11px; }
+
+/* Line icons for icon-only buttons (no emoji anywhere in the interface) */
+.ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; flex: none; }
+#workspace-chip { display: inline-flex; align-items: center; gap: 6px; }
+.voice-btn { display: inline-flex; align-items: center; justify-content: center; color: var(--text); }
+.voice-btn .ico { width: 17px; height: 17px; }
+.navbtn.interact-open, #toggle-plan { display: inline-flex; align-items: center; gap: 8px; }
+
+/* ---------- People (face recognition) ---------- */
+.people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin: 14px 0 22px; }
+.person { display: flex; gap: 12px; align-items: center; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+.person img, .person .noface { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; flex: none; background: var(--panel-2); }
+.person .who { flex: 1; min-width: 0; }
+.person .who b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person .acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.person .acts button { font-size: 11px; padding: 2px 8px; }
+.pin-input { max-width: 180px; letter-spacing: .2em; }
+.face-capture, .lock-screen { position: fixed; inset: 0; z-index: 950; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.72); backdrop-filter: blur(6px); }
+.lock-screen { z-index: 1100; background: var(--bg); }
+.face-capture.hidden, .lock-screen.hidden { display: none; }
+.face-capture-card, .lock-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; width: min(540px, calc(100% - 32px)); text-align: center; }
+.lock-card h1 { font-size: 20px; margin: 0 0 12px; }
+.face-capture-view, .lock-view { position: relative; margin: 0 auto 10px; background: #000; border-radius: 10px; overflow: hidden; }
+.face-capture-view { width: 480px; max-width: 100%; aspect-ratio: 4 / 3; }
+.lock-view { width: 320px; max-width: 100%; aspect-ratio: 4 / 3; }
+.face-capture-view video, .lock-view video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.face-capture-view canvas, .lock-view canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.face-capture-card .row, .lock-card .row { justify-content: center; }
+.ix-facecam { position: absolute; z-index: 20; top: 96px; left: 24px; width: 210px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 4px; background: rgba(0,0,0,.6); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 18%, transparent); }
+.ix-facecam.hidden { display: none; }
+.ix-facecam video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: .6; filter: grayscale(1) contrast(1.2); }

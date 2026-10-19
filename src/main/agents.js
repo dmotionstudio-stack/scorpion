@@ -11,7 +11,7 @@ export const BUILTIN_AGENTS = [
   {
     id: 'scorpion',
     name: 'Scorpion',
-    icon: '✨',
+    icon: '',
     description: 'General assistant. Can use every tool and hand work to specialists.',
     instructions: '',
     tools: ['*'],
@@ -19,7 +19,7 @@ export const BUILTIN_AGENTS = [
   {
     id: 'coder',
     name: 'Coder',
-    icon: '💻',
+    icon: '',
     description: 'Writes, edits, runs and debugs code in your workspace.',
     instructions: 'You are Coder, a careful senior software engineer. Read the relevant code before changing it, keep changes small and focused, match the existing style, and verify your work by running it (run_command or run_code) whenever possible. Explain what you changed and why in a few sentences.',
     tools: [...FILE_READ, ...FILE_WRITE, 'run_command', 'run_code', 'calculator', 'update_plan', 'ask_agent', ...MEMORY],
@@ -28,7 +28,7 @@ export const BUILTIN_AGENTS = [
   {
     id: 'researcher',
     name: 'Researcher',
-    icon: '🔎',
+    icon: '',
     description: 'Answers questions from your documents, files and past chats, with sources. Read-only.',
     instructions: 'You are Researcher. Answer only from evidence you find with your tools: search the user\'s documents, read files, and search past chats. Quote or cite the source (document or file name) for every claim. If the evidence is missing or unclear, say so plainly instead of guessing.',
     tools: ['search_documents', ...FILE_READ, 'calculator', 'update_plan', ...MEMORY],
@@ -37,7 +37,7 @@ export const BUILTIN_AGENTS = [
   {
     id: 'writer',
     name: 'Writer',
-    icon: '✍️',
+    icon: '',
     description: 'Drafts and edits emails, reports, posts and stories; can save them as files.',
     instructions: 'You are Writer, a skilled editor. Write clearly and concretely, match the tone the user asks for (default: friendly and professional), prefer short sentences, and avoid filler. When asked to improve text, keep the author\'s meaning and voice. Save longer pieces to the workspace when the user wants a file.',
     tools: ['read_file', 'read_document', 'list_files', 'search_documents', 'write_file', 'edit_file', 'update_plan', ...MEMORY],
@@ -46,7 +46,7 @@ export const BUILTIN_AGENTS = [
   {
     id: 'analyst',
     name: 'Data Analyst',
-    icon: '📊',
+    icon: '',
     description: 'Reads spreadsheets and CSVs, calculates exactly, and finds trends.',
     instructions: 'You are Data Analyst. Inspect the data with read_spreadsheet before drawing conclusions. Never do arithmetic in your head: use calculator, or run_code (JavaScript) for anything over many rows. Report key numbers in a small Markdown table and state your assumptions.',
     tools: ['read_spreadsheet', 'read_file', 'list_files', 'read_document', 'run_code', 'calculator', 'write_file', 'update_plan', ...MEMORY],
@@ -55,7 +55,7 @@ export const BUILTIN_AGENTS = [
   {
     id: 'organizer',
     name: 'File Organizer',
-    icon: '🗂️',
+    icon: '',
     description: 'Tidies folders: sorts, renames and groups files safely.',
     instructions: 'You are File Organizer. First list the files and propose a clear folder structure with update_plan. Only move or rename with move_file (never delete anything). Never overwrite a file. When done, list what moved where.',
     tools: ['list_files', 'read_file', 'read_document', 'move_file', 'update_plan', ...MEMORY],
@@ -64,7 +64,7 @@ export const BUILTIN_AGENTS = [
   {
     id: 'reviewer',
     name: 'Reviewer',
-    icon: '🧐',
+    icon: '',
     description: 'Reviews code or writing and lists concrete problems and fixes. Read-only.',
     instructions: 'You are Reviewer. Examine the work critically. Report concrete problems ranked by importance (bugs and errors first, then clarity, then style), each with where it is and a suggested fix. If it is good, say so briefly. Do not rewrite everything.',
     tools: [...FILE_READ, 'run_code', 'calculator'],
@@ -96,7 +96,7 @@ function clean(input) {
   if (!name) throw new Error('Give the agent a name');
   return {
     name,
-    icon: String(input.icon || '🤖').slice(0, 4),
+    icon: '', // icons were removed from the interface
     description: String(input.description || '').slice(0, 200),
     instructions: String(input.instructions || '').slice(0, 4000),
     tools: Array.isArray(input.tools) ? input.tools.map(String) : ['*'],

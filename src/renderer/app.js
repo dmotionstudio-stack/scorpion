@@ -2,6 +2,7 @@ import { marked } from '/vendor/marked.js';
 import DOMPurify from '/vendor/purify.js';
 import { applyEvent } from '/shared/events.js';
 import { Recorder, Speaker } from './voice.js';
+import { FaceCam, drawFaces } from './facecam.js';
 import { HandTracker, cameraError } from './gestures.js';
 
 const api = window.scorpion;
@@ -14,8 +15,15 @@ const S = {
 function savedMode() {
   try { const m = localStorage.getItem('scorpion.mode'); return ['chat', 'plan', 'build'].includes(m) ? m : 'build'; } catch { return 'build'; }
 }
-const agentById = (id) => S.agents.find((a) => a.id === id) || S.agents[0] || { id: 'scorpion', name: 'Scorpion', icon: '✨' };
-const VIEWS = ['chat', 'models', 'docs', 'memory', 'agents', 'schedules', 'settings'];
+const agentById = (id) => S.agents.find((a) => a.id === id) || S.agents[0] || { id: 'scorpion', name: 'Scorpion' };
+// Line icons (drawn in the theme colour) for the few icon-only buttons.
+const svg = (paths) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`;
+const ICON = {
+  folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+  speaker: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>'),
+  speakerOff: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/>'),
+};
+const VIEWS = ['chat', 'models', 'docs', 'memory', 'agents', 'schedules', 'people', 'settings'];
 
 // ---------- helpers ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -61,12 +69,12 @@ function setView(view) {
 // ---------- top bar ----------
 function renderTopbar() {
   renderModelSwitch();
-  $('#workspace-chip').textContent = S.settings.workspace ? `📁 ${base(S.settings.workspace)}` : '📁 No workspace';
+  $('#workspace-chip').innerHTML = `${ICON.folder}<span>${esc(S.settings.workspace ? base(S.settings.workspace) : 'No workspace')}</span>`;
   $('#workspace-chip').title = S.settings.workspace || 'Choose a folder the agent can work in';
   $('#auto-approve').checked = !!S.settings.autoApprove;
   renderModes();
   const current = S.thread?.agentId || (S.thread ? 'scorpion' : S.newChatAgent);
-  $('#agent-picker').innerHTML = S.agents.map((a) => `<option value="${esc(a.id)}"${a.id === current ? ' selected' : ''}>${esc(a.icon)} ${esc(a.name)}</option>`).join('');
+  $('#agent-picker').innerHTML = S.agents.map((a) => `<option value="${esc(a.id)}"${a.id === current ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
   $('#agent-picker').title = agentById(current).description || '';
 }
 
@@ -158,10 +166,11 @@ function renderWait(st) {
 }
 
 // ---------- messages ----------
-const STATUS = { running: '⏳ running', ok: '✓ done', error: '✕ failed' };
+const STATUS = { running: 'running', ok: '✓ done', error: '✕ failed' };
 const TOOL_LABEL = {
-  remember: '🧷 remembered', forget: '🧷 forgot', search_past_chats: '🔎 past chats', search_documents: '🔎 documents',
-  run_code: '▶ run code', calculator: '🧮 calculator', read_spreadsheet: '📊 spreadsheet', read_document: '📄 document', move_file: '🗂️ move',
+  remember: 'remembered', forget: 'forgot', search_past_chats: 'past chats', search_documents: 'documents',
+  run_code: 'run code', calculator: 'calculator', read_spreadsheet: 'spreadsheet', read_document: 'document', move_file: 'move',
+  web_search: 'web search', read_webpage: 'web page',
 };
 
 function approvalHtml(b) {
@@ -178,14 +187,14 @@ function approvalHtml(b) {
 
 function toolHtml(b, live) {
   const approval = S.pending.get(b.id);
-  const label = b.name === 'ask_agent' ? `${b.agentIcon || '🤝'} ${esc(b.args?.agent || 'agent')}` : esc(TOOL_LABEL[b.name] || b.name);
+  const label = b.name === 'ask_agent' ? `asked ${esc(b.args?.agent || 'agent')}` : esc(TOOL_LABEL[b.name] || b.name);
   const summary = b.name === 'ask_agent' ? b.args?.task : b.summary;
   // A helper agent's own steps and answer render nested inside its card.
   const inner = b.children?.length
     ? `<div class="helper">${renderBlockList(b.children, live && b.status === 'running')}</div>`
     : b.output ? `<pre>${esc(b.output)}</pre>` : '';
   const open = b.name === 'ask_agent' && (b.status === 'running' || hasPending(b.children)) ? ' open' : '';
-  return `<details class="tool ${b.status} ${b.name === 'ask_agent' ? 'delegate' : ''}"${open}><summary><span class="name">${label}</span><span class="sum">${esc(summary)}</span><span class="st">${approval ? '⏸ waiting' : STATUS[b.status] || ''}</span></summary>${inner}</details>${approval ? approvalHtml(b) : ''}`;
+  return `<details class="tool ${b.status} ${b.name === 'ask_agent' ? 'delegate' : ''}"${open}><summary><span class="name">${label}</span><span class="sum">${esc(summary)}</span><span class="st">${approval ? 'waiting' : STATUS[b.status] || ''}</span></summary>${inner}</details>${approval ? approvalHtml(b) : ''}`;
 }
 
 function hasPending(blocks) {
@@ -203,7 +212,7 @@ function renderBlockList(blocks, live) {
 }
 
 function renderPlanSteps(steps) {
-  const mark = { done: '✓', in_progress: '▶', pending: '○' };
+  const mark = { done: '✓', in_progress: '●', pending: '○' };
   return `<ol>${(steps || []).map((s) => `<li class="step ${esc(s.status)}"><span class="mark">${mark[s.status] || '○'}</span><span>${esc(s.title)}</span></li>`).join('')}</ol>`;
 }
 
@@ -212,7 +221,7 @@ function renderBlocks(msg, live) {
   let html = renderBlockList(blocks, live);
   if (live && !blocks.length) html += '<div class="md cursor muted"></div>';
   else if (live && blocks.at(-1)?.type === 'text') html = html.replace(/<div class="md">(?![\s\S]*<div class="md">)/, '<div class="md cursor">');
-  if (msg.error) html += `<div class="err">⚠ ${esc(msg.error)}</div>`;
+  if (msg.error) html += `<div class="err">Error: ${esc(msg.error)}</div>`;
   if (msg.stopped) html += '<div class="muted small">Stopped.</div>';
   return html;
 }
@@ -221,10 +230,10 @@ function messageHtml(m, i, msgs) {
   if (m.role === 'user') return `<div class="msg user"><div class="bubble">${esc(m.text)}</div></div>`;
   const live = S.running.has(S.thread.id) && i === msgs.length - 1;
   const a = agentById(m.agentId || S.thread.agentId || 'scorpion');
-  const modeTag = m.mode && m.mode !== 'build' ? ` <span class="mode-tag">${m.mode === 'plan' ? '📝 plan' : '💬 chat'}</span>` : '';
+  const modeTag = m.mode && m.mode !== 'build' ? ` <span class="mode-tag">${m.mode === 'plan' ? 'plan' : 'chat'}</span>` : '';
   // After a plan is written in Plan mode, offer to build it in one click.
   const offerBuild = !live && i === msgs.length - 1 && m.mode === 'plan' && (m.blocks || []).some((b) => b.type === 'plan');
-  return `<div class="msg assistant"><div class="meta">${esc(a.icon)} ${esc(a.name)}${m.model ? ` · ${esc(m.model)}` : ''}${modeTag}</div>${renderBlocks(m, live)}${offerBuild ? '<div class="build-plan"><button class="btn primary small" data-build-plan="1">🔨 Build this plan</button></div>' : ''}</div>`;
+  return `<div class="msg assistant"><div class="meta">${esc(a.name)}${m.model ? ` · ${esc(m.model)}` : ''}${modeTag}</div>${renderBlocks(m, live)}${offerBuild ? '<div class="build-plan"><button class="btn primary small" data-build-plan="1">Build this plan</button></div>' : ''}</div>`;
 }
 
 const SUGGESTIONS = [
@@ -272,15 +281,15 @@ function scheduleRender() {
 
 // ---------- models page ----------
 const FIT = {
-  fast: ['fit-fast', '⚡ Fast here', 'Fits entirely in the graphics memory of this PC.'],
+  fast: ['fit-fast', 'Fast here', 'Fits entirely in the graphics memory of this PC.'],
   ok: ['fit-ok', '✓ Runs here', 'Fits in shared graphics memory.'],
-  slow: ['fit-slow', '🐢 Slower here', 'Too big for the graphics card, so part of it runs on the CPU.'],
-  'too-big': ['fit-big', '⛔ Too big', 'Likely too large for the memory of this PC.'],
+  slow: ['fit-slow', 'Slower here', 'Too big for the graphics card, so part of it runs on the CPU.'],
+  'too-big': ['fit-big', 'Too big', 'Likely too large for the memory of this PC.'],
 };
 const SKILL = {
-  agent: ['skill-agent', '🛠 Agent-ready', 'Passed the calculator and Build-mode file tests: can plan, write files and run code.'],
-  tools: ['skill-tools', '🔧 Simple tools', 'Uses simple tools (like the calculator) but struggles with multi-step Build tasks.'],
-  chat: ['skill-chat', '💬 Chat only', 'Did not use tools reliably in testing. Best for conversation.'],
+  agent: ['skill-agent', 'Agent-ready', 'Passed the calculator and Build-mode file tests: can plan, write files and run code.'],
+  tools: ['skill-tools', 'Simple tools', 'Uses simple tools (like the calculator) but struggles with multi-step Build tasks.'],
+  chat: ['skill-chat', 'Chat only', 'Did not use tools reliably in testing. Best for conversation.'],
 };
 const skillTag = (skill) => (SKILL[skill] ? `<span class="tag ${SKILL[skill][0]}" title="${SKILL[skill][2]}">${SKILL[skill][1]}</span>` : '');
 const fitTag = (fit) => (FIT[fit] ? `<span class="tag ${FIT[fit][0]}" title="${FIT[fit][2]}">${FIT[fit][1]}</span>` : '');
@@ -295,7 +304,7 @@ function renderModels() {
       <div><span class="tag">${m.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${gb(m.bytes)}</span><span class="tag">${m.source}</span>${fitTag(m.fit)}${skillTag(m.skill)}${selected ? '<span class="tag on">in use</span>' : ''}</div>
       <div class="row">${selected ? '' : `<button class="btn small primary" data-use="${esc(m.path)}" data-kind="${m.kind}">Use</button>`}
       ${m.source === 'library' ? `<button class="btn small" data-delmodel="${esc(m.path)}" data-size="${m.bytes}">Uninstall</button>` : '<span class="muted small">Comes with the installer</span>'}</div></div>`;
-  }).join('') || '<div class="muted">No models installed. Download one below (⚡ runs best on this PC) or import a .gguf file.</div>';
+  }).join('') || '<div class="muted">No models installed. Download one below ("Fast here" runs best on this PC) or import a .gguf file.</div>';
 
   const installed = (c) => {
     const want = c.uri.split('/').pop().replace(/\.gguf$/i, '').toLowerCase();
@@ -346,7 +355,7 @@ function renderAgents() {
   $('#agent-list').innerHTML = S.agents.map((a) => {
     const tools = a.tools.includes('*') ? 'All tools' : `${a.tools.length} tools`;
     return `<div class="card agent-card">
-      <div class="title"><span class="agent-icon">${esc(a.icon)}</span> ${esc(a.name)} ${a.builtin ? '' : '<span class="tag">custom</span>'}</div>
+      <div class="title">${esc(a.name)} ${a.builtin ? '' : '<span class="tag">custom</span>'}</div>
       <div class="muted small">${esc(a.description)}</div>
       <div class="small muted">${esc(tools)}</div>
       <div class="row">
@@ -364,7 +373,6 @@ function renderAgentEditor() {
   if (!a) return;
   $('#agent-editor-title').textContent = a.id ? `Edit ${a.name}` : 'New agent';
   $('#ae-name').value = a.name || '';
-  $('#ae-icon').value = a.icon || '🤖';
   $('#ae-description').value = a.description || '';
   $('#ae-instructions').value = a.instructions || '';
   $('#ae-temp').value = a.temperature ?? 0.6;
@@ -381,7 +389,6 @@ function readAgentEditor() {
   return {
     id: S.editingAgent?.id,
     name: $('#ae-name').value,
-    icon: $('#ae-icon').value,
     description: $('#ae-description').value,
     instructions: $('#ae-instructions').value,
     temperature: Number($('#ae-temp').value),
@@ -404,8 +411,8 @@ function renderSchedules() {
       : s.lastRunAt ? `<span class="tag">last run ${esc(new Date(s.lastRunAt).toLocaleString())}</span>` : '<span class="tag">never run</span>';
     const next = s.nextRunAt && s.enabled ? `<span class="tag">next ${esc(new Date(s.nextRunAt).toLocaleString())}</span>` : '';
     return `<div class="card schedule ${s.enabled ? '' : 'disabled'}">
-      <div class="title">⏰ ${esc(s.name)}</div>
-      <div class="small">${esc(a.icon)} ${esc(a.name)} · ${esc(describeTrigger(s.trigger))}${s.allowChanges ? ' · may change files' : ' · read-only'}</div>
+      <div class="title">${esc(s.name)}</div>
+      <div class="small">${esc(a.name)} · ${esc(describeTrigger(s.trigger))}${s.allowChanges ? ' · may change files' : ' · read-only'}</div>
       <div class="muted small clamp">${esc(s.prompt)}</div>
       <div>${status}${next}</div>
       <div class="row">
@@ -426,7 +433,7 @@ function renderScheduleEditor() {
   if (!s) return;
   $('#schedule-editor-title').textContent = s.id ? `Edit ${s.name}` : 'New scheduled agent';
   $('#se-name').value = s.name || '';
-  $('#se-agent').innerHTML = S.agents.map((a) => `<option value="${esc(a.id)}"${a.id === (s.agentId || 'scorpion') ? ' selected' : ''}>${esc(a.icon)} ${esc(a.name)}</option>`).join('');
+  $('#se-agent').innerHTML = S.agents.map((a) => `<option value="${esc(a.id)}"${a.id === (s.agentId || 'scorpion') ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
   $('#se-prompt').value = s.prompt || '';
   const t = s.trigger || { type: 'daily', time: '08:00' };
   $('#se-trigger').value = t.type;
@@ -472,8 +479,9 @@ async function reloadSchedules() {
 const errText = (err) => String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
 // ---------- voice ----------
-// 🎤 listens for one message and sends it when you pause. 🗣 is a hands-free
-// conversation: listen → send → speak the reply → listen again. 🔊 reads
+// The microphone button listens for one message and sends it when you pause.
+// The conversation button is hands-free: listen → send → speak the reply →
+// listen again. The speaker button reads
 // replies aloud. Whisper and Kokoro run in the main process, offline.
 const speaker = new Speaker((text) => api.speak(text));
 const recorder = new Recorder();
@@ -517,7 +525,7 @@ function renderVoiceButtons() {
   $('#talk').classList.toggle('listening', V.talk && listening);
   $('#talk').title = V.talk ? 'Stop the conversation' : 'Conversation: talk hands-free, Scorpion answers aloud';
   $('#read-aloud').setAttribute('aria-pressed', String(Boolean(S.settings.voiceSpeak)));
-  $('#read-aloud').textContent = S.settings.voiceSpeak ? '🔊' : '🔇';
+  $('#read-aloud').innerHTML = S.settings.voiceSpeak ? ICON.speaker : ICON.speakerOff;
   $('#read-aloud').classList.toggle('speaking', speaker.playing);
   $('#read-aloud').title = speaker.playing ? 'Stop speaking' : 'Read replies aloud';
 }
@@ -597,7 +605,7 @@ async function installVoice() {
   renderInteract();
   try {
     S.voice = await api.installVoice();
-    toast('Voice installed. Try 🎤 to speak a message, or 🗣 for a conversation.');
+    toast('Voice installed. Use the microphone button to speak a message, or the conversation button to talk hands-free.');
   } catch (err) {
     toast(`Voice download failed: ${errText(err)}`, 8000);
   }
@@ -667,7 +675,7 @@ function renderVoiceSettings() {
   const v = S.voice || {};
   const d = V.download;
   $('#voice-setup').innerHTML = v.installed
-    ? '<span class="muted small">✅ Installed: Whisper (listening) and Kokoro (speaking).</span>'
+    ? '<span class="muted small">Installed: Whisper (listening) and Kokoro (speaking).</span>'
     : d
       ? `<div class="progress"><div style="width:${Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100))}%"></div></div><span class="muted small">Downloading voice… ${gb(d.loaded || 0)} of about ${gb(d.total || v.bytes)}</span>`
       : `<button class="btn primary" id="voice-install" type="button">Install voice (${gb(v.bytes || 0)} download)</button>`;
@@ -697,7 +705,7 @@ function wireVoice() {
   };
   $('#talk').onclick = () => {
     if (V.talk) { stopTalk(); return; }
-    if (startTalk()) toast('Conversation on. Just talk; say "stop" or click 🗣 to end.');
+    if (startTalk()) toast('Conversation on. Just talk; say "stop" or click the conversation button to end.');
   };
   $('#read-aloud').onclick = async () => {
     if (speaker.playing) { speaker.stop(); return; } // first click just stops the current speech
@@ -791,6 +799,7 @@ function closeInteract() {
   IX.orb?.stop();
   if (V.talk) stopTalk();
   stopGestures();
+  stopFace();
   $('#interact').classList.add('hidden');
   $('#input').focus();
 }
@@ -828,10 +837,13 @@ function renderInteract() {
   if (V.langDownload) $('#ix-state').textContent = `DOWNLOADING VOICE ${Math.min(100, Math.round(((V.langDownload.loaded || 0) / (V.langDownload.total || 1)) * 100))}%`;
   const talk = $('#ix-talk');
   talk.setAttribute('aria-pressed', String(V.talk));
-  talk.textContent = V.talk ? '■ STOP' : S.voice?.installed ? '● TALK' : d ? 'INSTALLING…' : '⬇ INSTALL VOICE';
+  talk.textContent = V.talk ? '■ STOP' : S.voice?.installed ? '● TALK' : d ? 'INSTALLING…' : 'INSTALL VOICE';
   talk.disabled = Boolean(d);
   const voiceOn = Boolean(S.settings.voiceSpeak) || V.talk;
   $('#ix-voice').setAttribute('aria-pressed', String(voiceOn));
+  $('#ix-face').setAttribute('aria-pressed', String(FX.on));
+  $('#ix-face').textContent = FX.on ? 'FACE ON' : 'FACE OFF';
+  if (FX.on && FX.speaker && !V.download && !V.langDownload) $('#ix-model').textContent = '· WITH ' + FX.speaker.name.toUpperCase() + ($('#ix-model').textContent ? ' ' + $('#ix-model').textContent : '');
   $('#ix-voice').textContent = voiceOn ? 'VOICE ON' : 'VOICE OFF';
 }
 
@@ -935,7 +947,7 @@ function interactOnChatEvent(ev) {
   if (ev.type === 'start') IX.reply = '';
   if (ev.type === 'text' && !ev.parent) IX.reply += ev.delta;
   if (ev.type === 'start' || ev.type === 'text') $('#ix-reply').textContent = captionText(IX.reply).slice(-420);
-  if (ev.type === 'done' && ev.error) $('#ix-reply').textContent = `⚠ ${ev.error}`;
+  if (ev.type === 'done' && ev.error) $('#ix-reply').textContent = `Error: ${ev.error}`;
 }
 
 function wireInteract() {
@@ -975,8 +987,260 @@ function wireInteract() {
     }
     else if (e.key === 'r' || e.key === 'R') IX.orb?.resetView();
     else if (e.key === 'g' || e.key === 'G') $('#ix-gestures').click();
+    else if (e.key === 'f' || e.key === 'F') $('#ix-face').click();
     else if (e.key === '+' || e.key === '=') IX.orb?.zoomIn();
     else if (e.key === '-' || e.key === '_') IX.orb?.zoomOut();
+  });
+}
+
+// ---------- faces: people, Interact, face lock ----------
+// Face recognition runs in the main process (YuNet + SFace, see faces.js);
+// facecam.js grabs camera frames and tracks faces between them.
+const FX = { on: false, cam: null, speaker: null, greeted: new Map(), download: null };
+const GREETING = { en: 'Hi', fr: 'Bonjour', ht: 'Bonjou', es: 'Hola', pt: 'Olá', de: 'Hallo', it: 'Ciao', ro: 'Salut', nl: 'Hoi' };
+
+function faceCameraError(err) {
+  if (err?.name === 'NotAllowedError') return IS_MAC
+    ? 'Scorpion may not use the camera. Allow it in System Settings → Privacy & Security → Camera.'
+    : 'Scorpion may not use the camera. In Windows Settings → Privacy & security → Camera, turn on camera access for desktop apps.';
+  if (err?.name === 'NotFoundError') return 'No camera found.';
+  if (err?.name === 'NotReadableError') return 'The camera is busy in another app.';
+  return 'Camera error: ' + (err?.message || err);
+}
+
+function facesReady() {
+  if (S.faces?.installed) return true;
+  toast('Face recognition needs a one-time download first: Settings → People → Install.');
+  closeInteract();
+  setView('people');
+  return false;
+}
+
+// Interact: track faces, turn the orb toward the person, know who is talking.
+async function startFace() {
+  if (FX.on || !facesReady()) return;
+  FX.on = true;
+  FX.cam = new FaceCam();
+  $('#ix-facecam').classList.remove('hidden');
+  $('#ix-face-status').textContent = 'STARTING CAMERA…';
+  renderInteract();
+  try {
+    await FX.cam.start({
+      video: $('#ix-face-video'), reason: 'faces', fps: 6,
+      analyze: (frame) => api.faceFrame(frame),
+      onUpdate: (tracks) => {
+        drawFaces($('#ix-face-overlay'), tracks, { color: accentColor() });
+        const main = tracks.slice().sort((a, b) => b.box[2] * b.box[3] - a.box[2] * a.box[3])[0];
+        if (main) {
+          const { width, height } = FX.cam.size;
+          // Mirror x: the preview is a mirror, and the orb should face the person.
+          IX.orb?.setGaze(-((main.box[0] + main.box[2] / 2) / width * 2 - 1), (main.box[1] + main.box[3] / 2) / height * 2 - 1);
+        } else IX.orb?.setGaze(0, 0);
+        setSpeaker(main?.person || null, tracks.length);
+      },
+    });
+  } catch (err) {
+    stopFace();
+    toast(faceCameraError(err), 9000);
+  }
+}
+
+function stopFace() {
+  if (!FX.cam && !FX.on) return;
+  FX.cam?.stop();
+  FX.cam = null;
+  FX.on = false;
+  FX.speaker = null;
+  IX.orb?.setGaze(0, 0);
+  $('#ix-facecam').classList.add('hidden');
+  renderInteract();
+}
+
+function setSpeaker(person, count) {
+  const before = FX.speaker?.id;
+  FX.speaker = person;
+  $('#ix-face-status').textContent = !count ? 'NO FACE IN VIEW' : person ? 'TALKING WITH ' + person.name.toUpperCase() : (count > 1 ? count + ' PEOPLE · NOT RECOGNIZED' : 'NOT RECOGNIZED · ADD THEM IN PEOPLE');
+  if (person && person.id !== before) {
+    renderInteract();
+    // Greet someone new to the conversation, once per Interact session.
+    const last = FX.greeted.get(person.id) || 0;
+    if (V.talk && !speaker.playing && Date.now() - last > 10 * 60 * 1000) {
+      FX.greeted.set(person.id, Date.now());
+      speaker.say((GREETING[currentLanguage().id] || 'Hi') + ' ' + person.name + '!');
+    }
+  } else if (!person && before) renderInteract();
+}
+
+// People page.
+function renderPeople() {
+  if (!$('#faces-setup')) return;
+  const f = S.faces || {};
+  const d = FX.download;
+  $('#faces-setup').innerHTML = f.installed ? '' : d
+    ? '<div class="progress"><div style="width:' + Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100)) + '%"></div></div><p class="muted small">Downloading face recognition… ' + gb(d.loaded || 0) + ' of ' + gb(d.total || f.bytes || 0) + '</p>'
+    : '<button class="btn primary" type="button" id="faces-install">Install face recognition (' + gb(f.bytes || 0) + ' download)</button><p class="muted small">YuNet finds faces and SFace recognizes them (open models from OpenCV). One download, then it works offline.</p>';
+  $('#faces-body').classList.toggle('hidden', !f.installed);
+  if (!f.installed) return;
+  const people = f.people || [];
+  $('#people-list').innerHTML = people.map((p) => '<div class="person" data-person="' + esc(p.id) + '">'
+    + (p.thumb ? '<img src="' + p.thumb + '" alt="">' : '<div class="noface"></div>')
+    + '<div class="who"><b>' + esc(p.name) + '</b><span class="muted small">' + p.samples + ' face sample' + (p.samples === 1 ? '' : 's') + (p.owner ? ' · owner' : '') + '</span>'
+    + '<div class="acts"><button class="btn small" data-act="photos">Add photos</button><button class="btn small" data-act="camera">Camera</button>'
+    + '<button class="btn small" data-act="owner">' + (p.owner ? 'Not owner' : 'Make owner') + '</button><button class="btn small" data-act="rename">Rename</button><button class="btn small" data-act="remove">Remove</button></div></div></div>').join('')
+    || '<div class="muted">Nobody added yet. Start with yourself.</div>';
+  const lockState = S.lock || {};
+  $('#lock-enabled').checked = Boolean(lockState.enabled);
+  $('#lock-pin-note').textContent = lockState.hasPin ? 'A PIN is set.' : 'No PIN yet.';
+}
+
+async function refreshFaces() {
+  const st = await api.state();
+  S.faces = st.faces;
+  S.lock = st.lock;
+  renderPeople();
+}
+
+function reportEnroll(r, name) {
+  const skipped = r.skipped?.length ? ' Skipped: ' + r.skipped.slice(0, 3).join('; ') + (r.skipped.length > 3 ? '…' : '') : '';
+  if (!r.person) toast('No usable face for ' + name + '.' + skipped, 9000);
+  else toast('Added ' + r.added + ' sample' + (r.added === 1 ? '' : 's') + ' for ' + r.person.name + '.' + skipped, 7000);
+}
+
+async function enrollFromPhotos(id, name) {
+  const files = await api.pickFacePhotos();
+  if (!files.length) return;
+  toast('Reading ' + files.length + ' photo' + (files.length === 1 ? '' : 's') + '…', 2000);
+  try { reportEnroll(await api.enrollFace({ id, name, files }), name); } catch (err) { toast(errText(err), 8000); }
+  refreshFaces();
+}
+
+// Camera capture window: live face boxes, then 5 shots a moment apart.
+async function enrollFromCamera(id, name) {
+  const cam = new FaceCam();
+  const box = $('#face-capture');
+  box.classList.remove('hidden');
+  $('#face-capture-title').textContent = 'Add ' + name + ' with the camera';
+  $('#capture-status').textContent = 'Starting camera…';
+  let quality = null;
+  const close = () => { cam.stop(); box.classList.add('hidden'); };
+  $('#capture-cancel').onclick = close;
+  try {
+    await cam.start({
+      video: $('#capture-video'), reason: 'enroll', fps: 4,
+      analyze: (frame) => api.faceFrame(frame),
+      onUpdate: (tracks) => {
+        drawFaces($('#capture-overlay'), tracks, { color: accentColor() });
+        quality = tracks[0]?.quality || null;
+        $('#capture-status').textContent = !tracks.length ? 'No face yet: look at the camera.' : tracks.length > 1 ? 'Only one person in view, please.'
+          : quality && !quality.ok ? 'Face ' + quality.issues.join(', ') + '.' : 'Good. Press "Take 5 photos" and keep looking at the camera.';
+      },
+    });
+  } catch (err) {
+    close();
+    toast(faceCameraError(err), 9000);
+    return;
+  }
+  $('#capture-go').onclick = async () => {
+    $('#capture-go').disabled = true;
+    $('#capture-status').textContent = 'Hold still…';
+    try {
+      const frames = await cam.shots(5, 450);
+      close();
+      reportEnroll(await api.enrollFace({ id, name, frames }), name);
+    } catch (err) { close(); toast(errText(err), 8000); }
+    $('#capture-go').disabled = false;
+    refreshFaces();
+  };
+}
+
+function wirePeople() {
+  $('#faces-setup').onclick = async (e) => {
+    if (!e.target.closest('#faces-install')) return;
+    FX.download = { loaded: 0, total: S.faces?.bytes };
+    renderPeople();
+    try {
+      S.faces = await api.installFaces();
+      toast('Face recognition installed. Add yourself first.');
+    } catch (err) { toast('Face recognition could not be downloaded: ' + errText(err), 9000); }
+    FX.download = null;
+    renderPeople();
+  };
+  api.onFacesDownload((p) => { if (!p.done && FX.download) { FX.download = p; renderPeople(); } });
+  const newName = () => {
+    const n = $('#person-name').value.trim();
+    if (!n) { toast('Type the person\'s name first.'); $('#person-name').focus(); }
+    return n;
+  };
+  $('#person-photos').onclick = async () => { const n = newName(); if (n) { await enrollFromPhotos(null, n); $('#person-name').value = ''; } };
+  $('#person-camera').onclick = () => { const n = newName(); if (n) { enrollFromCamera(null, n); $('#person-name').value = ''; } };
+  $('#people-list').onclick = async (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const id = btn.closest('[data-person]').dataset.person;
+    const p = (S.faces?.people || []).find((x) => x.id === id);
+    if (!p) return;
+    const act = btn.dataset.act;
+    if (act === 'photos') return enrollFromPhotos(id, p.name);
+    if (act === 'camera') return enrollFromCamera(id, p.name);
+    if (act === 'owner') S.faces = await api.setFaceOwner({ id, owner: !p.owner });
+    if (act === 'rename') {
+      const name = prompt('New name for ' + p.name, p.name);
+      if (name && name.trim()) S.faces = await api.renamePerson({ id, name });
+    }
+    if (act === 'remove' && confirm('Remove ' + p.name + ' and their face samples?')) S.faces = await api.removePerson(id);
+    renderPeople();
+  };
+  $('#lock-set-pin').onclick = async () => {
+    try { S.lock = await api.setLockPin($('#lock-pin').value); $('#lock-pin').value = ''; toast('PIN saved.'); } catch (err) { toast(errText(err), 6000); }
+    renderPeople();
+  };
+  $('#lock-enabled').onchange = async (e) => {
+    try { S.lock = await api.enableLock(e.target.checked); toast(e.target.checked ? 'Face lock on. Scorpion will open locked next time (or press Ctrl+L).' : 'Face lock off.'); }
+    catch (err) { e.target.checked = false; toast(errText(err), 7000); }
+    renderPeople();
+  };
+  $('#lock-now').onclick = lockNow;
+  $('#faces-uninstall').onclick = async () => {
+    if (!confirm('Remove the face recognition models? The people you added are kept.')) return;
+    stopFace();
+    S.faces = await api.uninstallFaces();
+    renderPeople();
+  };
+  $('#ix-face').onclick = () => (FX.on ? stopFace() : startFace());
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); lockNow(); }
+  });
+}
+
+async function lockNow() {
+  if (!S.lock?.enabled) { toast('Turn on face lock first: Settings → People.'); return; }
+  closeInteract();
+  await api.lockNow();
+  location.reload();
+}
+
+// Lock screen: shown before anything else loads; resolves once unlocked.
+function showLockScreen() {
+  return new Promise((resolve) => {
+    $('#lock-screen').classList.remove('hidden');
+    const cam = new FaceCam();
+    const done = () => { cam.stop(); $('#lock-screen').classList.add('hidden'); resolve(); };
+    cam.start({
+      video: $('#lock-video'), reason: 'lock', fps: 4,
+      analyze: (frame) => api.lockFace(frame),
+      onUpdate: (tracks, res) => {
+        drawFaces($('#lock-overlay'), tracks.map((t) => ({ ...t, person: null })), { color: '#d9a630' });
+        if (res?.unlocked) { done(); return; }
+        $('#lock-status').textContent = !tracks.length ? 'Look at the camera.' : 'Checking…';
+      },
+    }).catch((err) => { $('#lock-status').textContent = faceCameraError(err) + ' Type your PIN instead.'; });
+    $('#lock-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const r = await api.lockPin($('#lock-input').value);
+      $('#lock-input').value = '';
+      if (r.unlocked) done(); else $('#lock-status').textContent = 'Wrong PIN.';
+    };
+    $('#lock-input').focus();
   });
 }
 
@@ -1053,7 +1317,7 @@ function renderAll() {
   applyTheme();
   applyGlass();
   renderThemePicker();
-  renderThreads(); renderTopbar(); renderModels(); renderDocs(); renderMemory(); renderAgents(); renderSchedules(); renderSettings(); renderMessages(); renderVoiceButtons();
+  renderThreads(); renderTopbar(); renderModels(); renderDocs(); renderMemory(); renderAgents(); renderSchedules(); renderSettings(); renderMessages(); renderVoiceButtons(); renderPeople();
 }
 
 // ---------- actions ----------
@@ -1087,7 +1351,9 @@ async function sendMessage(text, { spoken = false } = {}) {
   S.running.add(thread.id);
   $('#input').value = ''; autosize();
   renderThreads(); renderModelSwitch(); renderMessages();
-  try { await api.send({ threadId: thread.id, text, spoken }); } catch (err) {
+  // In Interact with FACE on, the reply knows who is talking.
+  const speakerName = IX.open && FX.on ? FX.speaker?.name || null : null;
+  try { await api.send({ threadId: thread.id, text, spoken, speaker: speakerName }); } catch (err) {
     S.running.delete(thread.id);
     thread.messages.at(-1).error = String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
     renderMessages();
@@ -1168,6 +1434,7 @@ function wire() {
   $('#stop').onclick = () => { speaker.stop(); if (S.thread) api.stop(S.thread.id); };
   wireVoice();
   wireInteract();
+  wirePeople();
 
   $('#messages').onclick = (e) => {
     const s = e.target.closest('.suggestion');
@@ -1302,7 +1569,7 @@ function wire() {
       S.thread = await api.setThreadAgent({ id: S.thread.id, agentId });
     }
     renderTopbar();
-    toast(`${agentById(agentId).icon} ${agentById(agentId).name} is answering in this chat.`, 2500);
+    toast(`${agentById(agentId).name} is answering in this chat.`, 2500);
   };
 
   $('#view-agents').onclick = async (e) => {
@@ -1315,7 +1582,7 @@ function wire() {
       await api.deleteAgent(d.delAgent); refresh();
     }
   };
-  $('#new-agent').onclick = () => { S.editingAgent = { name: '', icon: '🤖', description: '', instructions: '', tools: ['*'], temperature: 0.6 }; renderAgentEditor(); $('#ae-name').focus(); };
+  $('#new-agent').onclick = () => { S.editingAgent = { name: '', description: '', instructions: '', tools: ['*'], temperature: 0.6 }; renderAgentEditor(); $('#ae-name').focus(); };
   $('#ae-all-tools').onchange = (e) => document.querySelectorAll('#ae-tools input').forEach((i) => { i.disabled = e.target.checked; if (e.target.checked) i.checked = true; });
   $('#ae-temp').oninput = (e) => { $('#ae-temp-val').textContent = e.target.value; };
   $('#ae-cancel').onclick = () => { S.editingAgent = null; renderAgentEditor(); };
@@ -1395,6 +1662,7 @@ function wire() {
   api.onDocsProgress((p) => { $('#docs-progress').textContent = p ? `Indexing ${p.name}: ${p.done}/${p.total}` : ''; });
 }
 
+if ((await api.lockStatus()).locked) await showLockScreen();
 wire();
 await refresh();
 if (S.threads[0]) await openThread(S.threads[0].id);

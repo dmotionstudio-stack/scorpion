@@ -10,6 +10,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { evaluate } from './calc.js';
 import { extractText } from './rag.js';
 import { webSearch, readWebpage, UNTRUSTED } from './web.js';
+import { analyzeFile, groupPhotos, listImages } from './faces.js';
 
 // Python is optional; find whichever launcher this computer has, once.
 let pythonCmd;
@@ -387,6 +388,57 @@ export const TOOLS = {
     async run({ url }) {
       const page = await readWebpage(String(url || '').trim());
       return `${UNTRUSTED}\n\n${page.title ? `${page.title}\n` : ''}${page.url}\n\n${page.text || '(no readable text)'}`;
+    },
+  },
+
+  // Face recognition (offered only once it is installed; see agent.js).
+  find_faces: {
+    access: 'read',
+    requires: 'faces',
+    description: 'Find faces in a photo, or in every photo of a folder, and say which enrolled people they are, plus face quality.',
+    params: { type: 'object', properties: { path: { type: 'string' } } },
+    async run({ path: p }, { workspace, allowed }) {
+      const target = resolveInside(workspace, p, allowed);
+      const files = fs.statSync(target).isDirectory() ? listImages(target, { recursive: false, limit: 200 }) : [target];
+      if (!files.length) return 'No photos found there.';
+      const lines = [];
+      for (const file of files) {
+        let found;
+        try { found = await analyzeFile(file); } catch (err) { lines.push(`${path.basename(file)}: can't be read (${err.message})`); continue; }
+        const who = found.map((f) => (f.person ? `${f.person.name} (${Math.round(f.person.similarity * 100)}% match)` : 'unknown person') + (f.quality.ok ? '' : ` [${f.quality.issues.join(', ')}]`));
+        lines.push(`${path.basename(file)}: ${found.length ? `${found.length} face(s): ${who.join('; ')}` : 'no faces'}`);
+      }
+      return clip(lines.join('\n'), MAX_READ_CHARS);
+    },
+  },
+
+  group_photos_by_person: {
+    access: 'read',
+    requires: 'faces',
+    description: 'Group the photos in a folder (and its subfolders) by the people in them: enrolled people by name, others as "Unknown person N". Use move_file afterwards if the user wants them sorted into folders.',
+    params: { type: 'object', properties: { path: { type: 'string' } } },
+    async run({ path: p }, { workspace, allowed }) {
+      const folder = resolveInside(workspace, p, allowed);
+      const r = await groupPhotos(folder);
+      if (!r.scanned) return 'No photos found in that folder.';
+      const rel = (f) => path.relative(folder, f).replaceAll('\\', '/');
+      const groups = r.groups.map((g) => `${g.name} (${g.photos.length} photo${g.photos.length === 1 ? '' : 's'}):\n${g.photos.slice(0, 60).map((f) => `  ${rel(f)}`).join('\n')}`);
+      return clip(`Scanned ${r.scanned} photo(s); ${r.withoutFaces} had no faces.\n\n${groups.join('\n\n') || 'No faces found.'}`, MAX_READ_CHARS);
+    },
+  },
+
+  photos_of_person: {
+    access: 'read',
+    requires: 'faces',
+    description: 'List the photos in a folder (and subfolders) that show a given enrolled person.',
+    params: { type: 'object', properties: { name: { type: 'string' }, path: { type: 'string' } } },
+    async run({ name, path: p }, { workspace, allowed }) {
+      const folder = resolveInside(workspace, p, allowed);
+      const r = await groupPhotos(folder);
+      const want = String(name || '').trim().toLowerCase();
+      const g = r.groups.find((x) => !x.unknown && x.name.toLowerCase() === want);
+      if (!g) return `No photos of ${name} found in ${r.scanned} photo(s). Is ${name} enrolled in Settings → People?`;
+      return clip(`${g.photos.length} photo(s) of ${g.name}:\n${g.photos.map((f) => path.relative(folder, f).replaceAll('\\', '/')).join('\n')}`, MAX_READ_CHARS);
     },
   },
 

@@ -28,8 +28,8 @@
       <button class="btn primary wide" id="new-chat">＋ New chat</button>
       <nav class="threads" id="threads" aria-label="Chats"></nav>
       <div class="sidebar-foot">
-        <button class="navbtn interact-open" id="open-interact" title="Talk to Scorpion face to face: a full-screen orb with voice (Ctrl+I)">◉ Interact</button>
-        <button class="navbtn" id="open-settings" title="Models, documents, agents, schedules, memory and preferences">⚙️ Settings</button>
+        <button class="navbtn interact-open" id="open-interact" title="Talk to Scorpion face to face: a full-screen orb with voice (Ctrl+I)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(-25 12 12)"/></svg>Interact</button>
+        <button class="navbtn" id="open-settings" title="Models, documents, agents, schedules, memory and preferences">Settings</button>
         <button type="button" class="offline-badge" id="online-badge" title="Click to switch Online mode">● Offline &amp; private</button>
       </div>
     </aside>
@@ -39,12 +39,13 @@
       <header class="settings-header hidden" id="settings-header">
         <button class="btn small ghost" id="back-to-chat">← Back to chat</button>
         <nav class="stabs" aria-label="Settings sections">
-          <button class="stab" data-view="settings">⚙️ General</button>
-          <button class="stab" data-view="models">🧠 Models</button>
-          <button class="stab" data-view="docs">📄 Documents</button>
-          <button class="stab" data-view="agents">🤖 Agents</button>
-          <button class="stab" data-view="schedules">⏰ Schedules</button>
-          <button class="stab" data-view="memory">🧷 Memory</button>
+          <button class="stab" data-view="settings">General</button>
+          <button class="stab" data-view="models">Models</button>
+          <button class="stab" data-view="docs">Documents</button>
+          <button class="stab" data-view="agents">Agents</button>
+          <button class="stab" data-view="schedules">Schedules</button>
+          <button class="stab" data-view="memory">Memory</button>
+          <button class="stab" data-view="people">People</button>
         </nav>
       </header>
       <!-- CHAT -->
@@ -57,11 +58,11 @@
             <span class="model-note" id="model-note"></span>
           </div>
           <div class="spacer"></div>
-          <button class="chip" id="workspace-chip" title="Folder the agent can work in">📁 No workspace</button>
+          <button class="chip" id="workspace-chip" title="Folder the agent can work in"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>No workspace</span></button>
           <label class="toggle" title="Run file edits and commands without asking">
             <input type="checkbox" id="auto-approve"><span>Auto-approve</span>
           </label>
-          <button class="chip" id="toggle-plan" title="Show plan panel">☰ Plan</button>
+          <button class="chip" id="toggle-plan" title="Show plan panel"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9"/></svg>Plan</button>
         </header>
         <div class="chat-body">
           <div class="messages" id="messages"></div>
@@ -75,15 +76,15 @@
             <textarea id="input" rows="1" placeholder="Ask anything, or give the agent a task…  (Enter to send, Shift+Enter for a new line)"></textarea>
             <div class="composer-bar">
               <div class="modes" id="modes" role="radiogroup" aria-label="Mode">
-                <button type="button" role="radio" data-mode="chat" title="Just talk. No file or command tools.">💬 Chat</button>
-                <button type="button" role="radio" data-mode="plan" title="Read-only: explore and write a plan. Nothing is changed.">📝 Plan</button>
-                <button type="button" role="radio" data-mode="build" title="Build it: create files, run and test them, fix errors until it works.">🔨 Build</button>
+                <button type="button" role="radio" data-mode="chat" title="Just talk. No file or command tools.">Chat</button>
+                <button type="button" role="radio" data-mode="plan" title="Read-only: explore and write a plan. Nothing is changed.">Plan</button>
+                <button type="button" role="radio" data-mode="build" title="Build it: create files, run and test them, fix errors until it works.">Build</button>
               </div>
               <span class="mode-hint muted small" id="mode-hint"></span>
               <div class="voice-buttons" role="group" aria-label="Voice">
-                <button type="button" class="voice-btn" id="mic" title="Speak your message (sends when you pause)" aria-pressed="false">🎤</button>
-                <button type="button" class="voice-btn" id="talk" title="Conversation: talk hands-free, Scorpion answers aloud" aria-pressed="false">🗣</button>
-                <button type="button" class="voice-btn" id="read-aloud" title="Read replies aloud" aria-pressed="false">🔇</button>
+                <button type="button" class="voice-btn" id="mic" title="Speak your message (sends when you pause)" aria-label="Speak a message" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg></button>
+                <button type="button" class="voice-btn" id="talk" title="Conversation: talk hands-free, Scorpion answers aloud" aria-label="Conversation" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></button>
+                <button type="button" class="voice-btn" id="read-aloud" title="Read replies aloud" aria-label="Read replies aloud" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/></svg></button>
               </div>
             </div>
           </div>
@@ -126,7 +127,6 @@
             <h2 id="agent-editor-title">New agent</h2>
             <div class="grid2">
               <label>Name<input id="ae-name" class="text-input" maxlength="40" required placeholder="e.g. Tutor"></label>
-              <label>Icon<input id="ae-icon" class="text-input icon-input" maxlength="4" placeholder="🤖"></label>
             </div>
             <label>Short description<input id="ae-description" class="text-input" maxlength="200" placeholder="What is this agent for?"></label>
             <label>Instructions<textarea id="ae-instructions" rows="6" maxlength="4000" placeholder="Who the agent is and how it should work, e.g. 'You are a patient math tutor. Explain step by step and check answers with the calculator.'"></textarea></label>
@@ -189,6 +189,35 @@
         </div>
       </section>
 
+      <!-- PEOPLE (face recognition) -->
+      <section class="view hidden" id="view-people">
+        <div class="page">
+          <h1>People</h1>
+          <p class="muted">Scorpion can recognize the people you add here. In Interact it knows who is talking, the agent can find them in your photos, and face lock opens Scorpion only for its owner. Faces are kept as face prints on this computer only; your photos are never copied or uploaded.</p>
+          <div id="faces-setup"></div>
+          <div id="faces-body" class="hidden">
+            <h2>Add a person</h2>
+            <div class="row">
+              <input id="person-name" class="text-input" placeholder="Name, e.g. Dor" maxlength="60">
+              <button class="btn" type="button" id="person-photos">Add from photos…</button>
+              <button class="btn primary" type="button" id="person-camera">Add with camera</button>
+            </div>
+            <p class="muted small">Use 2–5 clear photos of the face, looking at the camera, in good light. More photos (different days, glasses or not) make recognition more reliable.</p>
+            <div class="people-grid" id="people-list"></div>
+            <h2>Face lock</h2>
+            <p class="muted small">When it's on, Scorpion opens locked and only unlocks when it sees the owner's face (or you type your PIN). It keeps other people out of the app; it does not encrypt your files, and a printed photo of the owner might fool it.</p>
+            <div class="row">
+              <input id="lock-pin" class="text-input pin-input" type="password" inputmode="numeric" maxlength="8" placeholder="PIN, 4–8 digits" autocomplete="new-password">
+              <button class="btn" type="button" id="lock-set-pin">Set PIN</button>
+              <span class="muted small" id="lock-pin-note"></span>
+            </div>
+            <label class="toggle"><input type="checkbox" id="lock-enabled"><span>Lock Scorpion until it recognizes the owner</span></label>
+            <div class="row"><button class="btn small" type="button" id="lock-now">Lock now (Ctrl+L)</button></div>
+            <div class="row"><button class="btn small" type="button" id="faces-uninstall">Uninstall face recognition</button></div>
+          </div>
+        </div>
+      </section>
+
       <!-- SETTINGS -->
       <section class="view hidden" id="view-settings">
         <div class="page">
@@ -241,11 +270,11 @@
               <label class="toggle"><input type="checkbox" id="voice-speak"><span>Read replies aloud</span></label>
               <div class="row" id="voice-name-row"><span>Voice</span><select id="voice-name"></select></div>
               <div class="row"><span>Speed</span><input type="range" id="voice-speed" min="0.7" max="1.5" step="0.05"><span id="voice-speed-val"></span></div>
-              <div class="row"><span>Language</span><select id="voice-language"></select><button class="btn small" id="voice-test" type="button">▶ Test</button></div>
+              <div class="row"><span>Language</span><select id="voice-language"></select><button class="btn small" id="voice-test" type="button">Test</button></div>
               <p class="muted small" id="voice-language-note"></p>
               <div class="row"><button class="btn small" id="voice-uninstall" type="button">Uninstall voice</button></div>
             </div>
-            <p class="muted small">Talk with 🎤 (one message) or 🗣 (a hands-free conversation). Listening and speaking run on this computer: a one-time download of about 230 MB, then no internet. Scorpion's voices speak English; it understands the language you choose.</p>
+            <p class="muted small">Talk with the microphone button (one message) or the conversation button (hands-free). Listening and speaking run on this computer: a one-time download of about 230 MB, then no internet. Scorpion's voices speak English; it understands the language you choose.</p>
           </div>
           <div class="field">
             <label for="gpu-layers">GPU offload</label>
@@ -292,6 +321,7 @@
         <button type="button" class="ix-btn ix-talk" id="ix-talk" aria-pressed="false">● TALK</button>
         <button type="button" class="ix-btn" id="ix-voice" aria-pressed="false" title="Read replies aloud">VOICE OFF</button>
         <select class="ix-btn ix-lang" id="ix-lang" aria-label="Language" title="The language you speak and Scorpion replies in"></select>
+        <button type="button" class="ix-btn" id="ix-face" aria-pressed="false" title="Track faces and know who is talking, using the camera (F)">FACE OFF</button>
         <button type="button" class="ix-btn" id="ix-gestures" aria-pressed="false" title="Spin and zoom the orb with your hands, using the camera (G)">GESTURES OFF</button>
         <span class="ix-gap"></span>
         <button type="button" class="ix-btn" id="ix-zoom-in" aria-label="Zoom in">+</button>
@@ -299,10 +329,36 @@
         <button type="button" class="ix-btn" id="ix-reset">RESET</button>
       </div>
     </div>
-    <div class="ix-hud ix-hint" id="ix-hint"><span class="key">SPACE</span> talk / interrupt <span class="key">DRAG</span> spin <span class="key">SCROLL</span> zoom <span class="key">G</span> gestures <span class="key">R</span> reset <span class="key">ESC</span> exit</div>
+    <div class="ix-hud ix-hint" id="ix-hint"><span class="key">SPACE</span> talk / interrupt <span class="key">DRAG</span> spin <span class="key">SCROLL</span> zoom <span class="key">F</span> face <span class="key">G</span> gestures <span class="key">R</span> reset <span class="key">ESC</span> exit</div>
+    <div class="ix-facecam hidden" id="ix-facecam" aria-live="polite">
+      <div class="ix-cam-view"><video id="ix-face-video" muted playsinline></video><canvas id="ix-face-overlay" width="208" height="156"></canvas></div>
+      <div class="ix-cam-status" id="ix-face-status"></div>
+    </div>
     <div class="ix-cam hidden" id="ix-cam" aria-live="polite">
       <div class="ix-cam-view"><video id="ix-cam-video" muted playsinline></video><canvas id="ix-cam-overlay" width="208" height="156"></canvas></div>
       <div class="ix-cam-status" id="ix-cam-status"></div>
+    </div>
+  </div>
+  <!-- Enrolling a person with the camera -->
+  <div class="face-capture hidden" id="face-capture" role="dialog" aria-modal="true" aria-labelledby="face-capture-title">
+    <div class="face-capture-card">
+      <h2 id="face-capture-title">Add with camera</h2>
+      <div class="face-capture-view"><video id="capture-video" muted playsinline></video><canvas id="capture-overlay" width="480" height="360"></canvas></div>
+      <p class="muted small" id="capture-status">Look at the camera in good light.</p>
+      <div class="row"><button class="btn primary" type="button" id="capture-go">Take 5 photos</button><button class="btn" type="button" id="capture-cancel">Cancel</button></div>
+    </div>
+  </div>
+
+  <!-- Face lock -->
+  <div class="lock-screen hidden" id="lock-screen" role="dialog" aria-modal="true" aria-labelledby="lock-title">
+    <div class="lock-card">
+      <h1 id="lock-title">Scorpion is locked</h1>
+      <div class="lock-view"><video id="lock-video" muted playsinline></video><canvas id="lock-overlay" width="320" height="240"></canvas></div>
+      <p class="muted" id="lock-status">Look at the camera.</p>
+      <form class="row" id="lock-form" autocomplete="off">
+        <input id="lock-input" class="text-input pin-input" type="password" inputmode="numeric" maxlength="8" placeholder="or type your PIN" aria-label="PIN">
+        <button class="btn primary" type="submit">Unlock</button>
+      </form>
     </div>
   </div>
   <div class="toast hidden" id="toast" role="status"></div>

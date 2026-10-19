@@ -13,6 +13,7 @@ const NO_WORKSPACE_TOOLS = new Set(['calculator', 'run_code', 'update_plan']);
 const PATH_ARGS = {
   list_files: ['path'], read_file: ['path'], search_files: ['path'], write_file: ['path'], edit_file: ['path'],
   run_command: ['subdir'], move_file: ['from', 'to'], read_spreadsheet: ['path'], read_document: ['path'],
+  find_faces: ['path'], group_photos_by_person: ['path'], photos_of_person: ['path'],
 };
 // Small models sometimes run past the end of a path into the call's closing
 // braces ("notes.txt}}<tool_call>…"); keep only the path itself.
@@ -47,7 +48,7 @@ export function modeOf(settings) {
   return settings.planMode ? 'plan' : 'build'; // older settings
 }
 
-const CHAT_RULES = 'CHAT MODE: no file or command tools. To work on files, the user must switch to 🔨 Build (below the message box).';
+const CHAT_RULES = 'CHAT MODE: no file or command tools. To work on files, the user must switch to Build (below the message box).';
 
 const PLAN_RULES = 'PLAN MODE (read only): investigate with read tools, then call update_plan with a complete step-by-step plan and explain it briefly. Tell the user they can press "Build this plan".';
 
@@ -59,10 +60,10 @@ const BUILD_RULES = `BUILD MODE: build what the user asks for, end to end, witho
 
 const TEAM_RULES = 'ask_agent hands a self-contained subtask to a specialist (include all context; it cannot see this chat). Use it when one clearly fits.';
 
-// Spoken turns (🎤 / 🗣 / Interact): answer the way a person talks.
+// Spoken turns (microphone, conversation, Interact): answer the way a person talks.
 const SPOKEN_RULES = 'SPOKEN CONVERSATION: the user is talking to you out loud and hears your reply as speech. Answer like a person in conversation: one to three short sentences, plain words, no lists, headings, tables, code or links. Get straight to the point; if more detail would help, offer it in one short question.';
 
-export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent = null, isHelper = false, canAskForFolders = false, spoken = false }) {
+export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent = null, isHelper = false, canAskForFolders = false, spoken = false, speaker = null }) {
   const intro = agent?.instructions?.trim()
     ? `${agent.instructions.trim()}\nYou run fully offline on the user's own computer as part of Scorpion. Use Markdown, and fenced code blocks for code.`
     : settings.systemPrompt?.trim() || BASE_PROMPT;
@@ -72,6 +73,7 @@ export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent 
   const lang = languageOf(settings.voiceLanguage);
   if (lang.id !== 'en') parts.push(`LANGUAGE: the user speaks ${lang.name} (${lang.native}). Always reply in ${lang.name}, unless the user clearly writes in another language.`);
   if (spoken && !isHelper) parts.push(SPOKEN_RULES);
+  if (speaker && !isHelper) parts.push(`The person talking to you right now is ${speaker} (Scorpion recognized their face on camera). Use their name naturally, not in every reply.`);
   const mode = modeOf(settings);
   if (mode === 'chat') {
     parts.push(CHAT_RULES);
@@ -88,7 +90,7 @@ export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent 
     parts.push(AGENT_RULES);
     parts.push(mode === 'plan' ? PLAN_RULES : BUILD_RULES);
   } else {
-    parts.push('No workspace folder is set, so file and command tools are unavailable. If the user asks you to work on files, tell them to choose a workspace folder (📁 in the top bar).');
+    parts.push('No workspace folder is set, so file and command tools are unavailable. If the user asks you to work on files, tell them to choose a workspace folder (the folder button in the top bar).');
     if (mode === 'plan') parts.push(PLAN_RULES);
   }
   if (settings.online) {
@@ -144,6 +146,7 @@ function summarizeArgs(name, args) {
   if (name === 'run_code') return `${args.language} (${(args.code || '').split('\n').length} lines)`;
   if (name === 'calculator') return args.expression;
   if (name === 'web_search') return args.query;
+  if (name === 'photos_of_person') return `${args.name} in ${args.path}`;
   if (name === 'read_webpage') return args.url;
   if (name === 'ask_agent') return `${args.agent}: ${String(args.task).slice(0, 120)}`;
   if (args.path !== undefined && Object.keys(args).length <= 2) return args.path;
@@ -188,7 +191,7 @@ export function buildFunctions(ctx) {
         if (!grant) {
           return err.folder
             ? `The user did not allow access to ${err.folder}. Do not retry; ask what they would like instead.`
-            : 'The user did not choose a workspace folder, so file tools are unavailable. Ask them to choose one (📁 in the top bar).';
+            : 'The user did not choose a workspace folder, so file tools are unavailable. Ask them to choose one (the folder button in the top bar).';
         }
         if (grant.workspace) settings.workspace = grant.workspace;
         if (grant.folder) allowed.push(grant.folder);
@@ -209,6 +212,7 @@ export function buildFunctions(ctx) {
   const available = Object.entries(TOOLS).filter(([name, tool]) => {
     if (agent && !agentAllows(agent, name)) return false;
     if (tool.access === 'web') return Boolean(settings.online); // works in every mode, only when online
+    if (tool.requires === 'faces' && !ctx.facesReady) return false;
     const mode = modeOf(settings);
     if (mode !== 'build' && (tool.access === 'write' || tool.access === 'exec')) return false;
     if (mode === 'chat' && name !== 'calculator' && tool.access !== 'memory' && name !== 'search_past_chats' && name !== 'search_documents') return false;

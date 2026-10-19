@@ -302,6 +302,7 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
   let level = 0; // live voice level 0..1
   let levelTarget = 0;
   let surgeT = 0;
+  const gaze = [0, 0]; // where the person in front of the camera is, -1..1
 
   const offset = new THREE.Vector3();
   const sph = new THREE.Spherical();
@@ -345,6 +346,10 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
     for (const k of Object.keys(now)) now[k] += (target[k] - now[k]) * ease;
     level += (levelTarget - level) * (1 - Math.pow(0.0005, dt));
     const s = now.spin * dt * 60;
+    // Face tracking: the whole orb turns a little toward the person.
+    const turn = Math.min(1, dt * 2.5);
+    orb.rotation.y += (gaze[0] * 0.45 - orb.rotation.y) * turn;
+    orb.rotation.x += (gaze[1] * 0.3 - orb.rotation.x) * turn;
 
     outer.rotation.y += 0.0015 * s;
     outer.rotation.x = Math.sin(t * 0.08) * 0.05;
@@ -426,6 +431,7 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
     // 'standby' | 'listening' | 'thinking' | 'speaking'
     setState(name) { target = STATES[name] || STATES.standby; },
     // 0..1, how loud the voice is right now (mic or Scorpion speaking)
+    setGaze(x, y) { gaze[0] = Math.max(-1, Math.min(1, x || 0)); gaze[1] = Math.max(-1, Math.min(1, y || 0)); },
     setLevel(v) { levelTarget = Math.max(0, Math.min(1, v)); },
     setAccent(color) {
       pal = paletteFrom(color);

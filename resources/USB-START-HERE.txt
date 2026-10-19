@@ -41,9 +41,11 @@ MAC
 TIPS
 ----
 - Quit Scorpion before you unplug the stick, so nothing is lost.
-- Voice: click 🎤 to speak a message, or 🗣 to have a conversation (Scorpion
-  answers aloud). The voice is already on the stick if Settings > Voice says
-  Installed; otherwise install it there once.
+- Voice: click the microphone button to speak a message, or the conversation
+  button to talk hands-free (Scorpion answers aloud). The voice is already on
+  the stick if Settings > Voice says Installed; otherwise install it there once.
+- Faces: people you add in Settings > People are saved on the stick too, so
+  face recognition and face lock work on every computer.
 - Models: Settings > Models in Scorpion. Models you download there are saved
   on the stick and work on every computer.
 - Big models: if the stick is formatted FAT32, files over 4 GB can't be

@@ -28,9 +28,9 @@ account, or an internet connection to chat.
 - **Memory across chats**: Scorpion saves lasting facts about you, such as your name, preferences and projects, and knows them in every new chat. Ask it to forget something, or view, edit and delete memories on the Memory page. It also recalls relevant parts of earlier conversations, and you can turn either feature off in Settings.
 - **Chat with documents**: you add PDF, Word or text files. Scorpion indexes them on your
   machine and the agent searches them and names its sources.
-- **Voice**: talk to Scorpion and hear it answer. 🎤 speaks one message, 🗣 starts a
+- **Voice**: talk to Scorpion and hear it answer. the microphone button speaks one message, the conversation button starts a
   hands-free conversation (talk, it answers aloud, then listens again; say "stop" to
-  end), and 🔊 reads every reply aloud. Spoken replies are short and quick, like
+  end), and the speaker button reads every reply aloud. Spoken replies are short and quick, like
   talking to a person, and you can interrupt Scorpion with Space. Listening uses
   Whisper and speaking uses Kokoro (English) or Meta's MMS voices, all on your
   computer: a one-time ~230 MB download (Settings → Voice → Install) plus ~38 MB
@@ -43,12 +43,18 @@ account, or an internet connection to chat.
   dedicated voice yet, so the French voice reads it (with a French accent), and
   Gemma 3 4B writes the most natural Creole.
 - **Interact**: a holographic orb that takes over the whole screen for talking face
-  to face (◉ Interact in the sidebar, or Ctrl+I). The orb shows what Scorpion is
+  to face (Interact in the sidebar, or Ctrl+I). The orb shows what Scorpion is
   doing (standby, listening, thinking, speaking) and pulses with your voice and its
   own. Captions show what you said and the reply. Switch language right there.
   Drag to spin, scroll to zoom, Space to talk or interrupt, Esc to leave. Its
   colours follow your theme. Optional [hand gestures](#hand-gestures) spin and zoom
   the orb with your webcam.
+- **Face recognition** (optional, Settings → People): add people from photos or
+  the camera. Interact then tracks faces, turns the orb toward the person and
+  knows who is talking (it greets them and answers them by name); the agent can
+  find people in your photos and group a folder of photos by person; and face
+  lock opens Scorpion only for its owner (with a PIN fallback). Modelled on
+  SeetaFace2's pipeline, with open models: a one-time ~39 MB download.
 - **Online mode** (off by default): the agent can search the web (DuckDuckGo, with
   Wikipedia as a fallback) and read pages for current information, and names its
   sources. Turn it on in Settings or by clicking the Offline badge in the sidebar.
@@ -143,21 +149,21 @@ npm start
 ```
 
 Open **Models** and download a model, or import a `.gguf` file you already have.
-Choose a workspace folder (📁 in the top bar), then try:
+Choose a workspace folder (the folder button in the top bar), then try:
 *"List the files in my workspace and summarize the project."*
 
 ## Voice
 
 1. Open **Settings → Voice** and click **Install voice** (about 230 MB, once).
-2. Click 🎤 below the message box and speak. Scorpion sends your message when you
-   pause. Click 🎤 again to send early.
-3. For a conversation, click 🗣. Scorpion listens, answers aloud, then listens
-   again. Say "stop" or click 🗣 to end it.
-4. 🔊 reads every reply aloud. While it's speaking, click it to stop.
+2. Click the microphone button below the message box and speak. Scorpion sends
+   your message when you pause. Click it again to send early.
+3. For a conversation, click the conversation button (the sound wave). Scorpion
+   listens, answers aloud, then listens again. Say "stop" or click it to end.
+4. The speaker button reads every reply aloud. While it's speaking, click it to stop.
 
 Choose your language, the voice and the speed in **Settings → Voice** (or the
 language menu in Interact). Picking a language with its own voice downloads that
-voice once (~38 MB). The microphone is only used while 🎤 or 🗣 is listening.
+voice once (~38 MB). The microphone is only used while the microphone or conversation button is listening.
 Audio never leaves the computer. The page can't use the camera (except for
 Interact's hand gestures, while you have them on) or the screen.
 
@@ -192,6 +198,40 @@ sent anywhere. If the preview says the camera is blocked: on Windows, allow
 **Settings → Privacy & security → Camera** ("Let desktop apps access your
 camera"); on a Mac, allow Scorpion in **System Settings → Privacy & Security →
 Camera**.
+
+## Face recognition
+
+Scorpion's face features follow the pipeline of [SeetaFace2](https://github.com/seetafaceengine/SeetaFace2):
+detect faces, find 5 landmarks, align the face, turn it into a face print, and
+compare prints, plus tracking and a quality check. Instead of compiling
+SeetaFace2's C++ (and its 2020 models), it uses open models on the ONNX engine
+Scorpion already ships, so it works the same on Windows and Mac:
+
+| SeetaFace2 module | In Scorpion |
+|---|---|
+| FaceDetector + 5-point FaceLandmarker | YuNet (OpenCV Zoo, MIT) |
+| FaceRecognizer | SFace (OpenCV Zoo, Apache-2.0): 128-number face prints, same person above 0.363 cosine similarity |
+| FaceTracker | Keeps each face's id and name steady between camera frames |
+| QualityAssessor | Size, light, sharpness and pose checks; poor photos are skipped with the reason |
+
+1. Open **Settings → People** and click **Install face recognition** (~39 MB, once).
+2. Type a name and click **Add from photos…** (2–5 clear photos) or **Add with
+   camera** (five shots a moment apart). The first person added is the owner.
+3. In **Interact**, press **FACE** (or F). Scorpion tracks faces, turns the orb
+   toward you, shows who is talking, greets people it knows and answers them by
+   name.
+4. In a Build or Plan chat, ask things like *"Group the photos in Pictures/2024
+   by person"* or *"Which photos in this folder show Dor?"*. Scorpion can then
+   sort them into folders with your approval.
+5. **Face lock**: set a PIN, then tick *Lock Scorpion until it recognizes the
+   owner*. Scorpion opens locked; it unlocks for the owner's face or the PIN.
+   Ctrl+L locks it right away. While locked, the app refuses every request for
+   your data, not just the screen. It does not encrypt files on disk, and a
+   printed photo of the owner might fool it.
+
+People are stored as face prints (and a small thumbnail) in `faces.json` in
+Scorpion's data folder. Photos are never copied or uploaded, and the camera is
+only on while FACE, gestures, enrolling or the lock screen is using it.
 
 ## Getting a model with no internet at all
 
@@ -250,12 +290,12 @@ already drives NVIDIA cards, and the installer is 121 MB instead of 392 MB.
 Flash attention is on wherever the model supports it.
 
 The Models page shows the active backend, how many layers are on the GPU,
-and a tag on every model: ⚡ fast here (fits in graphics memory), 🐢 slower
-here (part runs on the CPU), or ⛔ too big.
+and a tag on every model: *Fast here* (fits in graphics memory), *Slower here*
+(part runs on the CPU), or *Too big*.
 
 ### Speed tips
 
-- Pick a model tagged ⚡. On a 4 GB laptop GPU, Qwen3 4B Instruct writes about
+- Pick a model tagged *Fast here*. On a 4 GB laptop GPU, Qwen3 4B Instruct writes about
   45 tokens/second; an 8-bit 4B model that doesn't fit managed about 6.
 - "Thinking" models write hidden reasoning before every answer, so they feel
   much slower to start.
@@ -308,6 +348,8 @@ when it continues. This works on any machine; it's just slower.
   delegate further. A scheduled agent runs with nobody watching, so its file
   changes and commands are refused unless you tick "Allow it to change files" for
   that schedule.
+- Face lock: while locked, the main process refuses every request except the lock
+  screen's own; the PIN is stored only as a salted scrypt hash in `lock.json`.
 - The UI runs with `contextIsolation`, `sandbox` and a strict CSP, and has no Node access.
 
 ## License
@@ -321,6 +363,10 @@ by Sagar Tamang (MIT, see `src/renderer/ORB-LICENSE.txt`). It uses
 Its hand gestures follow the same project's hand tracker and use
 [MediaPipe Tasks Vision](https://www.npmjs.com/package/@mediapipe/tasks-vision)
 (Apache-2.0, © Google), whose hand model is downloaded from Google on first use.
+
+Face recognition uses YuNet (MIT, © Shiqi Yu) and SFace (Apache-2.0) from the
+OpenCV Model Zoo, downloaded from Hugging Face on first use; its design follows
+SeetaFace2 (BSD-2, © SeetaTech / ICT CAS), whose code is not included.
 
 Scorpion's design was informed by studying Jan (Apache-2.0, © Menlo Research).
 Scorpion contains none of Jan's source code.

@@ -11,6 +11,8 @@ import * as memory from './memory.js';
 import * as agents from './agents.js';
 import * as scheduler from './scheduler.js';
 import * as voice from './voice.js';
+import * as faces from './faces.js';
+import * as lock from './lock.js';
 import * as gestures from './gestures.js';
 import { TOOLS, fileSystemRoots } from './tools.js';
 import { applyEvent } from '../shared/events.js';
@@ -251,6 +253,8 @@ async function state() {
     openAtLogin: app.getLoginItemSettings().openAtLogin,
     supportedDocs: rag.SUPPORTED_EXTENSIONS,
     voice: voice.voiceStatus(),
+    faces: faces.faceStatus(),
+    lock: lock.lockStatus(),
     gestures: gestures.gesturesStatus(),
     engine: await engine.engineInfo().catch((e) => ({ error: e.message })),
     platform: process.platform,
@@ -327,7 +331,7 @@ async function loadChat() {
  * `approve` decides write/exec actions; chats ask the user in the UI, schedules
  * use their "allow changes" setting. `workspace` overrides the folder.
  */
-async function runAgentTurn({ thread, text, displayText = text, approve, workspace, mode, interactive = false, spoken = false }) {
+async function runAgentTurn({ thread, text, displayText = text, approve, workspace, mode, interactive = false, spoken = false, speaker = null }) {
   const threadId = thread.id;
   if (running.has(threadId)) throw new Error('Scorpion is still answering in this chat');
   const base = store.getSettings();
@@ -369,6 +373,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
         agent,
         canAskForFolders: Boolean(requestFolderAccess),
         spoken,
+        speaker: speaker ? String(speaker).slice(0, 60) : null,
       }),
       text: await withDocumentContext(recall, searcher),
       temperature: agent.temperature ?? settings.temperature,
@@ -378,7 +383,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
       maxTokens: spoken ? 400 : Math.min(settings.mode === 'build' ? 6144 : 3072, Math.floor((info.contextSize || 8192) / 2)),
       signal: controller.signal,
       functions: buildFunctions({
-        settings, agent, rag: searcher, memory, threadId, emit, requestApproval, requestFolderAccess, allowedFolders,
+        settings, agent, rag: searcher, memory, threadId, emit, requestApproval, requestFolderAccess, allowedFolders, facesReady: faces.faceStatus().installed,
         signal: controller.signal, streamedText: () => streamed, runHelper: engine.runHelperTurn,
         maxToolChars: info.maxToolChars ?? undefined,
       }),
@@ -418,6 +423,10 @@ function askUser(info, signal, threadId) {
   });
 }
 
+// What the lock screen may call while Scorpion is locked.
+const LOCK_SCREEN_CHANNELS = new Set(['lock:status', 'lock:face', 'lock:pin', 'camera:use', 'window:fullscreen']);
+let lockStreak = 0; // consecutive frames that showed the owner
+
 // Folders allowed until Scorpion quits ("Allow" without "Always allow").
 const sessionFolders = new Set();
 
@@ -430,7 +439,7 @@ async function askFolderAccess({ folder, name, summary }, signal) {
     const r = await dialog.showMessageBox(win, {
       type: 'question', title: 'Scorpion', noLink: true, buttons: ['Choose folder…', 'Not now'], defaultId: 0, cancelId: 1,
       message: 'Scorpion needs a folder to work in',
-      detail: `The agent wants to work with files (${summary}).\n\nChoose the folder it may read and work in. You can change it any time with 📁 in the top bar.`,
+      detail: `The agent wants to work with files (${summary}).\n\nChoose the folder it may read and work in. You can change it any time with the folder button in the top bar.`,
     });
     if (r.response !== 0 || signal.aborted) return null;
     const pick = await dialog.showOpenDialog(win, { title: 'Choose the folder Scorpion may work in', properties: ['openDirectory', 'createDirectory'] });
@@ -458,10 +467,10 @@ async function askFolderAccess({ folder, name, summary }, signal) {
   return { folder };
 }
 
-async function chatSend({ threadId, text, spoken = false }) {
+async function chatSend({ threadId, text, spoken = false, speaker = null }) {
   const thread = store.getThread(threadId);
   if (!thread) throw new Error('Chat not found');
-  const result = await runAgentTurn({ thread, text, approve: askUser, interactive: true, spoken });
+  const result = await runAgentTurn({ thread, text, approve: askUser, interactive: true, spoken, speaker });
   return { ok: !result.error };
 }
 
@@ -470,7 +479,7 @@ async function runScheduled(schedule, reason) {
   let thread = schedule.threadId && store.getThread(schedule.threadId);
   if (!thread) {
     thread = store.createThread();
-    thread.title = `⏰ ${schedule.name}`;
+    thread.title = `Scheduled: ${schedule.name}`;
     thread.agentId = schedule.agentId;
     store.saveThread(thread);
     send('threads:changed');
@@ -481,14 +490,14 @@ async function runScheduled(schedule, reason) {
   const result = await runAgentTurn({
     thread,
     text: `[Scheduled task "${schedule.name}" · ${when} · trigger: ${reason}]\n${schedule.prompt}\n\nThis runs unattended: do the task, then reply with a short report.${schedule.allowChanges ? '' : ' You may not change files or run commands in this run.'}`,
-    displayText: `⏰ ${reason}\n${schedule.prompt}`,
+    displayText: `Scheduled (${reason})\n${schedule.prompt}`,
     approve: async () => schedule.allowChanges,
     workspace,
     mode: 'build',
   });
   if (Notification.isSupported()) {
     const n = new Notification({
-      title: `${result.error ? '⚠ ' : ''}${schedule.name}`,
+      title: `${result.error ? 'Failed: ' : ''}${schedule.name}`,
       body: (result.error || result.text || 'Done').replace(/[#*`>_]/g, '').trim().slice(0, 180),
       silent: true,
     });
@@ -500,9 +509,43 @@ async function runScheduled(schedule, reason) {
 }
 
 function registerIpc() {
-  const h = (channel, fn) => ipcMain.handle(channel, (_e, arg) => fn(arg));
+  const h = (channel, fn) => ipcMain.handle(channel, (_e, arg) => {
+    if (lock.isLocked() && !LOCK_SCREEN_CHANNELS.has(channel)) throw new Error('Scorpion is locked');
+    return fn(arg);
+  });
 
   h('app:state', state);
+  h('faces:install', async () => {
+    await faces.installFaces((p) => send('faces:download', p));
+    return faces.faceStatus();
+  });
+  h('faces:uninstall', async () => { await faces.uninstallFaces(); return faces.faceStatus(); });
+  h('faces:pickPhotos', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Choose clear photos of this person', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Photos', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }] });
+    return r.canceled ? [] : r.filePaths;
+  });
+  h('faces:enroll', (req) => faces.enroll(req));
+  h('faces:remove', (id) => { faces.removePerson(id); return faces.faceStatus(); });
+  h('faces:rename', ({ id, name }) => { faces.renamePerson(id, name); return faces.faceStatus(); });
+  h('faces:setOwner', ({ id, owner }) => { faces.setOwner(id, owner); return faces.faceStatus(); });
+  h('faces:frame', (frame) => faces.analyzeFrame(frame));
+  // Face lock. While locked only these work (see LOCK_SCREEN_CHANNELS).
+  h('lock:status', () => lock.lockStatus());
+  h('lock:face', async (frame) => {
+    const seen = await faces.analyzeFrame(frame);
+    const owner = seen.find((f) => f.person?.owner && f.person.similarity >= faces.UNLOCK);
+    lockStreak = owner ? lockStreak + 1 : 0;
+    if (lockStreak >= 2) { lock.unlock(); lockStreak = 0; }
+    return { unlocked: !lock.isLocked(), faces: seen.map((f) => ({ box: f.box, known: Boolean(f.person?.owner) })) };
+  });
+  h('lock:pin', (pin) => { if (lock.checkPin(pin)) lock.unlock(); return { unlocked: !lock.isLocked() }; });
+  h('lock:setPin', (pin) => { lock.setPin(pin); return lock.lockStatus(); });
+  h('lock:enable', (on) => {
+    if (on && !faces.listPeople().some((p) => p.owner)) throw new Error('Add yourself in People and mark yourself as the owner first.');
+    lock.setEnabled(on);
+    return lock.lockStatus();
+  });
+  h('lock:now', () => lock.lockNow());
   h('voice:install', async () => {
     await voice.installVoice((p) => send('voice:download', p));
     return voice.voiceStatus();
@@ -537,12 +580,15 @@ function registerIpc() {
   h('gestures:uninstall', () => gestures.uninstallGestures());
   // The camera is allowed only while gestures are on. macOS asks the user
   // once; Windows uses its own privacy setting.
-  h('gestures:camera', async (on) => {
-    cameraAllowed = Boolean(on);
-    if (!cameraAllowed || process.platform !== 'darwin') return true;
+  h('gestures:camera', (on) => useCamera('gestures', on));
+  h('camera:use', ({ reason, on }) => useCamera(String(reason), on));
+  async function useCamera(reason, on) {
+    if (on) cameraUsers.add(reason); else cameraUsers.delete(reason);
+    cameraAllowed = cameraUsers.size > 0;
+    if (!on || process.platform !== 'darwin') return true;
     if (systemPreferences.getMediaAccessStatus('camera') === 'granted') return true;
     return systemPreferences.askForMediaAccess('camera');
-  });
+  }
   h('settings:update', async (patch) => {
     const before = store.getSettings();
     const next = store.updateSettings(patch);
@@ -669,9 +715,10 @@ function registerIpc() {
 }
 
 // The UI may use the microphone (for voice chat), and the camera only while
-// Interact's hand gestures are on. Nothing else: no screen, location or
+// a feature you turned on needs it (hand gestures, faces, face lock). Nothing else: no screen, location or
 // notifications from the page.
 let cameraAllowed = false;
+const cameraUsers = new Set(); // gestures, faces, enroll, lock
 function allowMicAndGestureCamera() {
   const isOwnPage = (url) => String(url || '').startsWith('scorpion://');
   const allowedType = (t) => t === 'audio' || (t === 'video' && cameraAllowed);
@@ -692,6 +739,8 @@ function ensureTrayHint() {
 app.whenReady().then(async () => {
   store.initStore(app.getPath('userData'));
   voice.initVoice(store.paths.models);
+  faces.initFaces(store.paths.models, app.getPath('userData'));
+  lock.initLock(app.getPath('userData'));
   gestures.initGestures(store.paths.models);
   allowMicAndGestureCamera();
   await autoSelectModels();
