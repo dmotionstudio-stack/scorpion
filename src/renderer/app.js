@@ -481,6 +481,7 @@ const IS_MAC = navigator.userAgent.includes('Macintosh');
 
 function voiceReady() {
   if (S.voice?.installed) { api.warmVoice(); return true; }
+  if (IX.open) { installVoice(); return false; }
   toast('Voice needs a one-time download first: Settings → Voice → Install.');
   setView('settings');
   return false;
@@ -489,6 +490,7 @@ const speaksReplies = () => Boolean(S.voice?.installed && (S.settings.voiceSpeak
 
 function voiceOnChatEvent(ev) {
   if (ev.threadId !== S.thread?.id) return;
+  interactOnChatEvent(ev);
   if (ev.type === 'start') { V.replyDone = false; if (speaksReplies()) speaker.stop(); }
   if (!speaksReplies()) {
     if (ev.type === 'done') V.replyDone = true;
@@ -505,6 +507,7 @@ speaker.onIdle = () => { if (V.replyDone) talkTurn(); };
 speaker.onChange = () => renderVoiceButtons();
 
 function renderVoiceButtons() {
+  renderInteract();
   const listening = recorder.active;
   $('#mic').classList.toggle('listening', listening && !V.talk);
   $('#mic').classList.toggle('busy', V.transcribing && !V.talk);
@@ -524,7 +527,7 @@ async function listen(onText) {
   V.onText = onText;
   try {
     if (!(await api.micAccess())) throw Object.assign(new Error('Microphone access denied'), { name: 'NotAllowedError' });
-    await recorder.start({ vad: true, onEnd: heard });
+    await recorder.start({ vad: true, onEnd: heard, onLevel: (l) => { V.micLevel = l; } });
   } catch (err) {
     micError(err);
     return;
@@ -570,6 +573,38 @@ async function talkTurn() {
   });
 }
 
+// Starts the hands-free conversation. Returns false if it can't start yet.
+function startTalk() {
+  if (V.talk) return true;
+  if (!voiceReady()) return false;
+  if (!S.settings.chatModel) {
+    closeInteract();
+    toast('Pick or download a chat model first.');
+    setView('models');
+    return false;
+  }
+  V.talk = true;
+  renderVoiceButtons();
+  talkTurn();
+  return true;
+}
+
+async function installVoice() {
+  if (V.download) return;
+  V.download = { loaded: 0, total: S.voice?.bytes };
+  renderVoiceSettings();
+  renderInteract();
+  try {
+    S.voice = await api.installVoice();
+    toast('Voice installed. Try 🎤 to speak a message, or 🗣 for a conversation.');
+  } catch (err) {
+    toast(`Voice download failed: ${errText(err)}`, 8000);
+  }
+  V.download = null;
+  renderVoiceSettings();
+  renderInteract();
+}
+
 function stopTalk() {
   V.talk = false;
   V.onText = null;
@@ -609,12 +644,7 @@ function wireVoice() {
   };
   $('#talk').onclick = () => {
     if (V.talk) { stopTalk(); return; }
-    if (!voiceReady()) return;
-    if (!S.settings.chatModel) { toast('Pick or download a chat model first.'); setView('models'); return; }
-    V.talk = true;
-    renderVoiceButtons();
-    toast('Conversation on. Just talk; say "stop" or click 🗣 to end.');
-    talkTurn();
+    if (startTalk()) toast('Conversation on. Just talk; say "stop" or click 🗣 to end.');
   };
   $('#read-aloud').onclick = async () => {
     if (speaker.playing) { speaker.stop(); return; } // first click just stops the current speech
@@ -626,22 +656,13 @@ function wireVoice() {
     renderVoiceSettings();
   };
   $('#voice-setup').onclick = async (e) => {
-    if (!e.target.closest('#voice-install')) return;
-    V.download = { loaded: 0, total: S.voice?.bytes };
-    renderVoiceSettings();
-    try {
-      S.voice = await api.installVoice();
-      toast('Voice installed. Try 🎤 to speak a message, or 🗣 for a conversation.');
-    } catch (err) {
-      toast(`Voice download failed: ${errText(err)}`, 8000);
-    }
-    V.download = null;
-    renderVoiceSettings();
+    if (e.target.closest('#voice-install')) installVoice();
   };
   api.onVoiceDownload((p) => {
     if (p.done || !V.download) return;
     V.download = p;
     if (S.view === 'settings') renderVoiceSettings();
+    renderInteract();
   });
   $('#voice-speak').onchange = async (e) => {
     if (!e.target.checked) speaker.stop();
@@ -664,6 +685,134 @@ function wireVoice() {
     renderVoiceSettings();
     renderVoiceButtons();
   };
+}
+
+// ---------- interact (full-screen orb) ----------
+// A holographic orb (orb.js, adapted from ULTRON Orb UI) that shows what
+// Scorpion is doing: standby, listening (pulses with your voice), thinking, and
+// speaking (surges with its voice). Three.js loads only when this opens, and
+// the orb stops rendering when it closes, so chat and the model lose nothing.
+const IX = { open: false, orb: null, loading: null, timer: 0, reply: '' };
+const accentColor = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#f0a830';
+const STATE_LABEL = { standby: 'STANDBY', listening: 'LISTENING', thinking: 'THINKING', speaking: 'SPEAKING' };
+
+async function openInteract() {
+  if (IX.open) return;
+  IX.open = true;
+  $('#interact').classList.remove('hidden');
+  $('#interact').dataset.state = '';
+  $('#ix-you').textContent = '';
+  $('#ix-reply').textContent = '';
+  renderInteract();
+  IX.timer = setInterval(tickInteract, 50);
+  try {
+    if (!IX.orb) {
+      // Full detail needs a graphics card with its own memory (or a Mac).
+      const strong = IS_MAC || (S.hardware?.dedicatedVram || 0) >= 2 * 1024 ** 3;
+      IX.loading ??= import('./orb.js').then(({ createOrb }) => createOrb($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low' }));
+      IX.orb = await IX.loading;
+    } else {
+      IX.orb.setAccent(accentColor());
+    }
+    if (IX.open) IX.orb.start();
+  } catch (err) {
+    toast(`The 3D view couldn't start: ${errText(err)}`, 8000);
+  }
+  if (S.voice?.installed && IX.open) startTalk();
+  else if (IX.open) $('#ix-input').focus();
+}
+
+function closeInteract() {
+  if (!IX.open) return;
+  IX.open = false;
+  clearInterval(IX.timer);
+  IX.orb?.stop();
+  if (V.talk) stopTalk();
+  $('#interact').classList.add('hidden');
+  $('#input').focus();
+}
+
+function interactState() {
+  if (speaker.playing) return 'speaking';
+  if (V.transcribing || (S.thread && S.running.has(S.thread.id))) return 'thinking';
+  if (recorder.active) return 'listening';
+  return 'standby';
+}
+
+function tickInteract() {
+  const state = interactState();
+  const el = $('#interact');
+  if (el.dataset.state !== state) {
+    el.dataset.state = state;
+    IX.orb?.setState(state);
+    // The model shares the graphics card: fewer orb frames while it writes.
+    IX.orb?.setFrameCap(state === 'thinking' ? 30 : 60);
+    renderInteract();
+  }
+  const level = state === 'speaking' ? speaker.level() : state === 'listening' ? Math.min(1, (V.micLevel || 0) * 8) : 0;
+  IX.orb?.setLevel(level);
+}
+
+function renderInteract() {
+  if (!IX.open) return;
+  const state = $('#interact').dataset.state || 'standby';
+  const d = V.download;
+  $('#ix-state').textContent = d
+    ? `DOWNLOADING VOICE ${Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100))}%`
+    : state === 'standby' && V.talk ? 'READY' : STATE_LABEL[state] || 'STANDBY';
+  $('#ix-model').textContent = S.engine?.chatModelName ? `· ${S.engine.chatModelName}` : '';
+  const talk = $('#ix-talk');
+  talk.setAttribute('aria-pressed', String(V.talk));
+  talk.textContent = V.talk ? '■ STOP' : S.voice?.installed ? '● TALK' : d ? 'INSTALLING…' : '⬇ INSTALL VOICE';
+  talk.disabled = Boolean(d);
+  const voiceOn = Boolean(S.settings.voiceSpeak) || V.talk;
+  $('#ix-voice').setAttribute('aria-pressed', String(voiceOn));
+  $('#ix-voice').textContent = voiceOn ? 'VOICE ON' : 'VOICE OFF';
+}
+
+// Markdown reads badly as a caption: keep the words.
+const captionText = (text) => text
+  .replace(/<think>[\s\S]*?(<\/think>|$)/g, '')
+  .replace(/```[\s\S]*?(```|$)/g, ' [code] ')
+  .replace(/[*_#>`~|]+/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+function interactOnChatEvent(ev) {
+  if (!IX.open) return;
+  if (ev.type === 'start') IX.reply = '';
+  if (ev.type === 'text' && !ev.parent) IX.reply += ev.delta;
+  if (ev.type === 'start' || ev.type === 'text') $('#ix-reply').textContent = captionText(IX.reply).slice(-420);
+  if (ev.type === 'done' && ev.error) $('#ix-reply').textContent = `⚠ ${ev.error}`;
+}
+
+function wireInteract() {
+  $('#open-interact').onclick = openInteract;
+  $('#ix-close').onclick = closeInteract;
+  $('#ix-talk').onclick = () => (V.talk ? stopTalk() : startTalk());
+  $('#ix-voice').onclick = () => $('#read-aloud').onclick();
+  $('#ix-zoom-in').onclick = () => IX.orb?.zoomIn();
+  $('#ix-zoom-out').onclick = () => IX.orb?.zoomOut();
+  $('#ix-reset').onclick = () => IX.orb?.resetView();
+  $('#ix-ask').onsubmit = (e) => {
+    e.preventDefault();
+    const text = $('#ix-input').value.trim();
+    if (!text) return;
+    $('#ix-input').value = '';
+    if (!S.settings.chatModel) closeInteract();
+    speaker.stop();
+    sendMessage(text);
+  };
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); IX.open ? closeInteract() : openInteract(); return; }
+    if (!IX.open) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeInteract(); return; }
+    if (e.target.closest?.('input, textarea, select')) return;
+    if (e.key === ' ') { e.preventDefault(); $('#ix-talk').click(); }
+    else if (e.key === 'r' || e.key === 'R') IX.orb?.resetView();
+    else if (e.key === '+' || e.key === '=') IX.orb?.zoomIn();
+    else if (e.key === '-' || e.key === '_') IX.orb?.zoomOut();
+  });
 }
 
 // ---------- settings page ----------
@@ -748,6 +897,7 @@ async function newThread(agentId) {
 async function sendMessage(text) {
   text = text.trim();
   if (!text) return;
+  if (IX.open) $('#ix-you').textContent = text;
   if (!S.settings.chatModel) { toast('Pick or download a chat model first.'); setView('models'); return; }
   if (!S.thread) await newThread();
   const thread = S.thread;
@@ -836,6 +986,7 @@ function wire() {
   $('#input').addEventListener('input', autosize);
   $('#stop').onclick = () => { speaker.stop(); if (S.thread) api.stop(S.thread.id); };
   wireVoice();
+  wireInteract();
 
   $('#messages').onclick = (e) => {
     const s = e.target.closest('.suggestion');

@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-TXQtlLv9hkrPD55l4tCZbV94hPBYXzUd42IGR1ZWUjY='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
   <title>Scorpion</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="themes.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js","three/addons/":"/vendor/three/examples/jsm/"}}</script>
   <script type="module" src="app.js"></script>
 </head>
 <body>
@@ -27,6 +28,7 @@
       <button class="btn primary wide" id="new-chat">＋ New chat</button>
       <nav class="threads" id="threads" aria-label="Chats"></nav>
       <div class="sidebar-foot">
+        <button class="navbtn interact-open" id="open-interact" title="Talk to Scorpion face to face: a full-screen orb with voice (Ctrl+I)">◉ Interact</button>
         <button class="navbtn" id="open-settings" title="Models, documents, agents, schedules, memory and preferences">⚙️ Settings</button>
         <div class="offline-badge" title="Scorpion makes no network requests while you chat">● Offline &amp; private</div>
       </div>
@@ -258,6 +260,30 @@
         </div>
       </section>
     </main>
+  </div>
+  <!-- INTERACT: full-screen orb for talking with Scorpion -->
+  <div class="interact hidden" id="interact" role="dialog" aria-modal="true" aria-label="Interact with Scorpion">
+    <div class="ix-stage" id="ix-stage"></div>
+    <div class="ix-vignette"></div><div class="ix-grain"></div><div class="ix-scanlines"></div>
+    <div class="ix-hud ix-title">S.C.O.R.P.I.O.N.</div>
+    <div class="ix-hud ix-status"><span class="ix-dot" id="ix-dot"></span><span id="ix-state">STANDBY</span><span class="ix-dim" id="ix-model"></span></div>
+    <button type="button" class="ix-btn ix-close" id="ix-close" title="Back to chat (Esc)">✕ EXIT</button>
+    <div class="ix-captions" id="ix-captions" aria-live="polite">
+      <div class="ix-you" id="ix-you"></div>
+      <div class="ix-reply" id="ix-reply"></div>
+    </div>
+    <div class="ix-hud ix-bottom">
+      <form class="ix-ask" id="ix-ask" autocomplete="off"><input id="ix-input" placeholder="Type to Scorpion, or press Space to talk…" aria-label="Message"><button type="submit" class="ix-btn">SEND</button></form>
+      <div class="ix-row">
+        <button type="button" class="ix-btn ix-talk" id="ix-talk" aria-pressed="false">● TALK</button>
+        <button type="button" class="ix-btn" id="ix-voice" aria-pressed="false" title="Read replies aloud">VOICE OFF</button>
+        <span class="ix-gap"></span>
+        <button type="button" class="ix-btn" id="ix-zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" class="ix-btn" id="ix-zoom-out" aria-label="Zoom out">−</button>
+        <button type="button" class="ix-btn" id="ix-reset">RESET</button>
+      </div>
+    </div>
+    <div class="ix-hud ix-hint"><span class="key">SPACE</span> talk <span class="key">DRAG</span> spin <span class="key">SCROLL</span> zoom <span class="key">R</span> reset <span class="key">ESC</span> exit</div>
   </div>
   <div class="toast hidden" id="toast" role="status"></div>
 

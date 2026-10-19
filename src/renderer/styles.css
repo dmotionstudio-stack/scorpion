@@ -147,7 +147,7 @@ code, pre { font-family: var(--mono); }
 .field select, .field textarea, .field input[type=range] { width: 100%; max-width: 560px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
 .field input[type=range] { padding: 0; accent-color: var(--accent); }
 
-.toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--border); padding: 10px 16px; border-radius: 10px; max-width: 70vw; box-shadow: 0 6px 24px rgba(0,0,0,.3); z-index: 10; }
+.toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--border); padding: 10px 16px; border-radius: 10px; max-width: 70vw; box-shadow: 0 6px 24px rgba(0,0,0,.3); z-index: 1000; }
 
 @keyframes pulse { from { opacity: .35; } to { opacity: 1; } }
 
@@ -278,3 +278,48 @@ html.glass-native .thread, html.glass-css .thread { color: color-mix(in srgb, va
 #voice-options .row > span:first-child { min-width: 64px; }
 #voice-options select, #voice-options input[type=range] { width: auto; flex: 1; max-width: 320px; }
 .voice-btn.speaking { animation: pulse .5s ease-in-out infinite alternate; box-shadow: 0 0 0 2px var(--accent) inset; opacity: 1; }
+
+/* ---------- Interact: full-screen orb (HUD look adapted from ULTRON Orb UI, MIT) ---------- */
+.navbtn.interact-open { color: var(--accent-text); font-weight: 600; }
+.interact { position: fixed; inset: 0; z-index: 900; background: #000; color: var(--accent); font-family: Consolas, "Courier New", monospace; overflow: hidden; }
+.interact.hidden { display: none; }
+.ix-stage { position: absolute; inset: 0; cursor: grab; }
+.ix-stage:active { cursor: grabbing; }
+.ix-stage canvas { display: block; }
+.ix-vignette, .ix-grain, .ix-scanlines { position: absolute; inset: 0; pointer-events: none; }
+.ix-vignette { z-index: 9; background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,.72) 100%); }
+.ix-grain { z-index: 10; opacity: .06; mix-blend-mode: screen; background-size: 150px;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.ix-scanlines { z-index: 11; opacity: .3; background: repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(0,0,0,.15) 2px, rgba(0,0,0,.15) 4px); }
+.ix-hud { position: absolute; z-index: 20; user-select: none; text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent); }
+.ix-title { top: 24px; left: 24px; font-size: 13px; letter-spacing: .35em; opacity: .75; pointer-events: none; }
+.ix-title::after { content: ""; display: block; margin-top: 6px; width: 120px; height: 1px; background: linear-gradient(90deg, var(--accent), transparent); }
+.ix-status { top: 58px; left: 24px; display: flex; align-items: center; gap: 10px; font-size: 12px; letter-spacing: .25em; }
+.ix-dim { opacity: .5; letter-spacing: .08em; }
+.ix-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); opacity: .5; }
+.interact[data-state="listening"] .ix-dot { opacity: 1; animation: pulse .5s ease-in-out infinite alternate; }
+.interact[data-state="thinking"] .ix-dot { opacity: 1; animation: pulse .18s linear infinite alternate; }
+.interact[data-state="speaking"] .ix-dot { opacity: 1; }
+.ix-btn { min-width: 44px; height: 40px; padding: 0 14px; background: color-mix(in srgb, var(--accent) 8%, rgba(0,0,0,.55)); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 4px; color: var(--accent); font: bold 14px Consolas, "Courier New", monospace; letter-spacing: .08em; cursor: pointer; backdrop-filter: blur(2px); text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 12%, transparent) inset; transition: background .15s, border-color .15s, box-shadow .15s; }
+.ix-btn:hover { background: color-mix(in srgb, var(--accent) 22%, rgba(0,0,0,.6)); border-color: var(--accent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent), 0 0 12px color-mix(in srgb, var(--accent) 20%, transparent) inset; }
+.ix-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 30%, rgba(0,0,0,.6)); border-color: var(--accent); }
+.ix-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ix-close { position: absolute; z-index: 20; top: 20px; right: 24px; }
+.ix-talk { min-width: 120px; }
+.ix-talk[aria-pressed="true"] { animation: pulse .7s ease-in-out infinite alternate; }
+.ix-bottom { left: 50%; bottom: 26px; transform: translateX(-50%); width: min(680px, calc(100% - 48px)); display: flex; flex-direction: column; gap: 10px; }
+.ix-row { display: flex; gap: 8px; align-items: center; }
+.ix-gap { flex: 1; }
+.ix-ask { display: flex; gap: 8px; }
+.ix-ask input { flex: 1; height: 40px; padding: 0 12px; background: rgba(0,0,0,.55); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 4px; color: var(--accent); font: 14px Consolas, "Courier New", monospace; outline: none; }
+.ix-ask input::placeholder { color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.ix-ask input:focus { border-color: var(--accent); }
+.ix-captions { position: absolute; z-index: 20; left: 50%; transform: translateX(-50%); bottom: 140px; width: min(760px, calc(100% - 48px)); text-align: center; pointer-events: none; padding: 14px 28px; border-radius: 40px; background: radial-gradient(ellipse at center, rgba(0,0,0,.62) 0%, rgba(0,0,0,.45) 55%, transparent 80%); }
+.ix-captions:has(.ix-you:empty):has(.ix-reply:empty) { background: none; }
+.ix-you { font-size: 13px; letter-spacing: .06em; opacity: .85; margin-bottom: 8px; }
+.ix-you:not(:empty)::before { content: "YOU › "; opacity: .7; }
+.ix-reply { font-size: 17px; line-height: 1.5; color: #fff; text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 80%, transparent), 0 1px 2px #000; max-height: 4.6em; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; mask-image: linear-gradient(to bottom, transparent, #000 35%); }
+.ix-hint { bottom: 30px; left: 24px; font-size: 11px; line-height: 1.7; letter-spacing: .1em; opacity: .5; pointer-events: none; max-width: 320px; }
+.ix-hint .key { display: inline-block; padding: 0 4px; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); border-radius: 3px; margin: 0 2px 0 6px; font-size: 10px; }
+@media (max-width: 900px) { .ix-hint { display: none; } }
+@media (prefers-reduced-motion: reduce) { .ix-talk[aria-pressed="true"], .interact .ix-dot { animation: none !important; } }

@@ -138,16 +138,31 @@ export class Speaker {
 
   play({ sampleRate, audio }) {
     return new Promise((resolve) => {
-      this.ctx ??= new AudioContext();
+      if (!this.ctx) {
+        this.ctx = new AudioContext();
+        this.analyser = this.ctx.createAnalyser();
+        this.analyser.fftSize = 1024;
+        this.analyser.connect(this.ctx.destination);
+      }
       const buffer = this.ctx.createBuffer(1, audio.length, sampleRate);
       buffer.copyToChannel(audio instanceof Float32Array ? audio : new Float32Array(audio), 0);
       const source = this.ctx.createBufferSource();
       source.buffer = buffer;
-      source.connect(this.ctx.destination);
+      source.connect(this.analyser);
       source.onended = () => resolve();
       this.source = source;
       source.start();
     });
+  }
+
+  // How loud the current speech is right now, 0..1 (drives the orb).
+  level() {
+    if (!this.playing || !this.analyser) return 0;
+    const buf = (this.levelBuf ??= new Float32Array(this.analyser.fftSize));
+    this.analyser.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (const v of buf) sum += v * v;
+    return Math.min(1, Math.sqrt(sum / buf.length) * 4);
   }
 
   stop() {

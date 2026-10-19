@@ -33,6 +33,11 @@ account, or an internet connection to chat.
   end), and 🔊 reads every reply aloud. Listening uses Whisper and speaking uses
   Kokoro, both on your computer. They're a one-time ~230 MB download (Settings →
   Voice → Install). Scorpion understands 20 languages and speaks English.
+- **Interact**: a full-screen holographic orb for talking face to face (◉ Interact in
+  the sidebar, or Ctrl+I). The orb shows what Scorpion is doing (standby, listening,
+  thinking, speaking) and pulses with your voice and its own. Captions show what you
+  said and the reply. Drag to spin, scroll to zoom, Space to talk, Esc to leave. Its
+  colours follow your theme.
 - **Private by design**: Scorpion stores data only in your OS app-data folder, makes no
   network calls while you chat, has a sandboxed UI and a locked-down IPC bridge.
 
@@ -254,5 +259,12 @@ when it continues. This works on any machine; it's just slower.
 
 ## License
 
-Apache-2.0. Scorpion's design was informed by studying Jan (Apache-2.0, © Menlo Research).
+Apache-2.0.
+
+The Interact orb is adapted from [ULTRON Orb UI](https://github.com/SAGAR-TAMANG/ultron-by-sagar-builds)
+by Sagar Tamang (MIT, see `src/renderer/ORB-LICENSE.txt`). It uses
+[three.js](https://threejs.org) (MIT); the few add-ons it needs are copied in
+`src/vendor/three-addons` because installers leave out `node_modules` example folders.
+
+Scorpion's design was informed by studying Jan (Apache-2.0, © Menlo Research).
 Scorpion contains none of Jan's source code.

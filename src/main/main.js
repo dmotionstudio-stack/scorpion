@@ -19,6 +19,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const RENDERER_DIR = path.join(APP_ROOT, 'src', 'renderer');
 const SHARED_DIR = path.join(APP_ROOT, 'src', 'shared');
+const THREE_BUILD = path.join(APP_ROOT, 'node_modules', 'three', 'build');
+// The orb's few Three.js add-ons are vendored (installers drop node_modules
+// "examples" folders); test/orb.test.js keeps them in step with three.
+const THREE_ADDONS = path.join(APP_ROOT, 'src', 'vendor', 'three-addons');
 const VENDOR = {
   'marked.js': path.join(APP_ROOT, 'node_modules', 'marked', 'lib', 'marked.esm.js'),
   'purify.js': path.join(APP_ROOT, 'node_modules', 'dompurify', 'dist', 'purify.es.mjs'),
@@ -81,7 +85,13 @@ function serveApp() {
     const { pathname } = new URL(request.url);
     const rel = decodeURIComponent(pathname).replace(/^\/+/, '') || 'index.html';
     let file;
-    if (rel.startsWith('vendor/')) file = VENDOR[rel.slice('vendor/'.length)];
+    if (rel.startsWith('vendor/three/')) {
+      // Three.js is a set of ES modules: its build, plus the add-ons the orb uses.
+      const sub = rel.slice('vendor/three/'.length);
+      const build = /^build\/(three\.(module|core)\.js)$/.exec(sub);
+      const addon = /^examples\/jsm\/((controls|postprocessing|shaders)\/\w+\.js)$/.exec(sub);
+      file = build ? path.join(THREE_BUILD, build[1]) : addon ? path.join(THREE_ADDONS, addon[1]) : null;
+    } else if (rel.startsWith('vendor/')) file = VENDOR[rel.slice('vendor/'.length)];
     else if (rel.startsWith('shared/')) {
       file = path.join(SHARED_DIR, rel.slice('shared/'.length));
       if (path.relative(SHARED_DIR, file).startsWith('..')) file = null;
