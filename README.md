@@ -32,6 +32,73 @@ account, or an internet connection to chat.
 Architecture notes, and what Scorpion learned from studying [Jan](https://github.com/janhq/jan),
 are in [docs/JAN_STUDY.md](docs/JAN_STUDY.md).
 
+## Install
+
+### Get the installer
+
+1. Sign in to GitHub and open this repository's **Actions** tab.
+2. Click the newest successful **Release** run, then **Summary** in the left sidebar.
+3. Scroll to **Artifacts** at the bottom and download the one for your computer:
+
+| Your computer | Download | File inside the zip |
+|---|---|---|
+| Windows 10 or 11 (64-bit) | `scorpion-windows-latest` | `Scorpion Setup x.y.z.exe` |
+| Mac with Apple Silicon (M1, M2, M3, M4) | `scorpion-macos-latest` | `Scorpion-x.y.z-arm64.dmg` |
+| Mac with an Intel processor | `scorpion-macos-15-intel` | `Scorpion-x.y.z.dmg` |
+
+Not sure which Mac you have? Apple menu → **About This Mac**: it says **Chip**
+(Apple Silicon) or **Processor** (Intel).
+
+### Windows
+
+1. Unzip the download and double-click **Scorpion Setup x.y.z.exe**.
+2. If Windows shows *"Windows protected your PC"*, click **More info → Run anyway**.
+   This appears because the installer isn't signed with a paid certificate.
+3. Choose where to install (the default is fine) and click **Install**.
+4. Open **Scorpion** from the Start menu or the desktop shortcut.
+
+To uninstall: **Settings → Apps → Installed apps → Scorpion → Uninstall**.
+Your chats, memories and models stay in `%APPDATA%\Scorpion` until you delete
+that folder.
+
+### Mac
+
+1. Unzip the download and double-click the **.dmg** file.
+2. In the window that opens, drag **Scorpion** onto the **Applications** folder.
+3. Open **Scorpion** from Applications. The first time, macOS says *"Apple could
+   not verify Scorpion is free of malware"*. Click **Done** (not Move to Trash).
+4. Open **System Settings → Privacy & Security**, scroll to **Security**, click
+   **Open Anyway** next to *"Scorpion" was blocked*, and enter your Mac password.
+5. Open Scorpion again and click **Open Anyway**. From now on it opens normally.
+
+On macOS 14 or older, steps 3 to 5 are simpler: right-click **Scorpion** in
+Applications, choose **Open**, then click **Open**.
+
+If you prefer Terminal, or macOS says the app *"is damaged"*, run this once and
+then open Scorpion normally:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Scorpion.app
+```
+
+To uninstall: drag **Scorpion** from Applications to the Trash. Your chats,
+memories and models stay in `~/Library/Application Support/Scorpion` until you
+delete that folder.
+
+### First start: get a model
+
+Scorpion needs one model file. You need internet once for this, or none at all
+if you copy the file from another computer.
+
+- **Download**: open **Settings → Models** and click **Download** next to
+  **Qwen3 4B** (2.5 GB, the recommended model).
+- **Copy from another computer**: copy a `.gguf` file onto a USB drive, then use
+  **Settings → Models → Import .gguf file…**. On Windows, Scorpion keeps its
+  models in `%APPDATA%\Scorpion\models`; on a Mac, in
+  `~/Library/Application Support/Scorpion/models`.
+
+After that Scorpion works fully offline.
+
 ## Run from source
 
 Requirements: Node.js 20+.
@@ -79,7 +146,7 @@ Scorpion needs a model file once. You can get one in any of three ways:
 | Platform | Command | Output |
 |---|---|---|
 | Windows | `npm run dist:win` | `release/Scorpion Setup x.y.z.exe` |
-| macOS | `npm run dist:mac` (on a Mac) | `release/Scorpion-x.y.z-arm64.dmg` |
+| macOS | `npm run dist:mac` (on a Mac) | `release/Scorpion-x.y.z-arm64.dmg` (Apple Silicon) or `release/Scorpion-x.y.z.dmg` (Intel) |
 
 You can only build a macOS installer on a Mac. The included GitHub Actions workflow
 (`.github/workflows/release.yml`) builds Windows, Apple Silicon and Intel Mac
