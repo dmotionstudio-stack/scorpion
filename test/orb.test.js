@@ -10,7 +10,8 @@ test('vendored Three.js add-ons match the installed three version', () => {
   const files = fs.readdirSync(vendored, { recursive: true }).filter((f) => f.endsWith('.js'));
   assert.ok(files.length >= 9);
   for (const f of files) {
-    assert.equal(fs.readFileSync(path.join(vendored, f), 'utf8'), fs.readFileSync(path.join(upstream, f), 'utf8'), `${f} differs: copy it again from ${upstream}`);
+    const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n'); // ignore checkout line endings
+    assert.equal(read(path.join(vendored, f)), read(path.join(upstream, f)), `${f} differs: copy it again from ${upstream}`);
   }
 });
 

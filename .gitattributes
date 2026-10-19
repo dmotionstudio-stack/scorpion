@@ -1,0 +1,2 @@
+# Vendored third-party files stay byte-for-byte as published.
+src/vendor/** -text
