@@ -27,13 +27,32 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'scorpion', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
-// Portable mode: a "scorpion-data" folder next to Scorpion.exe holds everything
-// (models, chats, memory), so Scorpion can run from a USB stick and leave nothing
-// on the computer. SCORPION_DATA_DIR overrides it (used for testing).
+// Portable mode: a "scorpion-data" folder holds everything (models, chats,
+// memory), so Scorpion can run from a USB stick and leave nothing on the
+// computer. SCORPION_DATA_DIR overrides it (used for testing).
 // The app used to be called Kenzo; its data folders are picked up and moved
 // over once, so chats, memory, settings and models survive the rename.
 const exeDir = path.dirname(process.execPath);
-const portableDir = [path.join(exeDir, 'scorpion-data'), path.join(exeDir, 'kenzo-data')].find((d) => fs.existsSync(d));
+const portableDir = portableCandidates().find((d) => fs.existsSync(d));
+
+// Where a portable data folder can be: next to Scorpion.exe or one folder up
+// (the USB layout keeps the Windows app in its own folder beside the shared
+// data). On a Mac, next to Scorpion.app or one folder up; and when Scorpion
+// runs from a disk image opened from a USB stick, at the root of the stick.
+function portableCandidates() {
+  const dirs = [path.join(exeDir, 'scorpion-data'), path.join(exeDir, 'kenzo-data'), path.join(exeDir, '..', 'scorpion-data')];
+  if (process.platform === 'darwin') {
+    const bundleParent = path.resolve(exeDir, '../../..');
+    dirs.push(path.join(bundleParent, 'scorpion-data'), path.join(bundleParent, '..', 'scorpion-data'));
+    // Only when running from a disk image, never from Applications.
+    if (exeDir.startsWith('/Volumes/')) {
+      let volumes = [];
+      try { volumes = fs.readdirSync('/Volumes'); } catch { /* no volumes */ }
+      for (const v of volumes) dirs.push(path.join('/Volumes', v, 'scorpion-data'));
+    }
+  }
+  return dirs;
+}
 if (process.env.SCORPION_DATA_DIR) app.setPath('userData', path.resolve(process.env.SCORPION_DATA_DIR));
 else if (app.isPackaged && portableDir) {
   app.setPath('userData', portableDir);
@@ -223,13 +242,19 @@ async function autoSelectModels() {
   // A model only counts if it's in Scorpion's own library (or bundled). That
   // also drops paths that pointed into other apps' folders in older versions.
   const known = (p) => p && fs.existsSync(p) && local.some((m) => m.path === p);
+  // On a USB stick the saved path goes stale when the drive letter changes or
+  // the stick moves between Windows and a Mac; the same file is still there.
+  const sameFile = (p) => p && local.find((m) => path.basename(m.path) === p.split(/[\\/]/).pop())?.path;
   const patch = {};
-  if (!known(s.chatModel)) {
+  if (!known(s.chatModel) && sameFile(s.chatModel)) patch.chatModel = sameFile(s.chatModel);
+  else if (!known(s.chatModel)) {
     // Pick what runs well on this machine, not just the first file found.
     const hw = await engine.hardwareInfo().catch(() => null);
     patch.chatModel = models.pickDefaultChatModel(local, (bytes) => engine.modelFit(bytes, hw))?.path ?? null;
   }
-  if (!known(s.embedModel)) patch.embedModel = local.find((m) => m.kind === 'embedding')?.path ?? null;
+  if (!known(s.embedModel)) patch.embedModel = sameFile(s.embedModel) ?? local.find((m) => m.kind === 'embedding')?.path ?? null;
+  // A workspace folder from another computer doesn't exist here.
+  if (s.workspace && !fs.existsSync(s.workspace)) patch.workspace = null;
   if (Object.keys(patch).length) store.updateSettings(patch);
 }
 

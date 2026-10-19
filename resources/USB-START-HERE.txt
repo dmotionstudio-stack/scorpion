@@ -1,0 +1,50 @@
+Scorpion on a USB stick
+=======================
+
+An offline AI assistant that runs straight from this stick on Windows and Mac.
+Nothing is installed, and no internet is needed. Your chats, memories, settings
+and models are all saved on the stick in the "scorpion-data" folder, and both
+Windows and Mac use the same folder.
+
+What's on the stick
+  Windows\Scorpion.exe          Scorpion for Windows 10 and 11
+  Mac\...Apple Silicon Mac.dmg  Scorpion for Macs with an M1, M2, M3 or M4 chip
+  Mac\...Intel Mac.dmg          Scorpion for Macs with an Intel processor
+  scorpion-data\                Your data and models (keep this folder here)
+
+
+WINDOWS
+-------
+1. Open the Windows folder and double-click Scorpion.exe.
+2. If Windows says "Windows protected your PC", click More info, then
+   Run anyway. This appears because Scorpion isn't signed with a paid
+   certificate.
+3. Scorpion opens with the model on the stick already selected.
+
+
+MAC
+---
+1. Open the Mac folder and double-click the .dmg for your Mac.
+   (Apple menu > About This Mac: "Chip" means Apple Silicon, "Processor"
+   means Intel.)
+2. In the window that opens, double-click Scorpion. Don't drag it to
+   Applications: run it from here so it uses the data on the stick.
+3. If macOS asks to let Scorpion access files on a removable volume, click
+   Allow. Without this, Scorpion can't read the stick.
+4. If macOS says "Apple could not verify Scorpion", click Done, then open
+   System Settings > Privacy & Security, click Open Anyway, and open
+   Scorpion again.
+5. When you're done, quit Scorpion, then eject the Scorpion disk image and
+   the stick.
+
+
+TIPS
+----
+- Quit Scorpion before you unplug the stick, so nothing is lost.
+- Models: Settings > Models in Scorpion. Models you download there are saved
+  on the stick and work on every computer.
+- Big models: if the stick is formatted FAT32, files over 4 GB can't be
+  saved. Format it as exFAT (works on both Windows and Mac) for bigger models.
+- A faster stick (USB 3) makes models load much faster.
+- To start fresh, delete everything inside scorpion-data except the models
+  folder.
