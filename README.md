@@ -87,8 +87,11 @@ installers in the cloud. Run it from the Actions tab and, if you want, list mode
 ids to bundle.
 
 Unsigned builds show a warning on first launch. On Windows that's SmartScreen:
-choose *More info → Run anyway*. On macOS that's Gatekeeper: right-click the app
-and choose *Open*. To remove these warnings you need a code-signing certificate.
+choose *More info → Run anyway*. On macOS that's Gatekeeper: drag Scorpion to
+Applications, open it once, then go to *System Settings → Privacy & Security* and
+click *Open Anyway* (on macOS 14 and older, right-click the app and choose *Open*).
+The Mac app is ad-hoc signed, so it runs on Apple Silicon without a certificate. To
+remove these warnings you need an Apple Developer ID certificate.
 
 ## Hardware acceleration
 

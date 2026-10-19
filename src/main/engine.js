@@ -19,16 +19,21 @@ async function ensureLlama() {
 // A pure-CPU llama.cpp. With zero layers on the GPU, the GPU build still routes
 // work through the graphics driver; the CPU build measured 3x faster writing
 // for a 17 GB model on a 4 GB card (13 vs 4 tokens/s).
+// Apple Silicon has no CPU-only prebuilt, so there it falls back to the Metal
+// build with zero layers offloaded.
 let cpuLlama = null;
 async function ensureCpuLlama() {
-  cpuLlama ??= await getLlama({ build: 'never', gpu: false, logLevel: LlamaLogLevel.error });
+  cpuLlama ??= await getLlama({ build: 'never', gpu: false, logLevel: LlamaLogLevel.error })
+    .catch(() => ensureLlama());
   return cpuLlama;
 }
 
 // Models far bigger than the graphics card gain nothing from a partial
 // offload (measured: 8 of 49 layers ran slower than none), so they go
-// straight to the CPU build.
+// straight to the CPU build. Metal shares all of the Mac's memory with the
+// CPU at full speed, so there the GPU is always the better choice.
 function prefersCpu(bytes, hw) {
+  if (hw?.gpu === 'metal') return false;
   return !hw?.dedicatedVram || bytes > hw.dedicatedVram * 1.5;
 }
 
@@ -57,6 +62,8 @@ export function modelFit(bytes, hw) {
   if (!hw || !bytes) return null;
   const need = bytes * 1.15 + 0.6 * 1024 ** 3;
   if (hw.dedicatedVram && need <= hw.dedicatedVram) return 'fast';
+  // Apple Silicon's unified memory runs models at GPU speed.
+  if (hw.gpu === 'metal' && hw.sharedVram && need <= hw.sharedVram * 0.75) return 'fast';
   if (!hw.dedicatedVram && hw.sharedVram && need <= hw.sharedVram * 0.5) return 'ok';
   if (bytes * 1.2 + 1024 ** 3 <= hw.ram * 0.6) return 'slow';
   return 'too-big';
