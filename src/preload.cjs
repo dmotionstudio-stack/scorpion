@@ -70,4 +70,10 @@ contextBridge.exposeInMainWorld('scorpion', {
   micAccess: invoke('voice:micAccess'),
   warmVoice: invoke('voice:warm'),
   onVoiceDownload: on('voice:download'),
+
+  installGestures: invoke('gestures:install'),
+  gesturesLoaded: invoke('gestures:loaded'),
+  uninstallGestures: invoke('gestures:uninstall'),
+  gesturesCamera: invoke('gestures:camera'),
+  onGesturesDownload: on('gestures:download'),
 });

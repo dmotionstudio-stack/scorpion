@@ -319,7 +319,16 @@ html.glass-native .thread, html.glass-css .thread { color: color-mix(in srgb, va
 .ix-you { font-size: 13px; letter-spacing: .06em; opacity: .85; margin-bottom: 8px; }
 .ix-you:not(:empty)::before { content: "YOU › "; opacity: .7; }
 .ix-reply { font-size: 17px; line-height: 1.5; color: #fff; text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 80%, transparent), 0 1px 2px #000; max-height: 4.6em; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; mask-image: linear-gradient(to bottom, transparent, #000 35%); }
-.ix-hint { bottom: 30px; left: 24px; font-size: 11px; line-height: 1.7; letter-spacing: .1em; opacity: .5; pointer-events: none; max-width: 320px; }
+.ix-hint { bottom: 30px; left: 24px; font-size: 11px; line-height: 1.7; letter-spacing: .1em; opacity: .5; pointer-events: none; max-width: min(320px, calc(50vw - 380px)); }
 .ix-hint .key { display: inline-block; padding: 0 4px; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); border-radius: 3px; margin: 0 2px 0 6px; font-size: 10px; }
-@media (max-width: 900px) { .ix-hint { display: none; } }
+/* Beside the bottom bar (680px, centred) only while it fits. */
+@media (max-width: 1160px) { .ix-hint { display: none; } }
 @media (prefers-reduced-motion: reduce) { .ix-talk[aria-pressed="true"], .interact .ix-dot { animation: none !important; } }
+.ix-cam { position: absolute; z-index: 20; top: 72px; right: 24px; width: 210px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 4px; background: rgba(0,0,0,.6); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 18%, transparent); }
+.ix-cam.hidden { display: none; }
+.ix-cam-view { position: relative; width: 208px; height: 156px; background: #000; }
+.ix-cam-view video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: .55; filter: grayscale(1) contrast(1.2); }
+.ix-cam-view canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ix-cam-status { padding: 6px 8px; font-size: 10px; line-height: 1.5; letter-spacing: .12em; text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 70%, transparent); }
+.ix-cam[data-error] .ix-cam-view { display: none; }
+.ix-cam[data-error] .ix-cam-status { color: #fff; letter-spacing: .06em; font-size: 11px; }

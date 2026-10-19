@@ -11,6 +11,7 @@ import * as memory from './memory.js';
 import * as agents from './agents.js';
 import * as scheduler from './scheduler.js';
 import * as voice from './voice.js';
+import * as gestures from './gestures.js';
 import { TOOLS } from './tools.js';
 import { applyEvent } from '../shared/events.js';
 import { buildFunctions, buildSystemPrompt, withDocumentContext, withConversationRecall } from './agent.js';
@@ -23,6 +24,10 @@ const THREE_BUILD = path.join(APP_ROOT, 'node_modules', 'three', 'build');
 // The orb's few Three.js add-ons are vendored (installers drop node_modules
 // "examples" folders); test/orb.test.js keeps them in step with three.
 const THREE_ADDONS = path.join(APP_ROOT, 'src', 'vendor', 'three-addons');
+// Hand tracking for Interact's gestures: MediaPipe's vision bundle and the one
+// WebAssembly build Chromium needs (with SIMD; the others aren't packaged).
+const MEDIAPIPE = path.join(APP_ROOT, 'node_modules', '@mediapipe', 'tasks-vision');
+const MEDIAPIPE_FILES = new Set(['vision_bundle.mjs', 'wasm/vision_wasm_internal.js', 'wasm/vision_wasm_internal.wasm']);
 const VENDOR = {
   'marked.js': path.join(APP_ROOT, 'node_modules', 'marked', 'lib', 'marked.esm.js'),
   'purify.js': path.join(APP_ROOT, 'node_modules', 'dompurify', 'dist', 'purify.es.mjs'),
@@ -91,7 +96,14 @@ function serveApp() {
       const build = /^build\/(three\.(module|core)\.js)$/.exec(sub);
       const addon = /^examples\/jsm\/((controls|postprocessing|shaders)\/\w+\.js)$/.exec(sub);
       file = build ? path.join(THREE_BUILD, build[1]) : addon ? path.join(THREE_ADDONS, addon[1]) : null;
+    } else if (rel.startsWith('vendor/mediapipe/')) {
+      const sub = rel.slice('vendor/mediapipe/'.length);
+      file = MEDIAPIPE_FILES.has(sub) ? path.join(MEDIAPIPE, sub) : null;
     } else if (rel.startsWith('vendor/')) file = VENDOR[rel.slice('vendor/'.length)];
+    else if (rel === `gestures/${gestures.MODEL_FILE}`) {
+      file = gestures.modelPath();
+      if (file && !fs.existsSync(file)) file = null;
+    }
     else if (rel.startsWith('shared/')) {
       file = path.join(SHARED_DIR, rel.slice('shared/'.length));
       if (path.relative(SHARED_DIR, file).startsWith('..')) file = null;
@@ -239,6 +251,7 @@ async function state() {
     openAtLogin: app.getLoginItemSettings().openAtLogin,
     supportedDocs: rag.SUPPORTED_EXTENSIONS,
     voice: voice.voiceStatus(),
+    gestures: gestures.gesturesStatus(),
     engine: await engine.engineInfo().catch((e) => ({ error: e.message })),
     platform: process.platform,
     glass: glassMode(),
@@ -503,6 +516,20 @@ function registerIpc() {
     if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true;
     return systemPreferences.askForMediaAccess('microphone');
   });
+  h('gestures:install', async () => {
+    await gestures.installGestures((p) => send('gestures:download', p));
+    return gestures.gesturesStatus();
+  });
+  h('gestures:loaded', () => gestures.markLoaded());
+  h('gestures:uninstall', () => gestures.uninstallGestures());
+  // The camera is allowed only while gestures are on. macOS asks the user
+  // once; Windows uses its own privacy setting.
+  h('gestures:camera', async (on) => {
+    cameraAllowed = Boolean(on);
+    if (!cameraAllowed || process.platform !== 'darwin') return true;
+    if (systemPreferences.getMediaAccessStatus('camera') === 'granted') return true;
+    return systemPreferences.askForMediaAccess('camera');
+  });
   h('settings:update', async (patch) => {
     const before = store.getSettings();
     const next = store.updateSettings(patch);
@@ -628,17 +655,19 @@ function registerIpc() {
   h('memory:clear', () => memory.clearMemories());
 }
 
-// The UI may use the microphone (for voice chat) and nothing else: no camera,
-// screen, location or notifications from the page.
-function allowMicrophoneOnly() {
+// The UI may use the microphone (for voice chat), and the camera only while
+// Interact's hand gestures are on. Nothing else: no screen, location or
+// notifications from the page.
+let cameraAllowed = false;
+function allowMicAndGestureCamera() {
   const isOwnPage = (url) => String(url || '').startsWith('scorpion://');
-  const micOnly = (permission, details) => permission === 'media'
-    && (details?.mediaTypes ?? ['audio']).every((t) => t === 'audio');
+  const allowedType = (t) => t === 'audio' || (t === 'video' && cameraAllowed);
   session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
-    callback(isOwnPage(details?.requestingUrl ?? wc.getURL()) && micOnly(permission, details));
+    callback(isOwnPage(details?.requestingUrl ?? wc.getURL()) && permission === 'media'
+      && (details?.mediaTypes ?? ['audio']).every(allowedType));
   });
   session.defaultSession.setPermissionCheckHandler((wc, permission, origin, details) => {
-    return isOwnPage(origin) && (permission === 'media' ? (details?.mediaType ?? 'audio') === 'audio' : false);
+    return isOwnPage(origin) && permission === 'media' && allowedType(details?.mediaType ?? 'audio');
   });
 }
 
@@ -650,7 +679,8 @@ function ensureTrayHint() {
 app.whenReady().then(async () => {
   store.initStore(app.getPath('userData'));
   voice.initVoice(store.paths.models);
-  allowMicrophoneOnly();
+  gestures.initGestures(store.paths.models);
+  allowMicAndGestureCamera();
   await autoSelectModels();
   serveApp();
   registerIpc();
