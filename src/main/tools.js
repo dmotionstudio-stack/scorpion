@@ -199,7 +199,7 @@ export function runProcess(file, args, options, signal) {
 export const TOOLS = {
   list_files: {
     access: 'read',
-    description: 'List files and folders in the workspace. Use path "." for the workspace root. depth 1-4.',
+    description: 'List files and folders. Use path "." for the workspace root, or a full path for a folder elsewhere. depth 1-4.',
     params: { type: 'object', properties: { path: { type: 'string' }, depth: { type: 'integer' } } },
     run({ path: p, depth }, { workspace, allowed }) {
       const dir = resolveInside(workspace, p, allowed);
@@ -211,7 +211,7 @@ export const TOOLS = {
 
   read_file: {
     access: 'read',
-    description: 'Read a text file from the workspace. startLine is 1-based (use 1 for the start).',
+    description: 'Read a text file (relative to the workspace, or a full path). startLine is 1-based (use 1 for the start).',
     params: { type: 'object', properties: { path: { type: 'string' }, startLine: { type: 'integer' } } },
     run({ path: p, startLine }, { workspace, allowed }) {
       const file = resolveInside(workspace, p, allowed);
@@ -257,7 +257,7 @@ export const TOOLS = {
     params: { type: 'object', properties: { path: { type: 'string' } } },
     prepare(args, { lastCodeBlock, lastCodeLang }) {
       const content = lastCodeBlock?.();
-      if (content == null) throw new Error('Nothing saved: there is no new ``` code block since your last file write. Next, write the complete content of this file inside a new ``` fenced code block as normal reply text (not inside a tool call), and only then call write_file again with the path.');
+      if (content == null) throw new Error(`Nothing saved yet: there is no new \`\`\` code block since your last file write. Next, write the complete content of ${args.path} inside a new \`\`\` fenced code block as normal reply text (not inside a tool call), then call write_file again with path "${args.path}".`);
       const lang = lastCodeLang?.() || '';
       const ext = path.extname(args.path).toLowerCase();
       const CODE_EXT = ['.js', '.mjs', '.cjs', '.ts', '.py', '.html', '.css', '.java', '.c', '.cpp', '.cs', '.go', '.rs', '.rb', '.php', '.sh', '.ps1'];

@@ -14,6 +14,13 @@ const PATH_ARGS = {
   list_files: ['path'], read_file: ['path'], search_files: ['path'], write_file: ['path'], edit_file: ['path'],
   run_command: ['subdir'], move_file: ['from', 'to'], read_spreadsheet: ['path'], read_document: ['path'],
 };
+// Small models sometimes run past the end of a path into the call's closing
+// braces ("notes.txt}}<tool_call>…"); keep only the path itself.
+function trimPaths(name, args) {
+  const out = { ...args };
+  for (const key of PATH_ARGS[name] || []) if (typeof out[key] === 'string') out[key] = out[key].split('}}')[0];
+  return out;
+}
 const MAX_HELPER_OUTPUT = 6000;
 
 const BASE_PROMPT = `You are Scorpion, a helpful AI assistant and agent running fully offline on the user's own computer.
@@ -22,7 +29,7 @@ Be accurate and concise. Use Markdown for formatting and fenced code blocks for 
 // Kept short on purpose: every new chat re-reads these before answering, which
 // is the main start-up delay on CPU-only or slow machines.
 const AGENT_RULES = `Tool rules:
-- Paths are relative to the workspace. For files elsewhere, use the full path: Scorpion asks the user for permission. Read before editing; never guess file contents. Use edit_file for small changes.
+- Paths are relative to the workspace. When the user gives a full path, pass it to the tool unchanged, even outside the workspace: Scorpion asks the user for permission. Read before editing; never guess file contents. Use edit_file for small changes.
 - To create or rewrite a file: put the whole content in one fenced code block, then call write_file with the path.
 - If a tool fails, fix the cause and retry (at most twice), or explain the problem.`;
 
@@ -218,8 +225,9 @@ export function buildFunctions(ctx) {
     functions[name] = defineChatSessionFunction({
       description: tool.description,
       params: tool.params,
-      async handler(rawArgs) {
+      async handler(modelArgs) {
         const id = `${Date.now().toString(36)}-${++seq}`;
+        const rawArgs = trimPaths(name, modelArgs);
         let args = rawArgs;
         try {
           if (tool.prepare) {

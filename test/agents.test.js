@@ -222,6 +222,10 @@ test('a code block feeds only one write, and JSON blocks cannot become programs'
   assert.match(await fns.write_file.handler({ path: 'data/todo.mjs' }), /Created/);
   assert.equal(fs.readFileSync(path.join(ws, 'data/todo.mjs'), 'utf8'), 'console.log("ok")\n');
   assert.deepEqual(written, ['[]\n']);
+  // A path that runs on into the call's closing braces is cut back to the path.
+  text += '```\nnotes\n```\n';
+  assert.match(await fns.write_file.handler({ path: 'notes.txt}}<tool_call>user' }), /Created notes\.txt /);
+  assert.equal(fs.readFileSync(path.join(ws, 'notes.txt'), 'utf8'), 'notes\n');
   assert.throws(() => T.write_file.prepare({ path: 'x.mjs' }, { lastCodeBlock: () => '[]', lastCodeLang: () => 'json' }), /is JSON/);
 });
 
