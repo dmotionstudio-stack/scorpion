@@ -4,6 +4,12 @@ An offline AI assistant and agent for Windows and macOS. Scorpion runs open-weig
 GGUF models on your own computer with llama.cpp. You don't need an API key, an
 account, or an internet connection to chat.
 
+- **Home screen** (the Scorpion shell): Scorpion opens on a home screen with an ask box, a
+  launcher for all its tools (each with a live status line), your **workspaces** (saved
+  folders: use one, start a new chat in it, open, rename or remove; each chat keeps the
+  workspace it started in), and **recent activity** (chats, files the agent saved, apps
+  it opened, scheduled runs, check-ins, memories, library scans). Everything underneath
+  is the same local AI.
 - **Chat** with local models (Qwen, Llama, any GGUF file), with streaming and Markdown.
 - **Agent**: Scorpion reads, writes and edits files and runs terminal commands inside a
   workspace folder you choose. For files anywhere else it asks first: *Allow*,
@@ -62,12 +68,49 @@ account, or an internet connection to chat.
   agent read, create, edit and move files anywhere on the computer without asking
   which folder. Changes and commands still need your OK unless Auto-approve is on,
   and system folders (Windows, Program Files, /System, /usr…) stay read-only.
+- **Skills** (Settings → Skills): folders with a `SKILL.md` that teach the agent how
+  to do a kind of job your way. Only names and one-line descriptions sit in the
+  prompt; the agent reads a whole skill when a task matches. Four come built in,
+  the agent can write new ones ("make a skill from this"), every change can be
+  undone, and OpenClaw or Claude skill folders import as they are.
+- **Personality and check-ins** (Settings → Personality): a `SOUL.md` you write sets
+  Scorpion's tone. Check-ins run your `HEARTBEAT.md` checklist on a timer during the
+  hours you choose, read-only, and only notify you when something needs you.
+- **Smarter memory**: long chats are summarized instead of cut off (the full chat
+  stays saved); once a day, while the computer is idle, *dreaming* turns what you
+  said into lasting memories (with a diary, using only a model on your computer or
+  network); and *standing intents* remember "when X comes up, remind me of Y".
+- **More model sources** (Settings → Connections): Ollama, LM Studio, or any
+  OpenAI-compatible server, on your computer or in the cloud with your own key
+  (stored encrypted), with a fallback model if the chosen one fails.
+- **MCP tool servers**: plug in tools from other programs (stdio, Streamable HTTP or
+  SSE). Read-only tools run freely; the others ask first unless you trust the server.
+- **Scorpion's browser**: in Online mode the agent can use its own separate browser
+  window to click, type and fill forms. Typing, and buttons like Buy, Send or Delete,
+  ask you first; downloads and pop-ups are blocked.
+- **Chat from your phone**: through your own Telegram bot, by text or voice message.
+  Strangers must be approved with a pairing code, and changes and commands ask with
+  Allow / Deny buttons on the phone.
+- **Safety guards**: a task stops when the same step fails three times in a row, and
+  "Always allow this command" lets safe repeat commands run without asking.
+- **Runs Windows for you** (Windows only, in any mode, by typing or voice): open,
+  switch, minimize, maximize and close apps and windows (desktop and Store apps); open
+  files in their app or folders in File Explorer; copy files and folders, or move them to
+  the Recycle Bin; open any Windows Settings page; control volume, media, brightness,
+  dark/light mode, screenshots, lock and sleep; restart or shut down; and report CPU,
+  memory, disks, battery and network. Anything that changes something asks first;
+  restart, shut down and emptying the Recycle Bin always ask (even with Auto-approve),
+  restart and shut down wait 30 seconds and can be cancelled, apps are closed like
+  pressing their X (never force-quit), and Windows' own system folders stay read-only.
 - **Private by design**: Scorpion stores data only in your OS app-data folder, makes no
   network calls while you chat unless you turn on Online mode, has a sandboxed UI and
   a locked-down IPC bridge.
 
 Architecture notes, and what Scorpion learned from studying [Jan](https://github.com/janhq/jan),
-are in [docs/JAN_STUDY.md](docs/JAN_STUDY.md).
+are in [docs/JAN_STUDY.md](docs/JAN_STUDY.md). Skills, SOUL.md, check-ins, dreaming,
+standing intents, the agent browser, MCP servers, model sources, phone chats and the
+loop guard follow ideas from [OpenClaw](https://github.com/openclaw/openclaw) (MIT),
+written fresh for Scorpion.
 
 ## Install
 
@@ -254,9 +297,9 @@ Scorpion needs a model file once. You can get one in any of three ways:
 | Catalog id | Use | Size |
 |---|---|---|
 | `qwen3-4b` | Recommended chat + agent model | 2.5 GB |
-| `qwen2.5-7b` | Smarter, needs 16 GB RAM or a GPU | 4.7 GB |
+| `qwen3.5-4b` | Newest Qwen; best Qwen for Haitian Creole | 2.7 GB |
 | `llama3.2-3b` | Fast general chat | 2.0 GB |
-| `qwen2.5-1.5b` | Low-memory computers | 1.0 GB |
+| `llama3.2-1b` | Low-memory computers | 0.8 GB |
 | `nomic-embed` | Required for documents | 140 MB |
 
 ## Build installers

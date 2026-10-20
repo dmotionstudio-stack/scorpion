@@ -163,3 +163,61 @@ export function recallBlock(query, threadId) {
     .map((h) => `[chat "${h.title}" · ${h.role === 'user' ? 'you said' : 'I said'}]\n${h.text}${h.reply ? `\n[I replied]\n${h.reply}` : ''}`)
     .join('\n\n')}`;
 }
+
+// ---------- standing intents ----------
+// "When X comes up, do Y": prospective memory, after OpenClaw's standing
+// intents. Checked against each message the user sends; a match adds a note
+// to that message so the agent acts on it in its reply.
+const intentsFile = () => path.join(paths.data, 'intents.json');
+const MAX_INTENTS = 50;
+
+export function listIntents() {
+  return readJson(intentsFile(), []);
+}
+
+export function addIntent({ when, then, once = false }) {
+  const trigger = String(when || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  const action = String(then || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+  if (!tokenize(trigger).length) throw new Error('Say what should trigger it (the words to watch for)');
+  if (!action) throw new Error('Say what to do when it comes up');
+  const list = listIntents();
+  const existing = list.find((i) => norm(i.trigger) === norm(trigger) && norm(i.action) === norm(action));
+  if (existing) return existing;
+  const intent = { id: newId(), trigger, action, once: Boolean(once), createdAt: Date.now(), fired: 0 };
+  writeJson(intentsFile(), [...list, intent].slice(-MAX_INTENTS));
+  return intent;
+}
+
+export function cancelIntent(query) {
+  const list = listIntents();
+  const q = norm(query);
+  const target = list.find((i) => i.id === query) || list.find((i) => norm(i.trigger) === q) || list.find((i) => q && norm(i.trigger).includes(q));
+  if (!target) return null;
+  writeJson(intentsFile(), list.filter((i) => i !== target));
+  return target;
+}
+
+// A trigger matches when its phrase appears, or when every meaningful word of
+// it does (in any order, any form of the word sharing its first 5 letters).
+export function intentMatches(trigger, text) {
+  const t = ` ${norm(text)} `;
+  if (t.includes(` ${norm(trigger)} `)) return true;
+  const words = tokenize(trigger);
+  const have = tokenize(text);
+  return words.length > 0 && words.every((w) => have.some((h) => h === w || (w.length >= 5 && h.length >= 5 && h.slice(0, 5) === w.slice(0, 5))));
+}
+
+// Matching intents for a message; one-time intents are used up.
+export function fireIntents(text) {
+  const list = listIntents();
+  const hits = list.filter((i) => intentMatches(i.trigger, text));
+  if (!hits.length) return [];
+  for (const i of hits) { i.fired++; i.lastFired = Date.now(); }
+  writeJson(intentsFile(), list.filter((i) => !(i.once && hits.includes(i))));
+  return hits;
+}
+
+export function intentsNote(hits) {
+  if (!hits.length) return '';
+  return `(Scorpion note: the user asked you earlier to act when this comes up. ${hits.map((i) => `When "${i.trigger}" comes up: ${i.action}`).join(' ')} Do it in your reply.)`;
+}

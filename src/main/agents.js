@@ -119,5 +119,6 @@ export function deleteAgent(id) {
 }
 
 export function agentAllows(agent, toolName) {
-  return agent.tools.includes('*') || agent.tools.includes(toolName);
+  // Every agent may read skills: they are instructions, not new powers.
+  return toolName === 'use_skill' || agent.tools.includes('*') || agent.tools.includes(toolName);
 }

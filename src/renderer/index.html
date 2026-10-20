@@ -25,9 +25,11 @@
         </svg>
         <span class="brand-name">Scorpion</span>
       </div>
+      <button class="navbtn home-open" id="open-home" title="Home: your tools, workspaces and recent activity"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>Home</button>
       <button class="btn primary wide" id="new-chat">＋ New chat</button>
       <nav class="threads" id="threads" aria-label="Chats"></nav>
       <div class="sidebar-foot">
+        <button class="navbtn library-open" id="open-library" title="Your photos, videos and music, tagged on this computer"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg>Library</button>
         <button class="navbtn interact-open" id="open-interact" title="Talk to Scorpion face to face: a full-screen orb with voice (Ctrl+I)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(-25 12 12)"/></svg>Interact</button>
         <button class="navbtn" id="open-settings" title="Models, documents, agents, schedules, memory and preferences">Settings</button>
         <button type="button" class="offline-badge" id="online-badge" title="Click to switch Online mode">● Offline &amp; private</button>
@@ -37,15 +39,18 @@
     <main class="main">
       <!-- SETTINGS TABS (shown on every settings page) -->
       <header class="settings-header hidden" id="settings-header">
-        <button class="btn small ghost" id="back-to-chat">← Back to chat</button>
+        <button class="btn small ghost" id="back-to-chat">← Back</button>
         <nav class="stabs" aria-label="Settings sections">
           <button class="stab" data-view="settings">General</button>
           <button class="stab" data-view="models">Models</button>
           <button class="stab" data-view="docs">Documents</button>
           <button class="stab" data-view="agents">Agents</button>
+          <button class="stab" data-view="skills">Skills</button>
+          <button class="stab" data-view="personality">Personality</button>
           <button class="stab" data-view="schedules">Schedules</button>
           <button class="stab" data-view="memory">Memory</button>
           <button class="stab" data-view="people">People</button>
+          <button class="stab" data-view="connections">Connections</button>
         </nav>
       </header>
       <!-- CHAT -->
@@ -102,6 +107,9 @@
           <h2>On this computer</h2>
           <div class="cards" id="local-models"></div>
           <div class="row"><button class="btn" id="import-model">Import .gguf file…</button></div>
+          <h2>From other sources <span class="muted small">(Ollama, LM Studio or another model server)</span></h2>
+          <div class="cards" id="source-models"></div>
+          <div class="row"><button class="btn" id="open-connections">Add or manage sources…</button></div>
           <h2>Get a model <span class="muted small">(one-time download)</span></h2>
           <div class="cards" id="catalog"></div>
         </div>
@@ -186,7 +194,43 @@
           </form>
           <div class="memory-list" id="memory-list"></div>
           <div class="row"><button class="btn small" id="clear-memory">Clear all memories</button></div>
+          <div id="memory-extras"></div>
         </div>
+      </section>
+
+      <!-- HOME (home-ui.js) -->
+      <section class="view hidden" id="view-home"><div class="page home" id="home-page"></div></section>
+      <section class="view hidden" id="view-apps"><div class="page desktop-page" id="apps-page"></div></section>
+      <section class="view hidden" id="view-files"><div class="page desktop-page files-page" id="files-page"></div></section>
+
+      <!-- SKILLS, PERSONALITY, CONNECTIONS (extras-ui.js) -->
+      <section class="view hidden" id="view-skills"><div class="page" id="skills-page"></div></section>
+      <section class="view hidden" id="view-personality"><div class="page" id="personality-page"></div></section>
+      <section class="view hidden" id="view-connections"><div class="page" id="connections-page"></div></section>
+
+      <!-- LIBRARY (media recognition) -->
+      <section class="view hidden" id="view-library">
+        <div class="lib">
+          <header class="lib-top">
+            <h1>Library</h1>
+            <input id="lib-search" class="text-input" placeholder="Search: dog, beach, Haiti, Jazz, dancing, a person's name, or describe it" aria-label="Search the library">
+            <div class="modes" id="lib-kinds" role="radiogroup" aria-label="Kind">
+              <button type="button" role="radio" data-kind="" aria-checked="true">All</button>
+              <button type="button" role="radio" data-kind="photo" aria-checked="false">Photos</button>
+              <button type="button" role="radio" data-kind="video" aria-checked="false">Videos</button>
+              <button type="button" role="radio" data-kind="music" aria-checked="false">Music</button>
+            </div>
+            <button class="btn small" type="button" id="lib-settings-btn">Settings</button>
+          </header>
+          <div class="lib-status" id="lib-status"></div>
+          <div class="lib-setup hidden" id="lib-setup"></div>
+          <div class="lib-cats" id="lib-cats"></div>
+          <div class="lib-person hidden" id="lib-person"></div>
+          <div class="lib-people hidden" id="lib-people"></div>
+          <div class="lib-unassigned hidden" id="lib-unassigned"></div>
+          <div id="lib-grid"></div>
+        </div>
+        <div class="lib-detail hidden" id="lib-detail"></div>
       </section>
 
       <!-- PEOPLE (face recognition) -->
@@ -204,14 +248,19 @@
             </div>
             <p class="muted small">Use 2–5 clear photos of the face, looking at the camera, in good light. More photos (different days, glasses or not) make recognition more reliable.</p>
             <div class="people-grid" id="people-list"></div>
+            <h2>Face insights</h2>
+            <p class="muted small">Ported from DeepFace: what a face shows (expression, apparent age and gender) and whether it is a real face or a photo of one. The agent can use these on your photos ("how old does she look here?", "are these two photos the same person?"), Interact shows them under each face, and face lock refuses photos and screens. Optional downloads; everything runs on this computer. Age and gender are guesses from appearance.</p>
+            <div id="insights-setup"></div>
+            <label class="toggle"><input type="checkbox" id="insights-live"><span>Show expression, age and gender on Interact's face camera, and let Scorpion match its tone to your expression</span></label>
             <h2>Face lock</h2>
-            <p class="muted small">When it's on, Scorpion opens locked and only unlocks when it sees the owner's face (or you type your PIN). It keeps other people out of the app; it does not encrypt your files, and a printed photo of the owner might fool it.</p>
+            <p class="muted small">When it's on, Scorpion opens locked and only unlocks when it sees the owner's face (or you type your PIN). It keeps other people out of the app; it does not encrypt your files. Without the liveness check, a printed photo of the owner might fool it.</p>
             <div class="row">
               <input id="lock-pin" class="text-input pin-input" type="password" inputmode="numeric" maxlength="8" placeholder="PIN, 4–8 digits" autocomplete="new-password">
               <button class="btn" type="button" id="lock-set-pin">Set PIN</button>
               <span class="muted small" id="lock-pin-note"></span>
             </div>
             <label class="toggle"><input type="checkbox" id="lock-enabled"><span>Lock Scorpion until it recognizes the owner</span></label>
+            <label class="toggle"><input type="checkbox" id="lock-liveness"><span>Refuse photos and screens of the owner (needs "Expressions and liveness")</span></label>
             <div class="row"><button class="btn small" type="button" id="lock-now">Lock now (Ctrl+L)</button></div>
             <div class="row"><button class="btn small" type="button" id="faces-uninstall">Uninstall face recognition</button></div>
           </div>
@@ -252,10 +301,19 @@
             </select>
             <p class="muted small" id="file-access-hint"></p>
           </div>
+          <div class="field hidden" id="desktop-field">
+            <label>Windows desktop</label>
+            <div id="desktop-settings"></div>
+          </div>
           <div class="field" id="allowed-folders-field">
             <label>Always allowed folders</label>
             <div id="allowed-folders"></div>
             <p class="muted small">Folders outside the workspace you chose "Always allow" for. Remove one to be asked again.</p>
+          </div>
+          <div class="field">
+            <label>Always allowed commands</label>
+            <div id="allowed-commands"></div>
+            <p class="muted small">Commands you chose "Always allow this command" for run without asking. Only the exact same command counts. Scorpion also stops a task when the same step fails three times in a row.</p>
           </div>
           <div class="field">
             <label>Memory</label>
@@ -271,6 +329,8 @@
               <div class="row" id="voice-name-row"><span>Voice</span><select id="voice-name"></select></div>
               <div class="row"><span>Speed</span><input type="range" id="voice-speed" min="0.7" max="1.5" step="0.05"><span id="voice-speed-val"></span></div>
               <div class="row"><span>Language</span><select id="voice-language"></select><button class="btn small" id="voice-test" type="button">Test</button></div>
+              <div class="row"><span>Model for talking</span><select id="voice-model"></select></div>
+              <p class="muted small" id="voice-model-note"></p>
               <p class="muted small" id="voice-language-note"></p>
               <div class="row"><button class="btn small" id="voice-uninstall" type="button">Uninstall voice</button></div>
             </div>
@@ -294,6 +354,17 @@
           <div class="field">
             <label for="temperature">Creativity (temperature): <span id="temp-val"></span></label>
             <input type="range" id="temperature" min="0" max="1.5" step="0.05">
+            <label class="toggle"><input type="checkbox" id="precise-answers"><span>Precise answers to questions: questions of fact are answered with low creativity (requests to write or brainstorm keep the setting above)</span></label>
+          </div>
+          <div class="field">
+            <label for="thinking">Thinking (gpt-oss)</label>
+            <select id="thinking">
+              <option value="auto">Automatic: short for conversation, more for Plan and Build (recommended)</option>
+              <option value="low">Low: fastest replies</option>
+              <option value="medium">Medium</option>
+              <option value="high">High: slowest, for hard problems</option>
+            </select>
+            <p class="muted small">How long models that think before answering (gpt-oss) spend thinking. Other models ignore this.</p>
           </div>
           <div class="field">
             <label for="system-prompt">Custom instructions</label>
@@ -309,30 +380,31 @@
     <div class="ix-stage" id="ix-stage"></div>
     <div class="ix-vignette"></div><div class="ix-grain"></div><div class="ix-scanlines"></div>
     <div class="ix-hud ix-title">S.C.O.R.P.I.O.N.</div>
-    <div class="ix-hud ix-status"><span class="ix-dot" id="ix-dot"></span><span id="ix-state">STANDBY</span><span class="ix-dim" id="ix-model"></span></div>
-    <button type="button" class="ix-btn ix-close" id="ix-close" title="Back to chat (Esc)">✕ EXIT</button>
+    <div class="ix-hud ix-status"><span class="ix-dot" id="ix-dot"></span><span id="ix-state">Standby</span><span class="ix-dim" id="ix-model"></span></div>
+    <button type="button" class="ix-btn ix-close" id="ix-close" title="Back to chat (Esc)">✕ Exit</button>
     <div class="ix-captions" id="ix-captions" aria-live="polite">
       <div class="ix-you" id="ix-you"></div>
       <div class="ix-reply" id="ix-reply"></div>
     </div>
     <div class="ix-hud ix-bottom">
-      <form class="ix-ask" id="ix-ask" autocomplete="off"><input id="ix-input" placeholder="Type to Scorpion, or press Space to talk…" aria-label="Message"><button type="submit" class="ix-btn">SEND</button></form>
+      <form class="ix-ask" id="ix-ask" autocomplete="off"><input id="ix-input" placeholder="Type to Scorpion, or press Space to talk…" aria-label="Message"><button type="submit" class="ix-btn ix-send">Send</button></form>
       <div class="ix-row">
-        <button type="button" class="ix-btn ix-talk" id="ix-talk" aria-pressed="false">● TALK</button>
-        <button type="button" class="ix-btn" id="ix-voice" aria-pressed="false" title="Read replies aloud">VOICE OFF</button>
+        <button type="button" class="ix-btn ix-talk" id="ix-talk" aria-pressed="false">● Talk</button>
+        <button type="button" class="ix-btn" id="ix-voice" aria-pressed="false" title="Read replies aloud">Voice off</button>
         <select class="ix-btn ix-lang" id="ix-lang" aria-label="Language" title="The language you speak and Scorpion replies in"></select>
-        <button type="button" class="ix-btn" id="ix-face" aria-pressed="false" title="Track faces and know who is talking, using the camera (F)">FACE OFF</button>
-        <button type="button" class="ix-btn" id="ix-gestures" aria-pressed="false" title="Spin and zoom the orb with your hands, using the camera (G)">GESTURES OFF</button>
+        <button type="button" class="ix-btn" id="ix-face" aria-pressed="false" title="Track faces and know who is talking, using the camera (F)">Face off</button>
+        <button type="button" class="ix-btn" id="ix-gestures" aria-pressed="false" title="Spin and zoom the orb with your hands, using the camera (G)">Gestures off</button>
         <span class="ix-gap"></span>
         <button type="button" class="ix-btn" id="ix-zoom-in" aria-label="Zoom in">+</button>
         <button type="button" class="ix-btn" id="ix-zoom-out" aria-label="Zoom out">−</button>
-        <button type="button" class="ix-btn" id="ix-reset">RESET</button>
+        <button type="button" class="ix-btn" id="ix-reset">Reset</button>
       </div>
     </div>
-    <div class="ix-hud ix-hint" id="ix-hint"><span class="key">SPACE</span> talk / interrupt <span class="key">DRAG</span> spin <span class="key">SCROLL</span> zoom <span class="key">F</span> face <span class="key">G</span> gestures <span class="key">R</span> reset <span class="key">ESC</span> exit</div>
+    <div class="ix-hud ix-hint" id="ix-hint"><span class="key">Space</span> talk / interrupt <span class="key">Drag</span> spin <span class="key">Scroll</span> zoom <span class="key">F</span> face <span class="key">G</span> gestures <span class="key">R</span> reset <span class="key">Esc</span> exit</div>
     <div class="ix-facecam hidden" id="ix-facecam" aria-live="polite">
-      <div class="ix-cam-view"><video id="ix-face-video" muted playsinline></video><canvas id="ix-face-overlay" width="208" height="156"></canvas></div>
+      <div class="ix-cam-view"><video id="ix-face-video" muted playsinline></video><canvas id="ix-face-overlay" width="320" height="240"></canvas></div>
       <div class="ix-cam-status" id="ix-face-status"></div>
+      <div class="ix-face-info" id="ix-face-info"></div>
     </div>
     <div class="ix-cam hidden" id="ix-cam" aria-live="polite">
       <div class="ix-cam-view"><video id="ix-cam-video" muted playsinline></video><canvas id="ix-cam-overlay" width="208" height="156"></canvas></div>

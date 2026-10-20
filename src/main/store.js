@@ -6,18 +6,37 @@ import crypto from 'node:crypto';
 
 const DEFAULT_SETTINGS = {
   chatModel: null, // absolute path to a .gguf
+  chatSource: 'local', // 'local' (the .gguf above) or the id of one of the providers below
+  providers: [], // other model sources: { id, kind, name, baseUrl, model, contextSize } (keys live in secrets.json)
+  telegram: { enabled: false, allowed: [], pending: [] }, // phone chats: allowed { chatId, name, threadId }, pending { chatId, name, code }
+  mcpServers: [], // MCP tool servers: { id, name, transport: 'stdio'|'http'|'sse', command, args, url, enabled, trusted }
+  fallbackSource: null, // used when the chosen source fails before answering: 'local', a provider id, or null
   embedModel: null, // absolute path to an embedding .gguf (for documents)
-  workspace: null, // folder the agent may read/write/run commands in
+  workspace: null, // the active workspace: the folder new chats start in
+  workspaces: [], // saved workspaces: { id, name, path, addedAt, lastUsed }
   allowedFolders: [], // other folders the user chose "Always allow" for
   online: false, // Online mode: web search and page reading for the agent
+  browserEnabled: true, // in Online mode, the agent may also use its own browser window
   fileAccess: 'ask', // 'ask' = workspace + allowed folders; 'full' = every file on the computer
   contextSize: 8192,
   gpuLayers: 'auto', // 'auto' or how many model layers to run on the GPU (0 = CPU only)
   temperature: 0.6,
+  preciseAnswers: true, // questions of fact are answered with low randomness (temperature 0.2)
+  thinking: 'auto', // gpt-oss reasoning effort: 'auto' (low for conversation, medium for Plan/Build), 'low', 'medium', 'high'
+  voiceModel: 'auto', // model for spoken turns: 'auto' (a fast one when the chat model is slow here), 'same', or a .gguf path
+  lastChatMode: 'build',
+  faceInsightsLive: true, // Interact's face camera shows expression, age and gender (when installed)
+  lockLiveness: true, // face lock refuses photos and screens (when liveness is installed) // mode of the newest chat, used to warm the model up for the next one
   autoApprove: false, // run write/exec tools without asking
+  commandAllowlist: [], // exact commands the user chose "Always allow" for
   memoryEnabled: true, // saved memories + remember/forget tools
   recallEnabled: true, // bring back relevant snippets from other chats
+  dreamingEnabled: true, // once a day, when idle, turn recent chats into lasting memories
   systemPrompt: '',
+  heartbeatEnabled: false, // check-ins: review HEARTBEAT.md on a timer
+  heartbeatMinutes: 60,
+  heartbeatHours: '08:00-22:00', // active hours; outside them no check-ins
+  heartbeatThreadId: null, // the "Check-ins" chat
   theme: 'classic', // classic | hellfire | bloodmoon | smoke | molten | bone
   glass: 'auto', // 'auto' (native glass where the OS supports it) or 'off'
   voiceSpeak: false, // read replies aloud

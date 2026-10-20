@@ -29,6 +29,15 @@ let ort = null;
 let det = null;
 let rec = null;
 let installing = null;
+let faceThreads = 0; // 0: ONNX Runtime decides
+
+// Low-CPU mode (Library): one thread; the models reload on next use.
+export function setFaceThreads(n) {
+  if (n === faceThreads) return;
+  faceThreads = n;
+  det = null;
+  rec = null;
+}
 
 export function initFaces(modelsDir, dataDir) {
   modelDir = path.join(modelsDir, 'faces');
@@ -92,7 +101,7 @@ export async function uninstallFaces() {
 
 async function load() {
   ort ??= (await import('onnxruntime-node')).default;
-  const opt = { logSeverityLevel: 3 };
+  const opt = { logSeverityLevel: 3, ...(faceThreads ? { intraOpNumThreads: faceThreads } : {}) };
   det ??= await ort.InferenceSession.create(path.join(modelDir, MODELS.detector.file), opt);
   rec ??= await ort.InferenceSession.create(path.join(modelDir, MODELS.recognizer.file), opt);
 }
@@ -267,6 +276,52 @@ export function listPeople() {
   if (!dataFile) return [];
   return readPeople().map((p) => ({ id: p.id, name: p.name, owner: Boolean(p.owner), samples: p.prints.length, thumb: p.thumb || null }));
 }
+// People with their face prints (for matching faces stored by the library).
+export function peopleWithPrints() { return dataFile ? readPeople() : []; }
+
+// Adds face prints (e.g. a group of faces named in the Library) to the person
+// with this name, creating them if needed. Keeps a spread of samples.
+export function addPrints(name, prints, thumb = null) {
+  const clean = String(name || '').trim().slice(0, 60);
+  if (!clean) throw new Error('Give the person a name.');
+  const people = readPeople();
+  let person = people.find((p) => p.name.toLowerCase() === clean.toLowerCase());
+  if (!person) {
+    person = { id: crypto.randomUUID(), name: clean, owner: false, prints: [], thumb, createdAt: Date.now() };
+    people.push(person);
+  }
+  const step = Math.max(1, Math.ceil(prints.length / MAX_PRINTS));
+  for (let i = 0; i < prints.length; i += step) person.prints.push(Array.from(prints[i]));
+  while (person.prints.length > MAX_PRINTS) person.prints.shift();
+  person.thumb ??= thumb;
+  writePeople(people);
+  return { id: person.id, name: person.name, samples: person.prints.length };
+}
+
+// Teach a person more samples (a face assigned to them by hand).
+export function addPrintsTo(id, prints) {
+  const people = readPeople();
+  const p = people.find((x) => x.id === id);
+  if (!p) throw new Error('That person is not in People.');
+  for (const v of prints) p.prints.push(Array.from(v));
+  while (p.prints.length > MAX_PRINTS) p.prints.shift();
+  writePeople(people);
+}
+
+// Two entries that are the same person: keep intoId, with both sets of samples.
+export function mergePeople(fromId, intoId) {
+  if (fromId === intoId) return;
+  const people = readPeople();
+  const from = people.find((p) => p.id === fromId), into = people.find((p) => p.id === intoId);
+  if (!from || !into) throw new Error('Both people must be in People.');
+  const all = [...into.prints, ...from.prints];
+  const step = Math.max(1, Math.ceil(all.length / MAX_PRINTS));
+  into.prints = all.filter((_, i) => i % step === 0).slice(0, MAX_PRINTS);
+  into.owner = into.owner || from.owner;
+  into.thumb ??= from.thumb;
+  writePeople(people.filter((p) => p.id !== fromId));
+}
+
 export function removePerson(id) { writePeople(readPeople().filter((p) => p.id !== id)); }
 export function renamePerson(id, name) { writePeople(readPeople().map((p) => (p.id === id ? { ...p, name: String(name).trim().slice(0, 60) || p.name } : p))); }
 export function setOwner(id, owner) { writePeople(readPeople().map((p) => (p.id === id ? { ...p, owner: Boolean(owner) } : p))); }
@@ -282,7 +337,7 @@ export function identify(print, threshold = SAME_PERSON, people = readPeople()) 
 }
 
 // ---------- images ----------
-async function decodeFile(file, maxSide = 1600) {
+export async function decodeFile(file, maxSide = 1600) {
   const sharp = (await import('sharp')).default;
   const { data, info } = await sharp(file).rotate().resize({ width: maxSide, height: maxSide, fit: 'inside', withoutEnlargement: true }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   return { data, width: info.width, height: info.height, channels: info.channels };

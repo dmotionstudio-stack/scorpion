@@ -10,7 +10,11 @@ import { spawn, spawnSync } from 'node:child_process';
 import { evaluate } from './calc.js';
 import { extractText } from './rag.js';
 import { webSearch, readWebpage, UNTRUSTED } from './web.js';
-import { analyzeFile, groupPhotos, listImages } from './faces.js';
+import { analyzeFile, analyzeImage, decodeFile, groupPhotos, listImages, cosine, SAME_PERSON } from './faces.js';
+import { describeFaces, insightsStatus } from './face-insights.js';
+import { searchLibrary, itemInfo, tagFile } from './library.js';
+import { getSkill, listSkills, saveSkill } from './skills.js';
+import * as win from './windows-control.js';
 
 // Python is optional; find whichever launcher this computer has, once.
 let pythonCmd;
@@ -258,7 +262,13 @@ export const TOOLS = {
     params: { type: 'object', properties: { path: { type: 'string' } } },
     prepare(args, { lastCodeBlock, lastCodeLang }) {
       const content = lastCodeBlock?.();
-      if (content == null) throw new Error(`Nothing saved yet: there is no new \`\`\` code block since your last file write. Next, write the complete content of ${args.path} inside a new \`\`\` fenced code block as normal reply text (not inside a tool call), then call write_file again with path "${args.path}".`);
+      if (content == null) {
+        // Some models (Qwen3.5) call first and write the block after; the
+        // agent then waits for the block and saves it when the reply ends.
+        const err = new Error(`Nothing saved yet: there is no new \`\`\` code block since your last file write. Next, write the complete content of ${args.path} inside a new \`\`\` fenced code block as normal reply text (not inside a tool call), then call write_file again with path "${args.path}".`);
+        err.waitForBlock = true;
+        throw err;
+      }
       const lang = lastCodeLang?.() || '';
       const ext = path.extname(args.path).toLowerCase();
       const CODE_EXT = ['.js', '.mjs', '.cjs', '.ts', '.py', '.html', '.css', '.java', '.c', '.cpp', '.cs', '.go', '.rs', '.rb', '.php', '.sh', '.ps1'];
@@ -412,6 +422,56 @@ export const TOOLS = {
     },
   },
 
+  // From DeepFace: what each face shows (age, gender, expression) and whether
+  // it is a real face or a photo of one; and 1:1 verification of two photos.
+  analyze_faces: {
+    access: 'read',
+    requires: 'faces',
+    description: 'Describe the faces in a photo (or every photo in a folder): who they are if known, apparent age, gender, facial expression, and whether it is a real face or a photo/screen of one.',
+    params: { type: 'object', properties: { path: { type: 'string' } } },
+    async run({ path: p }, { workspace, allowed }) {
+      const target = resolveInside(workspace, p, allowed);
+      const files = fs.statSync(target).isDirectory() ? listImages(target, { recursive: false, limit: 50 }) : [target];
+      if (!files.length) return 'No photos found there.';
+      const st = insightsStatus();
+      const lines = [];
+      for (const file of files) {
+        let img, found;
+        try { img = await decodeFile(file); found = await describeFaces(img, await analyzeImage(img)); } catch (err) { lines.push(`${path.basename(file)}: can't be read (${err.message})`); continue; }
+        const about = found.map((f) => [
+          f.person ? `${f.person.name} (${Math.round(f.person.similarity * 100)}% match)` : 'unknown person',
+          f.gender && `${f.gender.label.toLowerCase()} (${Math.round(f.gender.score * 100)}%)`,
+          f.age != null && `looks about ${f.age}`,
+          f.expression && `${f.expression.label} (${Math.round(f.expression.score * 100)}%)`,
+          f.liveness && (f.liveness.real ? 'real face' : 'looks like a photo or screen, not a real face'),
+        ].filter(Boolean).join(', '));
+        lines.push(`${path.basename(file)}: ${found.length ? `${found.length} face(s): ${about.join('; ')}` : 'no faces'}`);
+      }
+      const missing = [!st.insights.installed && 'expressions and liveness', !st.demography.installed && 'age and gender'].filter(Boolean);
+      return clip(lines.join('\n'), MAX_READ_CHARS) + (missing.length ? `\n(Not installed: ${missing.join(', ')}. The user can add them in Settings → People → Face insights.)` : '') + '\nAge and gender are estimates from appearance only.';
+    },
+  },
+
+  compare_faces: {
+    access: 'read',
+    requires: 'faces',
+    description: 'Check whether two photos show the same person (face verification). Compares the largest face in each.',
+    params: { type: 'object', properties: { path_a: { type: 'string' }, path_b: { type: 'string' } } },
+    async run({ path_a: a, path_b: b }, { workspace, allowed }) {
+      const faceOf = async (p) => {
+        const found = await analyzeFile(resolveInside(workspace, p, allowed));
+        return found.sort((x, y) => y.box[2] * y.box[3] - x.box[2] * x.box[3])[0] || null;
+      };
+      const [fa, fb] = [await faceOf(a), await faceOf(b)];
+      if (!fa || !fb) return `No face found in ${!fa ? a : b}.`;
+      const sim = cosine(fa.print, fb.print);
+      const same = sim >= SAME_PERSON;
+      const sure = Math.abs(sim - SAME_PERSON) > 0.15 ? 'clearly' : 'probably';
+      const warn = [fa, fb].filter((f) => !f.quality.ok).length ? ' (one of the faces is low quality, so treat this with care)' : '';
+      return `${same ? `Same person: ${sure} yes` : `Different people: ${sure}`} (similarity ${sim.toFixed(2)}; the same-person threshold is ${SAME_PERSON}).${warn}`;
+    },
+  },
+
   group_photos_by_person: {
     access: 'read',
     requires: 'faces',
@@ -439,6 +499,46 @@ export const TOOLS = {
       const g = r.groups.find((x) => !x.unknown && x.name.toLowerCase() === want);
       if (!g) return `No photos of ${name} found in ${r.scanned} photo(s). Is ${name} enrolled in Settings → People?`;
       return clip(`${g.photos.length} photo(s) of ${g.name}:\n${g.photos.map((f) => path.relative(folder, f).replaceAll('\\', '/')).join('\n')}`, MAX_READ_CHARS);
+    },
+  },
+
+  // The media library (Library view): photos, videos and music already tagged.
+  search_library: {
+    access: 'read',
+    requires: 'library',
+    description: 'Search the user\'s photo, video and music library by tag (dog, beach, Eiffel Tower, Haiti, Jazz, dancing, a person\'s name) or by description ("kids playing in the snow"). kind: "photo", "video", "music" or "" for all.',
+    params: { type: 'object', properties: { query: { type: 'string' }, kind: { enum: ['', 'photo', 'video', 'music'] } } },
+    async run({ query, kind }) {
+      const found = await searchLibrary({ query: String(query || ''), kind: kind || null, limit: 40 });
+      if (!found.length) return `Nothing in the library matches "${query}".`;
+      return clip(found.map((r) => `${r.path}\n  ${r.kind}${r.tags.length ? ': ' + r.tags.map((t) => t.label).join(', ') : ''}`).join('\n'), MAX_READ_CHARS);
+    },
+  },
+
+  tag_media: {
+    access: 'read',
+    requires: 'media',
+    description: 'Recognize what is in any photo, video or song (objects, landmarks, place, people, actions, music genre), even if it is not in the library.',
+    params: { type: 'object', properties: { path: { type: 'string' } } },
+    async run({ path: p }, { workspace, allowed }) {
+      const info = await tagFile(resolveInside(workspace, p, allowed));
+      const byCat = {};
+      for (const t of info.tags) (byCat[t.cat] ||= []).push(`${t.label}${t.score < 1 ? ` (${Math.round(t.score * 100)}%)` : ''}`);
+      return [`${info.name} (${info.kind}${info.duration ? `, ${Math.round(info.duration)} s` : ''}${info.faces ? `, ${info.faces} face(s)` : ''})`, ...Object.entries(byCat).map(([c, l]) => `${c}: ${l.join(', ')}`)].join('\n') + (info.tags.length ? '' : '\nNothing recognized.');
+    },
+  },
+
+  library_tags: {
+    access: 'read',
+    requires: 'library',
+    description: 'What the library knows about one photo, video or song: its tags (objects, landmarks, place, people, actions, genres).',
+    params: { type: 'object', properties: { path: { type: 'string' } } },
+    run({ path: p }) {
+      const info = itemInfo(String(p || ''));
+      if (!info) return 'That file is not in the library (add its folder in Library → Settings).';
+      const byCat = {};
+      for (const t of info.tags) (byCat[t.cat] ||= []).push(t.label);
+      return [`${info.name} (${info.kind}${info.duration ? `, ${Math.round(info.duration)} s` : ''})`, ...Object.entries(byCat).map(([c, l]) => `${c}: ${l.join(', ')}`), info.error ? `Note: ${info.error}` : ''].filter(Boolean).join('\n');
     },
   },
 
@@ -513,6 +613,180 @@ export const TOOLS = {
       const hits = memory.searchConversations(query, { k: 6, excludeThreadId: threadId });
       if (!hits.length) return 'No earlier conversations matched.';
       return hits.map((h, i) => `[${i + 1}] chat "${h.title}" (${new Date(h.at).toLocaleDateString()}) — ${h.role === 'user' ? 'user' : 'Scorpion'}:\n${h.text}`).join('\n\n');
+    },
+  },
+
+  standing_intent: {
+    access: 'memory',
+    description: 'Remember to do something later WHEN a topic comes up (not at a time): "when X comes up, remind me / ask about Y". action add (with when, then, once), list, or cancel (with when or id).',
+    params: {
+      type: 'object',
+      properties: {
+        action: { enum: ['add', 'list', 'cancel'] },
+        when: { type: 'string', description: 'the words or topic that trigger it' },
+        then: { type: 'string', description: 'what to do or say then' },
+        once: { type: 'boolean' },
+        id: { type: 'string' },
+      },
+    },
+    run({ action = 'add', when, then, once, id }, { memory, onMemory }) {
+      if (action === 'list') {
+        const list = memory.listIntents();
+        return list.length ? list.map((i) => `- [${i.id}] when "${i.trigger}": ${i.action}${i.once ? ' (once)' : ''}`).join('\n') : 'No standing intents.';
+      }
+      if (action === 'cancel') {
+        const gone = memory.cancelIntent(id || when || '');
+        onMemory?.();
+        return gone ? `Cancelled: when "${gone.trigger}": ${gone.action}` : 'No matching standing intent.';
+      }
+      const i = memory.addIntent({ when, then, once });
+      onMemory?.();
+      return `Saved. When "${i.trigger}" comes up, I will: ${i.action}${i.once ? ' (once)' : ''}.`;
+    },
+  },
+
+  // ---------- Windows: apps, windows, files, Settings, system ----------
+  list_apps: {
+    access: 'system', requires: 'windows', noWorkspace: true,
+    description: 'List the apps installed on this Windows PC (desktop programs and Store apps). Optional filter by name.',
+    params: { type: 'object', properties: { filter: { type: 'string' } } },
+    async run({ filter }) {
+      const apps = await win.listApps();
+      const list = filter ? win.matchByName(filter, apps).best ? [win.matchByName(filter, apps).best, ...win.matchByName(filter, apps).others] : [] : apps;
+      return list.length ? `${list.length} app(s):\n${list.map((a) => a.name).sort((a, b) => a.localeCompare(b)).join('\n')}` : `No installed app matches "${filter}".`;
+    },
+  },
+  open_app: {
+    access: 'system', requires: 'windows', noWorkspace: true,
+    description: 'Open an installed app by name (e.g. "calculator", "word", "spotify", "file explorer").',
+    params: { type: 'object', properties: { name: { type: 'string' } } },
+    describeAction: ({ name }) => `open ${name}`,
+    async run({ name }) {
+      const r = await win.openApp(name);
+      return `Opened ${r.opened}.${r.others.length ? ` (Other matches: ${r.others.join(', ')}.)` : ''}`;
+    },
+  },
+  list_windows: {
+    access: 'system', requires: 'windows', noWorkspace: true,
+    description: 'List the windows that are open right now (title and program).',
+    params: { type: 'object', properties: {} },
+    async run() {
+      const wins = await win.listWindows();
+      return wins.length ? wins.map((w) => `${w.title} (${w.process})`).join('\n') : 'No open windows.';
+    },
+  },
+  switch_window: {
+    access: 'system', requires: 'windows', noWorkspace: true,
+    description: 'Bring an open window to the front, or minimize, maximize or restore it, by part of its title or program name.',
+    params: { type: 'object', properties: { window: { type: 'string' }, action: { enum: ['focus', 'minimize', 'maximize', 'restore'] } } },
+    describeAction: ({ window: w, action = 'focus' }) => `${action} ${w}`,
+    async run({ window: w, action = 'focus' }) {
+      const done = await win.windowAction(w, action);
+      return `${action === 'focus' ? 'Brought to the front' : `${action[0].toUpperCase()}${action.slice(1)}d`}: ${done.title}.`;
+    },
+  },
+  close_app: {
+    access: 'system', requires: 'windows', noWorkspace: true, changes: true,
+    approve: () => true, // unsaved work could be lost
+    describeAction: ({ window: w }) => `close ${w}`,
+    description: 'Close an open app window by part of its title or program name (like clicking its X; it may ask to save).',
+    params: { type: 'object', properties: { window: { type: 'string' } } },
+    async run({ window: w }) {
+      const r = await win.closeApp(w);
+      return r.asked ? `Asked ${r.title} to close.` : `${r.title} has no window that can be closed this way.`;
+    },
+  },
+  open_path: {
+    access: 'system', requires: 'windows',
+    // Opening a program or script runs it, so that asks first.
+    approve: ({ path: p }) => win.isRunnable(p),
+    describeAction: ({ path: p, reveal }) => (reveal ? `show ${p} in File Explorer` : `open ${p}`),
+    description: 'Open a file in its default app, or a folder in File Explorer. reveal true shows the file selected in its folder instead.',
+    params: { type: 'object', properties: { path: { type: 'string' }, reveal: { type: 'boolean' } } },
+    async run({ path: p, reveal }, { workspace, allowed }) {
+      const target = resolveInside(workspace, p, allowed);
+      await win.openPath(target, { reveal: Boolean(reveal) });
+      return `${reveal ? 'Showing' : 'Opened'} ${target}.`;
+    },
+  },
+  recycle_path: {
+    access: 'system', requires: 'windows', changes: true,
+    approve: () => true,
+    describeAction: ({ path: p }) => `move ${p} to the Recycle Bin`,
+    description: 'Delete a file or folder by moving it to the Recycle Bin (the user can restore it).',
+    params: { type: 'object', properties: { path: { type: 'string' } } },
+    async run({ path: p }, { workspace, allowed }) {
+      const target = resolveInside(workspace, p, allowed);
+      const r = await win.recyclePath(target);
+      return `Moved ${r.folder ? 'folder' : 'file'} ${target} to the Recycle Bin.`;
+    },
+  },
+  copy_path: {
+    access: 'system', requires: 'windows', changes: true,
+    approve: () => true,
+    describeAction: ({ from, to }) => `copy ${from} to ${to}`,
+    description: 'Copy a file or a whole folder to another place (never overwrites).',
+    params: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } } },
+    async run({ from, to }, { workspace, allowed }) {
+      const dest = win.copyPath(resolveInside(workspace, from, allowed), resolveInside(workspace, to, allowed));
+      return `Copied to ${dest}.`;
+    },
+  },
+  windows_settings: {
+    access: 'system', requires: 'windows', noWorkspace: true,
+    description: `Open a page of Windows Settings. Pages: ${Object.keys(win.SETTINGS_PAGES).join(', ')}.`,
+    params: { type: 'object', properties: { page: { type: 'string' } } },
+    describeAction: ({ page }) => `open Settings: ${page}`,
+    async run({ page }) {
+      const opened = await win.openSettings(page);
+      return `Opened Windows Settings${opened ? ` (${opened})` : ''}.`;
+    },
+  },
+  system_control: {
+    access: 'system', requires: 'windows', noWorkspace: true, changes: true,
+    // Restart, shut down and emptying the Recycle Bin always ask, even with Auto-approve.
+    approve: ({ action }) => { const r = win.actionRisk(action); return r === 'always' ? 'always' : r === 'ask'; },
+    describeAction: ({ action, amount }) => `${String(action).replace(/_/g, ' ')}${amount != null ? ` ${amount}` : ''}`,
+    description: `Control this PC: ${win.ACTIONS.join(', ')}. amount: percent for volume and brightness. Restart and shutdown wait 30 seconds and can be cancelled with cancel_shutdown.`,
+    params: { type: 'object', properties: { action: { enum: win.ACTIONS }, amount: { type: 'number' } } },
+    run: ({ action, amount }) => win.systemControl(action, amount),
+  },
+  system_info: {
+    access: 'system', requires: 'windows', noWorkspace: true,
+    description: 'Facts about this PC right now: Windows version, uptime, CPU and load, memory, disk space, battery, network addresses, and the apps using the most memory.',
+    params: { type: 'object', properties: {} },
+    async run() {
+      const i = await win.systemInfo();
+      return [`Windows: ${i.os}, on for ${i.uptimeHours} h`, `CPU: ${i.cpu}, ${i.cpuLoad ?? '?'}% busy`, `Memory: ${i.ramFreeGB} GB free of ${i.ramGB} GB`, `Disks: ${[].concat(i.disks).join('; ')}`, `Battery: ${i.battery}`, `Network: ${[].concat(i.network).join('; ') || 'not connected'}`, `Using the most memory: ${[].concat(i.topApps).join(', ')}`].join('\n');
+    },
+  },
+
+  use_skill: {
+    access: 'skill',
+    description: 'Read the full instructions of one of your skills (listed under SKILLS) before doing a task it covers.',
+    params: { type: 'object', properties: { name: { type: 'string' } } },
+    run({ name }) {
+      const s = getSkill(name);
+      if (!s) return `No skill called "${name}". Available: ${listSkills().filter((x) => x.enabled).map((x) => x.name).join(', ') || 'none'}.`;
+      return `Skill "${s.name}": ${s.description}\n\n${s.body}${s.truncated ? '\n…[cut]' : ''}${s.files.length ? `\n\nFiles in this skill (folder ${s.dir}; read them with read_file and the full path):\n${s.files.map((f) => `- ${f}`).join('\n')}` : ''}`;
+    },
+  },
+
+  save_skill: {
+    access: 'write',
+    description: 'Create or improve one of your skills: a reusable step-by-step guide for a kind of task, so you do it the same good way next time. Use when the user teaches you a procedure or asks you to make a skill.',
+    params: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'short-dashed-name' },
+        description: { type: 'string', description: 'One sentence: what it does and when to use it' },
+        instructions: { type: 'string', description: 'Markdown steps' },
+      },
+    },
+    run({ name, description, instructions }) {
+      const existed = Boolean(getSkill(name));
+      const s = saveSkill({ name, description, body: instructions });
+      return `${existed ? 'Updated' : 'Created'} skill "${s.name}". The user can view, edit or undo it in Settings → Skills.`;
     },
   },
 

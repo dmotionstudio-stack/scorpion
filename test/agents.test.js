@@ -216,7 +216,7 @@ test('a code block feeds only one write, and JSON blocks cannot become programs'
   assert.match(await fns.write_file.handler({ path: 'data/todos.json' }), /Created/);
   written.push(fs.readFileSync(path.join(ws, 'data/todos.json'), 'utf8'));
   // No new block: must not reuse the JSON block for the program.
-  assert.match(await fns.write_file.handler({ path: 'data/todo.mjs' }), /no new ``` code block/);
+  assert.match(await fns.write_file.handler({ path: 'data/todo.mjs' }), /Waiting for the content/);
   assert.ok(!fs.existsSync(path.join(ws, 'data/todo.mjs')));
   text += 'And the program:\n```js\nconsole.log("ok")\n```\n';
   assert.match(await fns.write_file.handler({ path: 'data/todo.mjs' }), /Created/);
@@ -298,7 +298,9 @@ test('every catalog entry is well formed and fast models carry a tested skill', 
     if (c.skill) assert.ok(['agent', 'tools', 'chat'].includes(c.skill), c.id);
   }
   assert.equal(CATALOG[0].skill, 'agent'); // the default pick must handle Build mode
-  for (const id of ['gemma3-4b', 'qwen3-1.7b', 'llama3.2-1b', 'gemma3-1b', 'qwen2.5-0.5b', 'qwen2.5-coder-1.5b']) assert.ok(ids.has(id), id);
+  for (const id of ['qwen3.5-4b', 'gemma3-4b', 'llama3.2-1b', 'gemma3-1b']) assert.ok(ids.has(id), id);
+  // Qwen models that did poorly with the agent (see the Qwen comparison) stay out.
+  for (const id of ['qwen3-1.7b', 'qwen2.5-0.5b', 'qwen2.5-1.5b', 'qwen2.5-coder-1.5b', 'qwen2.5-7b']) assert.ok(!ids.has(id), id);
 });
 
 test('tool calls written as text are recognised so the task does not stall', async () => {

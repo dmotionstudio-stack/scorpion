@@ -79,3 +79,39 @@ test('face lock: PIN rules, hashing and the locked state', () => {
   lock.initLock(dir); // a new start of Scorpion opens locked
   assert.equal(lock.isLocked(), true);
 });
+
+test('face insights (DeepFace port): crops and maths match DeepFace', async () => {
+  const fi = await import('../src/main/face-insights.js');
+  // Silent-Face-Anti-Spoofing's _get_new_box, worked by hand for a 640×480 frame.
+  assert.deepEqual(fi.spoofBox(640, 480, [300, 200, 100, 100], 2.7), [215, 115, 485, 385]);
+  assert.deepEqual(fi.spoofBox(640, 480, [10, 10, 100, 100], 4), [0, 0, 400, 400]); // pushed inside the frame
+  assert.deepEqual(fi.spoofBox(640, 480, [500, 380, 100, 100], 4), [239, 79, 639, 479]); // capped by height: scale 4.79 → 4
+  // Apparent age: expected value of the 101 age classes.
+  const probs = new Array(101).fill(0); probs[20] = 0.5; probs[40] = 0.5;
+  assert.equal(fi.apparentAge(probs), 30);
+  // A flat red image: the crop is BGR in [0, 1] inside the box, black in the letterbox.
+  const w = 200, h = 100, data = new Uint8Array(w * h * 3);
+  for (let i = 0; i < w * h; i++) { data[i * 3] = 255; data[i * 3 + 1] = 0; data[i * 3 + 2] = 0; }
+  const img = { data, width: w, height: h, channels: 3 };
+  const crop = fi.faceCrop(img, { box: [50, 25, 100, 50], landmarks: [[80, 40], [120, 40]] }, 224);
+  const px = (x, y) => Array.from(crop.slice((y * 224 + x) * 3, (y * 224 + x) * 3 + 3)).map((v) => +v.toFixed(2));
+  assert.deepEqual(px(112, 112), [0, 0, 1]); // red is the last channel in BGR
+  assert.deepEqual(px(112, 5), [0, 0, 0]); // letterbox bar (box is 2:1)
+  // Tilted eyes: the crop turns the face so the eyes are level (a 45° box corner samples outside the bar).
+  const tilted = fi.faceCrop(img, { box: [50, 25, 100, 50], landmarks: [[80, 40], [120, 80]] }, 224);
+  assert.ok(tilted.some((v, i) => i % 3 === 2 && v === 0 && Math.floor(i / 3 / 224) > 60 && Math.floor(i / 3 / 224) < 160));
+  // Grey 48×48 from the crop: red → 0.299 with OpenCV's weights.
+  const grey = fi.greyCrop(crop);
+  assert.equal(grey.length, 48 * 48);
+  assert.ok(Math.abs(grey[24 * 48 + 24] - 0.299) < 1e-3);
+  // Spoof crop is 80×80 BGR in 0–255.
+  const sc = fi.spoofCrop(img, [50, 25, 100, 50], 2.7);
+  assert.equal(sc.length, 80 * 80 * 3);
+  assert.equal(Math.round(sc[40 * 80 * 3 + 40 * 3 + 2]), 255);
+  // Without the models, faces pass through unchanged.
+  const os = await import('node:os');
+  fi.initFaceInsights(os.tmpdir() + '/no-insights-here');
+  assert.deepEqual(await fi.describeFaces(img, [{ box: [1, 2, 3, 4] }]), [{ box: [1, 2, 3, 4] }]);
+  assert.equal(fi.insightsStatus().insights.installed, false);
+  assert.ok(fi.PACKS.demography.bytes > 1e9 && fi.PACKS.insights.bytes < 1e7);
+});
