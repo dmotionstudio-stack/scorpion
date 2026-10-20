@@ -4,10 +4,33 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { getLlama, LlamaChatSession, LlamaLogLevel } from 'node-llama-cpp';
+import { getLlama, LlamaChatSession, LlamaLogLevel, HarmonyChatWrapper } from 'node-llama-cpp';
 
 let llama = null;
-const chat = { path: null, model: null, context: null, session: null, threadId: null, systemPrompt: null };
+// Two model slots: "main" answers chats; "voice" is an optional fast model kept
+// loaded beside it for spoken turns (voice and Interact), so talking stays
+// quick even when the main model is a big one that runs on the processor.
+const newSlot = () => ({ path: null, model: null, context: null, session: null, threadId: null, systemPrompt: null, effort: null, harmony: false });
+const slots = { main: newSlot(), voice: newSlot() };
+const chat = slots.main;
+
+// gpt-oss speaks the Harmony format, which carries a reasoning effort (how
+// long it thinks). Sessions on it get the wrapper with the chosen effort.
+const wrapperFor = (slot) => (slot.harmony ? { chatWrapper: new HarmonyChatWrapper({ reasoningEffort: slot.effort || 'medium' }) } : {});
+const newSession = (slot, contextSequence, systemPrompt) => new LlamaChatSession({ contextSequence, ...(systemPrompt ? { systemPrompt } : {}), ...wrapperFor(slot) });
+
+// Changing the effort rebuilds the session on the same sequence: what was
+// already read stays, and only the part from the change on is read again.
+function setEffort(slot, effort) {
+  if (!slot.harmony || !effort || effort === (slot.effort || 'medium')) return;
+  const sequence = slot.session.sequence;
+  try { slot.session.dispose({ disposeSequence: false }); } catch { /* already gone */ }
+  slot.effort = effort;
+  slot.session = newSession(slot, sequence);
+  slot.threadId = null;
+}
+
+export const usesReasoningEffort = (slot = 'main') => slots[slot].harmony;
 const embed = { path: null, model: null, context: null };
 
 async function ensureLlama() {
@@ -81,21 +104,23 @@ export async function engineInfo() {
     totalLayers: chat.model ? chat.model.fileInsights.totalLayers : null,
     parallelHelpers: chat.context ? chat.context.totalSequences > 1 : null,
     chatModel: chat.path,
+    voiceModel: slots.voice.path,
     chatModelName: chatModelName(),
     embedModel: embed.path,
   };
 }
 
-async function disposeChat() {
+async function disposeChat(chat = slots.main) {
   try { chat.session?.dispose({ disposeSequence: true }); } catch { /* already disposed */ }
   await chat.context?.dispose().catch(() => {});
   await chat.model?.dispose().catch(() => {});
-  Object.assign(chat, { path: null, model: null, context: null, session: null, threadId: null, systemPrompt: null });
+  Object.assign(chat, newSlot());
 }
 
-export async function loadChatModel(modelPath, { contextSize = 8192, gpuLayers: requested = 'auto', name = null, onProgress } = {}) {
+export async function loadChatModel(modelPath, { contextSize = 8192, gpuLayers: requested = 'auto', name = null, onProgress, slot = 'main' } = {}) {
+  const chat = slots[slot];
   if (chat.path === modelPath && chat.model && chat.requestedGpuLayers === requested) return engineInfo();
-  await disposeChat();
+  await disposeChat(chat);
   // The automatic GPU-offload estimate can overshoot on shared-memory GPUs. If
   // it fails, fall back conservatively (generation needs memory beyond what
   // loading does), down to CPU-only. A number from Settings is tried first.
@@ -146,24 +171,32 @@ export async function loadChatModel(modelPath, { contextSize = 8192, gpuLayers: 
       chat.context = await chat.model.createContext({ contextSize: { min: Math.min(2048, size), max: size }, flashAttention: fa });
     } catch (err) {
       if (fa) { fa = false; size *= 2; continue; } // retry this size without flash attention
-      if (size <= 2048) { await disposeChat(); throw err; }
+      if (size <= 2048) { await disposeChat(chat); throw err; }
     }
   }
-  chat.session = new LlamaChatSession({ contextSequence: chat.context.getSequence() });
+  chat.harmony = chat.model.fileInfo?.metadata?.general?.architecture === 'gpt-oss';
+  chat.session = newSession(chat, chat.context.getSequence());
   chat.path = modelPath;
   return engineInfo();
 }
 
-export async function unloadChatModel() {
-  await disposeChat();
+export async function unloadChatModel(slot = 'main') {
+  await disposeChat(slots[slot]);
 }
 
-export function isChatReady() {
-  return Boolean(chat.session);
+export function isChatReady(slot = 'main') {
+  return Boolean(slots[slot].session);
+}
+
+// A chat answered elsewhere (another model source) changed its history:
+// make the next local turn reload it instead of trusting the loaded context.
+export function forgetLoadedThread() {
+  for (const slot of Object.values(slots)) slot.threadId = null;
 }
 
 // Callers pass the display name shown in the model list when loading.
-export function chatModelName() {
+export function chatModelName(slot = 'main') {
+  const chat = slots[slot];
   return chat.path ? chat.name || path.basename(chat.path, '.gguf') : null;
 }
 
@@ -185,6 +218,23 @@ export function runTurn(opts) {
   return withLock(() => runTurnUnlocked(opts));
 }
 
+// Warm-up: read a new chat's system prompt and tool list ahead of time, so the
+// first message only has to read itself (on a big model on the processor that
+// is most of the wait). Only while nothing else is loaded in the slot: after
+// a chat ran, its prompt is already there and reused.
+export function warmUp({ systemPrompt, functions, effort = null, slot = 'main' }) {
+  return withLock(async () => {
+    const chat = slots[slot];
+    if (!chat.session || chat.threadId) return false;
+    setEffort(chat, effort);
+    chat.session.setChatHistory([{ type: 'system', text: systemPrompt }]);
+    await chat.session.preloadPrompt('', { functions });
+    chat.threadId = '(warm)';
+    chat.systemPrompt = systemPrompt;
+    return true;
+  });
+}
+
 function promptOptions({ functions, temperature, signal, onText, onThought, maxTokens = 3072 }) {
   return {
     functions,
@@ -204,7 +254,8 @@ function promptOptions({ functions, temperature, signal, onText, onThought, maxT
 }
 
 /** Run a helper agent on a fresh, separate session. Returns its final answer. */
-export async function runHelperTurn({ systemPrompt, text, functions, temperature, signal, onText }) {
+export async function runHelperTurn({ systemPrompt, text, functions, temperature, signal, onText, slot = 'main' }) {
+  const chat = slots[slot];
   if (!chat.model) throw new Error('No chat model loaded');
   // Prefer a spare sequence (runs without disturbing the main chat's cache).
   // Without one, borrow the main chat's own sequence: the main turn is paused
@@ -213,12 +264,32 @@ export async function runHelperTurn({ systemPrompt, text, functions, temperature
   // re-reads its history afterwards. Slower, but needs no extra memory.
   const spare = chat.context.sequencesLeft > 0;
   const sequence = spare ? chat.context.getSequence() : chat.session.sequence;
-  const session = new LlamaChatSession({ contextSequence: sequence, systemPrompt });
+  const session = newSession(chat, sequence, systemPrompt);
   try {
     return await session.prompt(text, promptOptions({ functions, temperature, signal, onText }));
   } finally {
     try { session.dispose({ disposeSequence: spare }); } catch { /* already gone */ }
   }
+}
+
+// One plain completion with no tools and no chat history, used for summaries
+// and memory consolidation. Takes the same lock as chat turns, so it never
+// runs in the middle of one. Borrowing the main sequence means the next chat
+// turn reloads its history first.
+export function complete({ systemPrompt, text, maxTokens = 700, temperature = 0.2, signal, slot = 'main' }) {
+  return withLock(async () => {
+    const chat = slots[slot];
+    if (!chat.model) throw new Error('No chat model loaded');
+    const spare = chat.context.sequencesLeft > 0;
+    const sequence = spare ? chat.context.getSequence() : chat.session.sequence;
+    const session = newSession(chat, sequence, systemPrompt);
+    try {
+      return await session.prompt(text, { maxTokens, temperature, signal, stopOnAbortSignal: true });
+    } finally {
+      try { session.dispose({ disposeSequence: spare }); } catch { /* already gone */ }
+      if (!spare) chat.threadId = null;
+    }
+  });
 }
 
 // Compaction: shrink everything except the most recent tool results, so a
@@ -283,8 +354,10 @@ export function parseTextToolCalls(text, functions) {
 const SEGMENT_GROWTH = 0.3;
 const SEGMENT_FULL = 0.85;
 
-async function runTurnUnlocked({ threadId, history, systemPrompt, text, functions, temperature, signal, onText, onThought, maxTokens, continuation }) {
+async function runTurnUnlocked({ threadId, history, systemPrompt, text, functions, temperature, signal, onText, onThought, maxTokens, continuation, slot = 'main', effort = null }) {
+  const chat = slots[slot];
   if (!chat.session) throw new Error('No chat model loaded. Pick one in Models.');
+  setEffort(chat, effort);
   const session = chat.session;
 
   // Switching threads (or changing the system prompt) means restoring that
@@ -350,6 +423,16 @@ async function runTurnUnlocked({ threadId, history, systemPrompt, text, function
         continue;
       }
       if (signal?.aborted) break;
+      // write_file was called before its code block: save the block the model
+      // wrote afterwards, then let it carry on (e.g. run what it just wrote).
+      if (!pausedForRoom && functions?.flushPending) {
+        const saved = await functions.flushPending();
+        if (saved) {
+          onText?.('\n\n');
+          prompt = `(Scorpion saved the code block you wrote after calling write_file: ${saved})\nContinue the task. If everything is done, give a short summary.`;
+          continue;
+        }
+      }
       // Small models sometimes write a tool call as plain text (e.g. pretty-
       // printed JSON the call detector doesn't recognise), and the task stalls.
       // Run such calls ourselves and continue with their results.
@@ -410,7 +493,8 @@ export async function embedText(text) {
 }
 
 export async function shutdown() {
-  await disposeChat();
+  await disposeChat(slots.voice);
+  await disposeChat(slots.main);
   await embed.context?.dispose().catch(() => {});
   await embed.model?.dispose().catch(() => {});
   await llama?.dispose?.().catch(() => {});

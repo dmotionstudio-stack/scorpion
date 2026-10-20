@@ -3,6 +3,10 @@ import DOMPurify from '/vendor/purify.js';
 import { applyEvent } from '/shared/events.js';
 import { Recorder, Speaker } from './voice.js';
 import { FaceCam, drawFaces } from './facecam.js';
+import { initLibrary } from './library-ui.js';
+import { initExtras } from './extras-ui.js';
+import { initHome } from './home-ui.js';
+import { initDesktop } from './desktop-ui.js';
 import { HandTracker, cameraError } from './gestures.js';
 
 const api = window.scorpion;
@@ -23,7 +27,7 @@ const ICON = {
   speaker: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>'),
   speakerOff: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/>'),
 };
-const VIEWS = ['chat', 'models', 'docs', 'memory', 'agents', 'schedules', 'people', 'settings'];
+const VIEWS = ['home', 'chat', 'library', 'apps', 'files', 'models', 'docs', 'memory', 'agents', 'skills', 'personality', 'schedules', 'people', 'connections', 'settings'];
 
 // ---------- helpers ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -56,21 +60,33 @@ function renderThreads() {
 }
 
 // Everything except the chat lives under Settings, as tabs.
+// Home, chat and Library are the main places; everything else is a Settings tab.
+const MAIN_VIEWS = ['home', 'chat', 'library', 'apps', 'files'];
 function setView(view) {
   S.view = view;
-  const inSettings = view !== 'chat';
-  if (inSettings) S.lastSettingsView = view;
+  const inSettings = !MAIN_VIEWS.includes(view);
+  if (inSettings) S.lastSettingsView = view; else S.lastMainView = view;
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle('hidden', v !== view);
   $('#settings-header').classList.toggle('hidden', !inSettings);
   document.querySelectorAll('.stab').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   $('#open-settings').classList.toggle('active', inSettings);
+  $('#open-library').classList.toggle('active', view === 'library');
+  $('#open-home').classList.toggle('active', view === 'home');
+  $('#threads').classList.toggle('off-chat', view !== 'chat'); // the open chat is highlighted only in the chat view
+  if (view === 'home') home?.show();
+  if (view === 'settings') desktopUi?.renderSettings();
+  extras?.show(view);
 }
+let extras = null; // Skills, Personality, Connections and the Memory page extras
+let home = null; // the home screen (home-ui.js)
+let desktopUi = null; // Apps, Files and Settings → Windows desktop (desktop-ui.js)
 
 // ---------- top bar ----------
 function renderTopbar() {
   renderModelSwitch();
-  $('#workspace-chip').innerHTML = `${ICON.folder}<span>${esc(S.settings.workspace ? base(S.settings.workspace) : 'No workspace')}</span>`;
-  $('#workspace-chip').title = S.settings.workspace || 'Choose a folder the agent can work in';
+  const ws = S.thread?.workspace || S.settings.workspace;
+  $('#workspace-chip').innerHTML = `${ICON.folder}<span>${esc(ws ? base(ws) : 'No workspace')}</span>`;
+  $('#workspace-chip').title = ws ? `${ws}\nThis chat's workspace. Click to choose another folder.` : 'Choose a folder the agent can work in';
   $('#auto-approve').checked = !!S.settings.autoApprove;
   renderModes();
   const current = S.thread?.agentId || (S.thread ? 'scorpion' : S.newChatAgent);
@@ -88,14 +104,20 @@ function renderModelSwitch() {
   if (selected && !chatModels.some((m) => m.path === selected)) {
     chatModels.unshift({ path: selected, name: modelName(selected), bytes: 0, source: 'other' });
   }
+  // Other model sources (Ollama, LM Studio, a cloud server) from Connections.
+  const sources = S.settings.providers || [];
+  const remoteId = sources.some((p) => p.id === S.settings.chatSource) ? S.settings.chatSource : null;
   let cls = '', note = '';
-  if (st?.loading) { cls = 'loading'; note = st.progress != null ? `loading ${Math.round(st.progress * 100)}%` : 'loading…'; }
+  if (remoteId) { cls = 'ready'; note = ''; }
+  else if (st?.loading) { cls = 'loading'; note = st.progress != null ? `loading ${Math.round(st.progress * 100)}%` : 'loading…'; }
   else if (st?.error) { cls = 'error'; note = 'failed to load'; }
   else if (S.engine?.chatModel && S.engine.chatModel === selected) cls = 'ready';
   else if (selected) note = 'not loaded';
   const sel = $('#model-picker');
-  sel.innerHTML = chatModels.length
-    ? chatModels.map((m) => `<option value="${esc(m.path)}"${m.path === selected ? ' selected' : ''}>${esc(m.name)}${m.bytes ? ` · ${gb(m.bytes)}` : ''}</option>`).join('')
+  const local = chatModels.map((m) => `<option value="${esc(m.path)}"${!remoteId && m.path === selected ? ' selected' : ''}>${esc(m.name)}${m.bytes ? ` · ${gb(m.bytes)}` : ''}</option>`).join('');
+  const remote = sources.map((p) => `<option value="source:${esc(p.id)}"${p.id === remoteId ? ' selected' : ''}>${esc(p.model || '(choose a model)')} · ${esc(p.name)}</option>`).join('');
+  sel.innerHTML = chatModels.length || sources.length
+    ? (sources.length ? `<optgroup label="On this computer">${local}</optgroup><optgroup label="Other sources">${remote}</optgroup>` : local)
       + '<option value="__manage">Manage models…</option>'
     : '<option value="__manage">No models — get one…</option>';
   sel.disabled = Boolean(st?.loading) || S.running.size > 0;
@@ -171,18 +193,25 @@ const TOOL_LABEL = {
   remember: 'remembered', forget: 'forgot', search_past_chats: 'past chats', search_documents: 'documents',
   run_code: 'run code', calculator: 'calculator', read_spreadsheet: 'spreadsheet', read_document: 'document', move_file: 'move',
   web_search: 'web search', read_webpage: 'web page',
+  list_apps: 'apps', open_app: 'open app', list_windows: 'windows', switch_window: 'switch window', close_app: 'close app',
+  open_path: 'open', recycle_path: 'Recycle Bin', copy_path: 'copy', windows_settings: 'Windows Settings', system_control: 'PC control', system_info: 'PC info',
 };
 
 function approvalHtml(b) {
   const detail = b.name === 'write_file' ? b.args.content
     : b.name === 'edit_file' ? `- ${b.args.find}\n+ ${b.args.replace}`
     : b.name === 'run_code' ? b.args.code
+    : b.name === 'save_skill' ? `${b.args.name}: ${b.args.description}\n\n${b.args.instructions}`
     : b.summary;
-  const q = b.access === 'exec' ? (b.name === 'run_code' ? 'Run this program?' : 'Run this command?') : 'Allow this change?';
+  const mcpServer = /^mcp_/.test(b.name) ? b.name.split('_')[1] : null;
+  const q = mcpServer ? `Let the ${mcpServer} server do this?`
+    : b.name.startsWith('browser_') ? 'Let Scorpion do this in its browser?'
+      : ['close_app', 'open_path', 'recycle_path', 'copy_path', 'system_control'].includes(b.name) ? 'Let Scorpion do this on your PC?'
+      : b.access === 'exec' ? (b.name === 'run_code' ? 'Run this program?' : 'Run this command?') : 'Allow this change?';
   return `<div class="approval"><strong>${q}</strong>
     <div class="muted small">${esc(b.name)} · ${esc(b.args.path || b.args.subdir || b.args.language || '')}</div>
     <pre>${esc(detail)}</pre>
-    <div class="row"><button class="btn primary small" data-approve="${b.id}">Allow</button><button class="btn small" data-deny="${b.id}">Deny</button></div></div>`;
+    <div class="row"><button class="btn primary small" data-approve="${b.id}">Allow</button>${b.name === 'run_command' ? `<button class="btn small" data-approve="${b.id}" data-always="1" title="Run this exact command from now on without asking (remove it in Settings → General)">Always allow this command</button>` : ''}<button class="btn small" data-deny="${b.id}">Deny</button></div></div>`;
 }
 
 function toolHtml(b, live) {
@@ -297,8 +326,18 @@ const fitTag = (fit) => (FIT[fit] ? `<span class="tag ${FIT[fit][0]}" title="${F
 function renderModels() {
   const e = S.engine || {};
   $('#engine-info').innerHTML = e.error ? `<span class="err">Engine error: ${esc(e.error)}</span>` : `Hardware acceleration: <strong>${esc(e.gpu === 'cpu' ? 'CPU only' : String(e.gpu).toUpperCase())}</strong>${e.totalLayers ? ` · ${e.gpuLayers} of ${e.totalLayers} layers on GPU · ${e.contextSize} token context${e.flashAttention ? ' · flash attention' : ''}` : ''}${S.hardware?.dedicatedVram ? ` · ${gb(S.hardware.dedicatedVram)} graphics memory` : ''}`;
+  const sources = S.settings.providers || [];
+  const remoteInUse = sources.some((p) => p.id === S.settings.chatSource);
+  $('#source-models').innerHTML = sources.map((p) => {
+    const inUse = p.id === S.settings.chatSource;
+    const here = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(p.baseUrl);
+    return `<div class="card ${inUse ? 'selected' : ''}">
+      <div class="title">${esc(p.model || '(no model chosen)')}</div>
+      <div><span class="tag">chat</span><span class="tag">${esc(p.name)}</span><span class="tag">${here ? 'this computer' : 'online service'}</span>${inUse ? '<span class="tag on">in use</span>' : ''}</div>
+      <div class="row">${inUse ? '' : `<button class="btn small primary" data-use-source="${esc(p.id)}">Use</button>`}</div></div>`;
+  }).join('') || '<div class="muted">None yet. Add Ollama, LM Studio or another server in Connections.</div>';
   $('#local-models').innerHTML = S.models.map((m) => {
-    const selected = m.path === S.settings.chatModel || m.path === S.settings.embedModel;
+    const selected = (m.path === S.settings.chatModel && !remoteInUse) || m.path === S.settings.embedModel;
     return `<div class="card ${selected ? 'selected' : ''}">
       <div class="title">${esc(m.name)}</div>
       <div><span class="tag">${m.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${gb(m.bytes)}</span><span class="tag">${m.source}</span>${fitTag(m.fit)}${skillTag(m.skill)}${selected ? '<span class="tag on">in use</span>' : ''}</div>
@@ -337,7 +376,7 @@ function renderMemory() {
   const list = [...S.memories].reverse();
   $('#memory-list').innerHTML = list.map((m) => `<div class="memory" data-id="${m.id}">
       <div class="text" contenteditable="true" spellcheck="false" title="Click to edit">${esc(m.text)}</div>
-      <span class="meta" title="${new Date(m.createdAt).toLocaleString()}">${m.source === 'agent' ? 'learned in chat' : 'added by you'}</span>
+      <span class="meta" title="${new Date(m.createdAt).toLocaleString()}">${m.source === 'agent' ? 'learned in chat' : m.source === 'dream' ? 'learned while dreaming' : 'added by you'}</span>
       <button data-delmem="${m.id}" title="Delete memory">✕</button></div>`).join('')
     || '<div class="muted">Nothing remembered yet. Tell Scorpion about yourself in a chat, or add a memory above.</div>';
   $('#clear-memory').classList.toggle('hidden', !list.length);
@@ -761,8 +800,24 @@ function wireVoice() {
 // speaking (surges with its voice). Three.js loads only when this opens, and
 // the orb stops rendering when it closes, so chat and the model lose nothing.
 const IX = { open: false, orb: null, loading: null, timer: 0, reply: '' };
-const accentColor = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#f0a830';
-const STATE_LABEL = { standby: 'STANDBY', listening: 'LISTENING', thinking: 'THINKING', speaking: 'SPEAKING' };
+// The accent as a plain #rrggbb (themes may define it as a colour mix), read
+// inside Interact so its own accent wins. Canvas normalizes any CSS colour.
+const accentProbe = Object.assign(document.createElement('canvas'), { width: 1, height: 1 }).getContext('2d', { willReadFrequently: true });
+const accentColor = () => {
+  const probe = document.createElement('i');
+  probe.style.cssText = 'display:none;color:var(--accent)';
+  (document.getElementById('interact') || document.body).appendChild(probe);
+  const css = getComputedStyle(probe).color;
+  probe.remove();
+  // Paint one pixel and read it back: plain RGB whatever the CSS colour format.
+  accentProbe.clearRect(0, 0, 1, 1);
+  accentProbe.fillStyle = '#f0a830';
+  accentProbe.fillStyle = css || '#f0a830';
+  accentProbe.fillRect(0, 0, 1, 1);
+  const [r, g, b] = accentProbe.getImageData(0, 0, 1, 1).data;
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+};
+const STATE_LABEL = { standby: 'Standby', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking' };
 
 async function openInteract() {
   if (IX.open) return;
@@ -830,21 +885,21 @@ function renderInteract() {
   const state = $('#interact').dataset.state || 'standby';
   const d = V.download;
   $('#ix-state').textContent = d
-    ? `DOWNLOADING VOICE ${Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100))}%`
-    : state === 'standby' && V.talk ? 'READY' : STATE_LABEL[state] || 'STANDBY';
+    ? `Downloading voice ${Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100))}%`
+    : state === 'standby' && V.talk ? 'Ready' : STATE_LABEL[state] || 'Standby';
   $('#ix-model').textContent = S.engine?.chatModelName ? `· ${S.engine.chatModelName}` : '';
   if (document.activeElement !== $('#ix-lang')) $('#ix-lang').innerHTML = languageOptions();
-  if (V.langDownload) $('#ix-state').textContent = `DOWNLOADING VOICE ${Math.min(100, Math.round(((V.langDownload.loaded || 0) / (V.langDownload.total || 1)) * 100))}%`;
+  if (V.langDownload) $('#ix-state').textContent = `Downloading voice ${Math.min(100, Math.round(((V.langDownload.loaded || 0) / (V.langDownload.total || 1)) * 100))}%`;
   const talk = $('#ix-talk');
   talk.setAttribute('aria-pressed', String(V.talk));
-  talk.textContent = V.talk ? '■ STOP' : S.voice?.installed ? '● TALK' : d ? 'INSTALLING…' : 'INSTALL VOICE';
+  talk.textContent = V.talk ? '■ Stop' : S.voice?.installed ? '● Talk' : d ? 'Installing…' : 'Install voice';
   talk.disabled = Boolean(d);
   const voiceOn = Boolean(S.settings.voiceSpeak) || V.talk;
   $('#ix-voice').setAttribute('aria-pressed', String(voiceOn));
   $('#ix-face').setAttribute('aria-pressed', String(FX.on));
-  $('#ix-face').textContent = FX.on ? 'FACE ON' : 'FACE OFF';
-  if (FX.on && FX.speaker && !V.download && !V.langDownload) $('#ix-model').textContent = '· WITH ' + FX.speaker.name.toUpperCase() + ($('#ix-model').textContent ? ' ' + $('#ix-model').textContent : '');
-  $('#ix-voice').textContent = voiceOn ? 'VOICE ON' : 'VOICE OFF';
+  $('#ix-face').textContent = FX.on ? 'Face on' : 'Face off';
+  if (FX.on && FX.speaker && !V.download && !V.langDownload) $('#ix-model').textContent = '· with ' + FX.speaker.name + ($('#ix-model').textContent ? ' ' + $('#ix-model').textContent : '');
+  $('#ix-voice').textContent = voiceOn ? 'Voice on' : 'Voice off';
 }
 
 // Hand gestures (gestures.js): pinch and move one hand to spin the orb, pinch
@@ -852,7 +907,7 @@ function renderInteract() {
 // is on and goes off when Interact closes. The hand model is a one-time ~8 MB
 // download; the tracker loads the first time gestures are switched on.
 const G = { on: false, phase: '', tracker: null, error: '', download: null, hands: 0, mode: 'idle' };
-const GESTURE_MODE = { idle: 'OPEN HAND', spin: 'SPIN', zoom: 'ZOOM' };
+const GESTURE_MODE = { idle: 'Open hand', spin: 'Spin', zoom: 'Zoom' };
 const GESTURE_MODEL_URL = '/gestures/hand_landmarker.task';
 
 async function startGestures() {
@@ -921,15 +976,15 @@ function onGestureFrame(r) {
 function renderGestures() {
   const btn = $('#ix-gestures');
   btn.setAttribute('aria-pressed', String(G.on));
-  btn.textContent = G.on ? 'GESTURES ON' : 'GESTURES OFF';
+  btn.textContent = G.on ? 'Gestures on' : 'Gestures off';
   const cam = $('#ix-cam');
   cam.classList.toggle('hidden', !G.on && !G.error);
   cam.toggleAttribute('data-error', Boolean(G.error));
   const d = G.download;
   $('#ix-cam-status').textContent = G.error
     || (G.phase === 'download' ? `DOWNLOADING HAND MODEL ${Math.min(100, Math.round(((d?.loaded || 0) / (d?.total || 1)) * 100))}%`
-      : G.phase === 'loading' ? 'LOADING HAND TRACKER…'
-        : G.phase === 'camera' ? 'STARTING CAMERA…'
+      : G.phase === 'loading' ? 'Loading hand tracker…'
+        : G.phase === 'camera' ? 'Starting camera…'
           : G.hands ? `${G.hands} HAND${G.hands > 1 ? 'S' : ''} · ${GESTURE_MODE[G.mode]}`
             : 'NO HANDS · PINCH + MOVE TO SPIN · PINCH BOTH HANDS AND SPREAD TO ZOOM');
 }
@@ -1022,14 +1077,15 @@ async function startFace() {
   FX.on = true;
   FX.cam = new FaceCam();
   $('#ix-facecam').classList.remove('hidden');
-  $('#ix-face-status').textContent = 'STARTING CAMERA…';
+  $('#ix-face-status').textContent = 'Starting camera…';
   renderInteract();
   try {
     await FX.cam.start({
-      video: $('#ix-face-video'), reason: 'faces', fps: 6,
+      // Full camera resolution: DeepFace's age, gender and expression need a sharp face.
+      video: $('#ix-face-video'), reason: 'faces', fps: 6, frameSize: { width: 640, height: 480 },
       analyze: (frame) => api.faceFrame(frame),
       onUpdate: (tracks) => {
-        drawFaces($('#ix-face-overlay'), tracks, { color: accentColor() });
+        drawFaces($('#ix-face-overlay'), tracks, { color: accentColor(), ...FX.cam.size });
         const main = tracks.slice().sort((a, b) => b.box[2] * b.box[3] - a.box[2] * a.box[3])[0];
         if (main) {
           const { width, height } = FX.cam.size;
@@ -1037,6 +1093,9 @@ async function startFace() {
           IX.orb?.setGaze(-((main.box[0] + main.box[2] / 2) / width * 2 - 1), (main.box[1] + main.box[3] / 2) / height * 2 - 1);
         } else IX.orb?.setGaze(0, 0);
         setSpeaker(main?.person || null, tracks.length);
+        renderFaceInfo(main, tracks);
+        // The speaker's expression (from DeepFace), so Scorpion can match its tone.
+        FX.mood = main?.expression && main.expression.score >= 0.5 ? main.expression.label : null;
       },
     });
   } catch (err) {
@@ -1056,10 +1115,47 @@ function stopFace() {
   renderInteract();
 }
 
+// The panel under Interact's face camera: everything DeepFace knows about the
+// main face (like its stream view), and one line per other face.
+const EMOTION_ORDER = ['happy', 'neutral', 'surprise', 'sad', 'angry', 'fear', 'disgust'];
+let faceInfoAt = 0;
+function renderFaceInfo(main, tracks) {
+  const box = $('#ix-face-info');
+  if (!box || performance.now() - faceInfoAt < 250) return; // a few updates a second is plenty
+  faceInfoAt = performance.now();
+  const st = S.insights || {};
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const row = (k, v, bad = false) => `<div class="fi-row"><b>${k}</b><span${bad ? ' class="fi-bad"' : ''}>${v}</span></div>`;
+  let html = '';
+  if (main) {
+    const person = main.person && (S.faces?.people || []).find((p) => p.id === main.person.id);
+    html += `<div class="fi-head">${person?.thumb ? `<img src="${person.thumb}" alt="">` : ''}<span>${main.person ? `${esc(main.person.name)}<br>${pct(main.person.similarity)} match` : 'Unknown person'}</span></div>`;
+    if (main.liveness) html += row('Liveness', main.liveness.real ? `Real face ${pct(main.liveness.score)}` : `Photo or screen ${pct(main.liveness.score)}`, !main.liveness.real);
+    if (main.age != null) html += row('Age', `~${main.age}`);
+    // DeepFace's gender model can be unsure (short hair, angle, light): say so.
+    if (main.gender) html += row('Gender', `${main.gender.label} ${pct(main.gender.score)}${main.gender.score < 0.75 ? ' (guess)' : ''}`);
+    if (main.expression) {
+      html += row('Expression', `${main.expression.label[0].toUpperCase()}${main.expression.label.slice(1)} ${pct(main.expression.score)}`);
+      html += `<div class="fi-bars">${EMOTION_ORDER.map((k) => { const v = main.expression.scores[k] || 0; return `<div class="fi-bar${k === main.expression.label ? ' top' : ''}"><span>${k}</span><i style="width:${Math.max(1, Math.round(v * 100))}%"></i><span>${pct(v)}</span></div>`; }).join('')}</div>`;
+    }
+    if (main.quality) html += row('Quality', main.quality.ok ? 'Good' : esc(main.quality.issues.join(', ')), !main.quality.ok);
+    html += row('In view', `${tracks.length} face${tracks.length === 1 ? '' : 's'}`);
+    const others = tracks.filter((t) => t !== main);
+    if (others.length) html += `<div class="fi-others">${others.slice(0, 4).map((t) => [t.person ? esc(t.person.name) : 'unknown', t.expression?.label, t.age != null ? `~${t.age}` : null, t.gender ? t.gender.label.toLowerCase() : null, t.liveness && !t.liveness.real ? 'photo?' : null].filter(Boolean).join(' · ')).join('<br>')}</div>`;
+  }
+  // Missing models: install them right here.
+  const missing = [];
+  if (!st.insights?.installed) missing.push(['insights', `Expressions + liveness (${gb(st.insights?.bytes || 0)})`]);
+  if (!st.demography?.installed) missing.push(['demography', `Age + gender (${gb(st.demography?.bytes || 0)})`]);
+  if (S.settings.faceInsightsLive === false) html += '<div class="fi-others">Expression, age and gender are turned off in Settings → People.</div>';
+  else if (missing.length) html += `<div class="fi-install">${missing.map(([k, label]) => INSIGHT_DL[k] ? `<span>Downloading ${label}… ${gb(INSIGHT_DL[k].loaded || 0)}</span>` : `<button type="button" class="ix-btn" data-ix-insight="${k}">Install ${label}</button>`).join('')}</div>`;
+  box.innerHTML = html;
+}
+
 function setSpeaker(person, count) {
   const before = FX.speaker?.id;
   FX.speaker = person;
-  $('#ix-face-status').textContent = !count ? 'NO FACE IN VIEW' : person ? 'TALKING WITH ' + person.name.toUpperCase() : (count > 1 ? count + ' PEOPLE · NOT RECOGNIZED' : 'NOT RECOGNIZED · ADD THEM IN PEOPLE');
+  $('#ix-face-status').textContent = !count ? 'No face in view' : person ? 'Talking with ' + person.name : (count > 1 ? count + ' people · not recognized' : 'Not recognized · add them in People');
   if (person && person.id !== before) {
     renderInteract();
     // Greet someone new to the conversation, once per Interact session.
@@ -1088,14 +1184,33 @@ function renderPeople() {
     + '<div class="acts"><button class="btn small" data-act="photos">Add photos</button><button class="btn small" data-act="camera">Camera</button>'
     + '<button class="btn small" data-act="owner">' + (p.owner ? 'Not owner' : 'Make owner') + '</button><button class="btn small" data-act="rename">Rename</button><button class="btn small" data-act="remove">Remove</button></div></div></div>').join('')
     || '<div class="muted">Nobody added yet. Start with yourself.</div>';
+  renderInsights();
   const lockState = S.lock || {};
   $('#lock-enabled').checked = Boolean(lockState.enabled);
   $('#lock-pin-note').textContent = lockState.hasPin ? 'A PIN is set.' : 'No PIN yet.';
 }
 
+// Face insights, from DeepFace: two optional downloads.
+const INSIGHT_DL = {};
+function renderInsights() {
+  const st = S.insights || {};
+  const row = (key, what) => {
+    const p = st[key] || {};
+    const d = INSIGHT_DL[key];
+    if (d) return `<div class="row"><b>${esc(p.label)}</b><span class="muted small">downloading… ${gb(d.loaded || 0)} of ${gb(d.total || p.bytes || 0)}</span></div>`;
+    return `<div class="row"><b>${esc(p.label)}</b><span class="muted small">${esc(what)} (${gb(p.bytes || 0)})</span>${p.installed ? `<span class="tag on">installed</span><button class="btn small" data-insight-remove="${key}">Remove</button>` : `<button class="btn small primary" data-insight-install="${key}">Install</button>`}</div>`;
+  };
+  $('#insights-setup').innerHTML = row('insights', 'facial expression, and a liveness check so face lock refuses photos and screens')
+    + row('demography', 'apparent age and gender');
+  $('#insights-live').checked = S.settings.faceInsightsLive !== false;
+  $('#lock-liveness').checked = S.settings.lockLiveness !== false;
+  $('#lock-liveness').disabled = !st.insights?.installed;
+}
+
 async function refreshFaces() {
   const st = await api.state();
   S.faces = st.faces;
+  S.insights = st.insights;
   S.lock = st.lock;
   renderPeople();
 }
@@ -1200,6 +1315,33 @@ function wirePeople() {
     renderPeople();
   };
   $('#lock-now').onclick = lockNow;
+  // Face insights (DeepFace): install / remove, and the two switches.
+  $('#insights-setup').onclick = async (e) => {
+    const install = e.target.closest('[data-insight-install]')?.dataset.insightInstall;
+    const remove = e.target.closest('[data-insight-remove]')?.dataset.insightRemove;
+    if (install) {
+      INSIGHT_DL[install] = { loaded: 0, total: S.insights?.[install]?.bytes };
+      renderInsights();
+      try { S.insights = await api.insightsInstall(install); toast(`${S.insights[install].label} installed.`); } catch (err) { toast(errText(err), 8000); }
+      delete INSIGHT_DL[install];
+      renderInsights();
+    } else if (remove && confirm(`Remove ${S.insights?.[remove]?.label}? You can install it again any time.`)) {
+      S.insights = await api.insightsUninstall(remove);
+      renderInsights();
+    }
+  };
+  api.onInsightsDownload((p) => { if (!p.done && INSIGHT_DL[p.pack]) { INSIGHT_DL[p.pack] = p; renderInsights(); } });
+  $('#insights-live').onchange = (e) => setSetting({ faceInsightsLive: e.target.checked });
+  $('#ix-face-info').onclick = async (e) => {
+    const pack = e.target.closest('[data-ix-insight]')?.dataset.ixInsight;
+    if (!pack) return;
+    INSIGHT_DL[pack] = { loaded: 0 };
+    faceInfoAt = 0;
+    try { S.insights = await api.insightsInstall(pack); } catch (err) { toast(errText(err), 8000); }
+    delete INSIGHT_DL[pack];
+    faceInfoAt = 0;
+  };
+  $('#lock-liveness').onchange = (e) => setSetting({ lockLiveness: e.target.checked });
   $('#faces-uninstall').onclick = async () => {
     if (!confirm('Remove the face recognition models? The people you added are kept.')) return;
     stopFace();
@@ -1231,7 +1373,7 @@ function showLockScreen() {
       onUpdate: (tracks, res) => {
         drawFaces($('#lock-overlay'), tracks.map((t) => ({ ...t, person: null })), { color: '#d9a630' });
         if (res?.unlocked) { done(); return; }
-        $('#lock-status').textContent = !tracks.length ? 'Look at the camera.' : 'Checking…';
+        $('#lock-status').textContent = !tracks.length ? 'Look at the camera.' : res?.fake ? 'That looks like a photo or a screen. Show your real face, or type your PIN.' : 'Checking…';
       },
     }).catch((err) => { $('#lock-status').textContent = faceCameraError(err) + ' Type your PIN instead.'; });
     $('#lock-form').onsubmit = async (e) => {
@@ -1268,6 +1410,21 @@ function renderSettings() {
   $('#allowed-folders').innerHTML = allowed.length
     ? allowed.map((f) => `<div class="row"><code>${esc(f)}</code><button class="btn small" data-unallow="${esc(f)}">Remove</button></div>`).join('')
     : '<span class="muted small">None</span>';
+  const commands = S.settings.commandAllowlist || [];
+  $('#allowed-commands').innerHTML = commands.length
+    ? commands.map((c) => `<div class="row"><code>${esc(c)}</code><button class="btn small" data-unallow-command="${esc(c)}">Remove</button></div>`).join('')
+    : '<span class="muted small">None</span>';
+  $('#precise-answers').checked = S.settings.preciseAnswers !== false;
+  $('#thinking').value = ['low', 'medium', 'high'].includes(S.settings.thinking) ? S.settings.thinking : 'auto';
+  const chatModels = S.models.filter((m) => m.kind === 'chat');
+  const vm = S.settings.voiceModel || 'auto';
+  $('#voice-model').innerHTML = `<option value="auto">Automatic: a fast model when the chat model is slow here</option><option value="same">Same as the chat model</option>${chatModels.map((m) => `<option value="${esc(m.path)}">${esc(m.name)}</option>`).join('')}`;
+  $('#voice-model').value = vm === 'auto' || vm === 'same' || chatModels.some((m) => m.path === vm) ? vm : 'auto';
+  const fastOne = chatModels.find((m) => m.path !== S.settings.chatModel && m.fit === 'fast');
+  const mainSlow = chatModels.find((m) => m.path === S.settings.chatModel && m.fit && m.fit !== 'fast');
+  $('#voice-model-note').textContent = vm === 'auto'
+    ? (mainSlow ? (fastOne ? `Your chat model is slow on this computer, so voice and Interact use ${fastOne.name} for quick replies.` : 'Your chat model is slow on this computer. Install a smaller model (Models) for quicker spoken replies.') : 'Voice and Interact use your chat model, which runs fast here.')
+    : 'Voice and Interact replies come from this model; typed chats keep the chat model.';
   $('#ctx-size').value = String(S.settings.contextSize);
   $('#gpu-layers').value = String(S.settings.gpuLayers ?? 'auto');
   $('#glass').value = S.settings.glass === 'off' ? 'off' : 'auto';
@@ -1330,8 +1487,9 @@ async function openThread(id) {
   renderMessages();
 }
 
-async function newThread(agentId) {
-  S.thread = await api.createThread({ agentId: typeof agentId === 'string' ? agentId : S.newChatAgent, mode: S.newChatMode });
+async function newThread(agentId, workspaceId = null) {
+  S.thread = await api.createThread({ agentId: typeof agentId === 'string' ? agentId : S.newChatAgent, mode: S.newChatMode, workspaceId });
+  if (workspaceId) S.settings = (await api.state()).settings;
   renderTopbar();
   S.threads.unshift({ id: S.thread.id, title: S.thread.title, updatedAt: Date.now() });
   renderPlanPanel.shown = false;
@@ -1353,7 +1511,8 @@ async function sendMessage(text, { spoken = false } = {}) {
   renderThreads(); renderModelSwitch(); renderMessages();
   // In Interact with FACE on, the reply knows who is talking.
   const speakerName = IX.open && FX.on ? FX.speaker?.name || null : null;
-  try { await api.send({ threadId: thread.id, text, spoken, speaker: speakerName }); } catch (err) {
+  const mood = IX.open && FX.on ? FX.mood || null : null;
+  try { await api.send({ threadId: thread.id, text, spoken, speaker: speakerName, mood }); } catch (err) {
     S.running.delete(thread.id);
     thread.messages.at(-1).error = String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
     renderMessages();
@@ -1362,6 +1521,7 @@ async function sendMessage(text, { spoken = false } = {}) {
 
 function applyChatEvent(ev) {
   voiceOnChatEvent(ev);
+  if (ev.type === 'done') home?.refresh(); // recent activity
   if (ev.type === 'approval') { S.pending.set(ev.id, ev); }
   if (ev.type === 'memory') { reloadMemories(); return; }
   if (ev.type === 'done') {
@@ -1408,9 +1568,10 @@ async function setSetting(patch) {
 function wire() {
   $('#new-chat').onclick = newThread;
   document.querySelectorAll('.stab').forEach((b) => (b.onclick = () => setView(b.dataset.view)));
-  $('#open-settings').onclick = () => (S.view === 'chat' ? setView(S.lastSettingsView || 'settings') : setView('chat'));
-  $('#back-to-chat').onclick = () => setView('chat');
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.view !== 'chat') setView('chat'); });
+  $('#open-settings').onclick = () => (MAIN_VIEWS.includes(S.view) ? setView(S.lastSettingsView || 'settings') : setView(S.lastMainView || 'home'));
+  $('#back-to-chat').onclick = () => setView(S.lastMainView || 'home');
+  $('#open-home').onclick = () => setView('home');
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !MAIN_VIEWS.includes(S.view)) setView(S.lastMainView || 'home'); });
   $('#threads').onclick = async (e) => {
     const del = e.target.closest('[data-del]');
     if (del) {
@@ -1435,6 +1596,18 @@ function wire() {
   wireVoice();
   wireInteract();
   wirePeople();
+  const libraryView = initLibrary({ api, $, esc, toast, errText, gb });
+  desktopUi = initDesktop({ api, $, esc, toast, errText, setView });
+  home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
+  // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
+  api.onNavView?.(({ view, dir, select }) => {
+    if (view === 'apps') desktopUi.showApps();
+    else if (view === 'files') desktopUi.showFiles(dir, select);
+    else if (view === 'library') $('#open-library').click();
+    else if (VIEWS.includes(view)) setView(view);
+  });
+  extras = initExtras({ api, $, esc, toast, errText, S, setView, reloadMemories, renderAll: () => renderAll() });
+  $('#open-library').onclick = () => { setView('library'); libraryView.show(); };
 
   $('#messages').onclick = (e) => {
     const s = e.target.closest('.suggestion');
@@ -1446,18 +1619,29 @@ function wire() {
     const ok = e.target.closest('[data-approve]');
     const no = e.target.closest('[data-deny]');
     const id = ok?.dataset.approve || no?.dataset.deny;
-    if (id) { api.approve({ id, approved: !!ok }); S.pending.delete(id); scheduleRender(); }
+    if (id) { api.approve({ id, approved: ok?.dataset.always ? 'always' : !!ok }); S.pending.delete(id); scheduleRender(); }
   };
 
-  $('#workspace-chip').onclick = async () => { S.settings = await api.chooseWorkspace(); renderAll(); };
+  $('#workspace-chip').onclick = async () => {
+    S.settings = await api.chooseWorkspace(S.thread?.id);
+    if (S.thread) S.thread = await api.getThread(S.thread.id);
+    renderAll();
+  };
   $('#choose-ws').onclick = $('#workspace-chip').onclick;
   $('#open-ws').onclick = () => api.openWorkspace();
   $('#modes').onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); };
   $('#model-picker').onchange = async (e) => {
     const value = e.target.value;
     if (value === '__manage') { renderModelSwitch(); setView('models'); return; }
+    if (value.startsWith('source:')) {
+      const p = (S.settings.providers || []).find((x) => x.id === value.slice(7));
+      await setSetting({ chatSource: p.id });
+      const onThisPc = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(p.baseUrl);
+      toast(`Chats now use ${p.model || 'a model'} on ${p.name}.${onThisPc ? '' : ' Your messages go to that service.'}`, 3500);
+      return;
+    }
     S.modelStatus = { loading: true, name: modelName(value) };
-    await setSetting({ chatModel: value });
+    await setSetting({ chatModel: value, chatSource: 'local' });
     toast(`Switching to ${modelName(value)}…`, 2500);
   };
   $('#auto-approve').onchange = (e) => {
@@ -1472,8 +1656,13 @@ function wire() {
   };
   $('#view-models').onclick = async (e) => {
     const t = e.target;
-    if (t.dataset.use) {
-      await setSetting(t.dataset.kind === 'embedding' ? { embedModel: t.dataset.use } : { chatModel: t.dataset.use });
+    if (t.dataset.useSource) {
+      await setSetting({ chatSource: t.dataset.useSource });
+      toast('Chats now use this model. Switch back any time in the model menu at the top of a chat.', 4000);
+    } else if (t.id === 'open-connections') {
+      setView('connections');
+    } else if (t.dataset.use) {
+      await setSetting(t.dataset.kind === 'embedding' ? { embedModel: t.dataset.use } : { chatModel: t.dataset.use, chatSource: 'local' });
     } else if (t.dataset.delmodel || t.dataset.uninstall) {
       const name = t.dataset.delmodel ? modelName(t.dataset.delmodel) : S.catalog.find((c) => c.id === t.dataset.uninstall)?.name;
       const size = Number(t.dataset.size) ? ` and free ${gb(Number(t.dataset.size))}` : '';
@@ -1558,6 +1747,9 @@ function wire() {
   $('#gpu-layers').onchange = (e) => { const v = e.target.value; setSetting({ gpuLayers: v === 'auto' || v === 'max' ? v : Number(v) }); toast('Reloading the model…'); };
   $('#temperature').oninput = (e) => { $('#temp-val').textContent = e.target.value; };
   $('#temperature').onchange = (e) => setSetting({ temperature: Number(e.target.value) });
+  $('#precise-answers').onchange = (e) => setSetting({ preciseAnswers: e.target.checked });
+  $('#thinking').onchange = (e) => setSetting({ thinking: e.target.value });
+  $('#voice-model').onchange = (e) => setSetting({ voiceModel: e.target.value });
   $('#save-prompt').onclick = () => { setSetting({ systemPrompt: $('#system-prompt').value }); toast('Saved.'); };
 
   // agent picker: switches this chat's agent, or sets the agent for the next chat
@@ -1646,6 +1838,12 @@ function wire() {
     S.settings = await api.updateSettings({ allowedFolders: (S.settings.allowedFolders || []).filter((x) => x !== f) });
     renderSettings();
   };
+  $('#allowed-commands').onclick = async (e) => {
+    const c = e.target.closest('[data-unallow-command]')?.dataset.unallowCommand;
+    if (c === undefined) return;
+    S.settings = await api.updateSettings({ commandAllowlist: (S.settings.commandAllowlist || []).filter((x) => x !== c) });
+    renderSettings();
+  };
   api.onChatEvent(applyChatEvent);
   api.onModelStatus((st) => {
     const wasLoading = S.modelStatus?.loading;
@@ -1665,6 +1863,8 @@ function wire() {
 if ((await api.lockStatus()).locked) await showLockScreen();
 wire();
 await refresh();
+// Start on the home screen; the latest chat is loaded behind it for the chat view.
 if (S.threads[0]) await openThread(S.threads[0].id);
+setView('home');
 if (S.settings.chatModel && !S.engine?.chatModel) api.loadModel().catch(() => {});
 if (S.voice?.installed && S.settings.voiceSpeak) api.warmVoice();

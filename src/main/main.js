@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage, session, systemPreferences } from 'electron';
+import { app, BrowserWindow, screen, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage, session, systemPreferences, powerMonitor, safeStorage } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as store from './store.js';
 import * as models from './models.js';
@@ -12,11 +13,27 @@ import * as agents from './agents.js';
 import * as scheduler from './scheduler.js';
 import * as voice from './voice.js';
 import * as faces from './faces.js';
+import * as insights from './face-insights.js';
 import * as lock from './lock.js';
+import * as library from './library.js';
+import { initMediaModels, installMediaModels, uninstallMediaModels, mediaModelStatus, setLowCpu } from './media-models.js';
+import { Readable } from 'node:stream';
 import * as gestures from './gestures.js';
+import * as skills from './skills.js';
+import * as persona from './persona.js';
+import { summarizeIfLong, dream, dreamDue, dreamState } from './consolidate.js';
+import * as remote from './remote.js';
+import * as secrets from './secrets.js';
+import * as mcp from './mcp.js';
+import * as workspaces from './workspaces.js';
+import { recentActivity } from './activity.js';
+import * as desktop from './shell.js';
+import * as winctl from './windows-control.js';
+import { createAgentBrowser, browserTools } from './agent-browser.js';
+import { TelegramBot, pairingCode } from './telegram.js';
 import { TOOLS, fileSystemRoots } from './tools.js';
 import { applyEvent } from '../shared/events.js';
-import { buildFunctions, buildSystemPrompt, withDocumentContext, withConversationRecall } from './agent.js';
+import { buildFunctions, buildSystemPrompt, withDocumentContext, withConversationRecall, isFactualQuestion, thinkingFor } from './agent.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, '..', '..');
@@ -80,11 +97,15 @@ let win = null;
 let tray = null;
 let quitting = false;
 const startHidden = process.argv.includes('--hidden');
+// Started by Windows at sign-in as this account's desktop (Settings → Desktop).
+const shellLaunch = process.argv.includes('--shell') && process.platform === 'win32';
 const running = new Map(); // threadId -> AbortController
 const approvals = new Map(); // approval id -> resolve(boolean)
 
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+  // The taskbar follows the theme too.
+  if (channel === 'settings:changed') for (const w of BrowserWindow.getAllWindows()) if (w !== win && !w.isDestroyed()) w.webContents.send(channel, payload);
 }
 
 function serveApp() {
@@ -92,6 +113,11 @@ function serveApp() {
     const { pathname } = new URL(request.url);
     const rel = decodeURIComponent(pathname).replace(/^\/+/, '') || 'index.html';
     let file;
+    if (rel.startsWith('library/thumb/')) {
+      const thumb = library.thumbPath(rel.slice('library/thumb/'.length));
+      return thumb && fs.existsSync(thumb) ? net.fetch(pathToFileURL(thumb).toString()) : new Response('Not found', { status: 404 });
+    }
+    if (rel.startsWith('media/')) return serveMedia(request, rel.split('/')[1]);
     if (rel.startsWith('vendor/three/')) {
       // Three.js is a set of ES modules: its build, plus the add-ons the orb uses.
       const sub = rel.slice('vendor/three/'.length);
@@ -184,7 +210,10 @@ function createWindow() {
 
   // With scheduled agents on, closing the window keeps Scorpion running in the tray.
   win.on('close', (e) => {
-    if (quitting || !scheduler.hasEnabledSchedules()) return;
+    // As the Windows desktop, closing Scorpion's window only hides it (the
+    // taskbar's Scorpion button brings it back).
+    if (!quitting && desktop.shellMode() === 'shell') { e.preventDefault(); win.hide(); return; }
+    if (quitting || !keepsRunning()) return;
     e.preventDefault();
     win.hide();
     ensureTray();
@@ -208,6 +237,14 @@ function showWindow() {
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+}
+
+// Brings Scorpion forward on one of its screens (the taskbar's buttons, folders
+// opened while Scorpion is the desktop).
+function showView(view, detail) {
+  showWindow();
+  const go = () => send('nav:view', { view, ...detail });
+  if (win.webContents.isLoading()) win.webContents.once('did-finish-load', () => setTimeout(go, 300)); else go();
 }
 
 function ensureTray() {
@@ -254,8 +291,12 @@ async function state() {
     supportedDocs: rag.SUPPORTED_EXTENSIONS,
     voice: voice.voiceStatus(),
     faces: faces.faceStatus(),
+    insights: insights.insightsStatus(),
+    library: library.libraryStatus(),
     lock: lock.lockStatus(),
     gestures: gestures.gesturesStatus(),
+    skills: skills.listSkills(),
+    sources: sourcesView(),
     engine: await engine.engineInfo().catch((e) => ({ error: e.message })),
     platform: process.platform,
     glass: glassMode(),
@@ -319,6 +360,7 @@ async function loadChat() {
       onProgress: (p) => send('model:status', { loading: true, progress: p, name: display, bytes }),
     });
     send('model:status', { loading: false, info });
+    setTimeout(() => warmUp().catch(() => {}), 300); // read a new chat's prompt ahead of time
     return info;
   } catch (err) {
     send('model:status', { loading: false, error: err.message });
@@ -326,22 +368,267 @@ async function loadChat() {
   }
 }
 
+// ---- phone (Telegram) ----
+let tg = null;
+let tgStatus = { state: 'off' };
+const tgSettings = () => ({ enabled: false, allowed: [], pending: [], ...(store.getSettings().telegram || {}) });
+function updateTelegram(patch) {
+  const next = store.updateSettings({ telegram: { ...tgSettings(), ...patch } });
+  send('settings:changed', next);
+  return next.telegram;
+}
+const telegramView = () => ({ ...tgStatus, ...tgSettings(), hasToken: secrets.hasSecret('telegram:token') });
+function setTgStatus(st) {
+  tgStatus = st;
+  send('telegram:status', telegramView());
+}
+
+function approvalQuestion(info) {
+  if (info.name === 'run_command') return ['Run this command on your computer?', info.args.command];
+  if (info.name === 'write_file') return [`Save ${info.args.path}?`, String(info.args.content || '').slice(0, 1500)];
+  if (info.name === 'run_code') return ['Run this program on your computer?', String(info.args.code || '').slice(0, 1500)];
+  return [`Allow ${info.name.replace(/_/g, ' ')}?`, info.summary];
+}
+
+// One message from the phone: answered in that person's own Scorpion chat,
+// which also shows on the computer.
+async function phoneTurn(chatId, text, { heard = null } = {}) {
+  const t = tgSettings();
+  const who = t.allowed.find((a) => a.chatId === chatId);
+  if (!who) return 'You are not approved yet.';
+  let thread = who.threadId && store.getThread(who.threadId);
+  if (!thread) {
+    thread = store.createThread();
+    thread.title = `Phone: ${who.name}`;
+    store.saveThread(thread);
+    updateTelegram({ allowed: t.allowed.map((a) => (a.chatId === chatId ? { ...a, threadId: thread.id } : a)) });
+    send('threads:changed');
+  }
+  if (running.has(thread.id)) return 'I am still working on your last message. Send /stop to cancel it.';
+  const result = await runAgentTurn({
+    thread,
+    text,
+    displayText: heard ? `(voice) ${heard}` : text,
+    approve: (info, signal) => { const [q, d] = approvalQuestion(info); return tg ? tg.askApproval(chatId, q, d, signal) : Promise.resolve(false); },
+    intents: true,
+  });
+  send('threads:changed');
+  const prefix = heard ? `You said: "${heard}"\n\n` : '';
+  return result.error ? `${prefix}Something went wrong: ${result.error}` : `${prefix}${result.text || '(done)'}`;
+}
+
+async function phoneVoice(chatId, file) {
+  if (!voice.voiceStatus().installed) return 'Voice messages need Scorpion\'s voice feature: on the computer, open Settings → General → Voice and install it.';
+  const dir = path.join(app.getPath('userData'), 'tmp');
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = path.join(dir, `voice-${Date.now()}${path.extname(file.name) || '.oga'}`);
+  fs.writeFileSync(tmp, file.bytes);
+  try {
+    const { pcm } = await decodeInWindow('speech', tmp);
+    const heard = (await voice.transcribe(pcm, store.getSettings().voiceLanguage)).trim();
+    if (!heard) return 'I could not hear any words in that voice message.';
+    return phoneTurn(chatId, heard, { heard });
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
+async function startTelegram() {
+  tg?.stop();
+  tg = null;
+  const token = secrets.getSecret('telegram:token');
+  if (!tgSettings().enabled || !token) { setTgStatus({ state: 'off' }); return telegramView(); }
+  setTgStatus({ state: 'connecting' });
+  const bot = new TelegramBot(token, {
+    isAllowed: (chatId) => tgSettings().allowed.some((a) => a.chatId === chatId),
+    onPairRequest: ({ chatId, name, username }) => {
+      const t = tgSettings();
+      const known = t.pending.find((p) => p.chatId === chatId);
+      if (known) return known.code;
+      const code = pairingCode();
+      updateTelegram({ pending: [...t.pending.slice(-9), { chatId, name, username: username || null, code, at: Date.now() }] });
+      send('telegram:status', telegramView());
+      if (Notification.isSupported()) {
+        const n = new Notification({ title: 'Someone wants to talk to Scorpion', body: `${name} messaged your Telegram bot. Approve or ignore in Settings → Connections (code ${code}).` });
+        n.on('click', () => { showWindow(); send('open-view', 'connections'); });
+        n.show();
+      }
+      return code;
+    },
+    onMessage: ({ chatId, text }) => phoneTurn(chatId, text),
+    onVoice: ({ chatId, file }) => phoneVoice(chatId, file),
+    onCommand: async ({ chatId, command }) => {
+      const who = tgSettings().allowed.find((a) => a.chatId === chatId);
+      if (command === 'new') {
+        updateTelegram({ allowed: tgSettings().allowed.map((a) => (a.chatId === chatId ? { ...a, threadId: null } : a)) });
+        return 'Started a new chat.';
+      }
+      if (command === 'stop') {
+        const c = who?.threadId && running.get(who.threadId);
+        c?.abort();
+        return c ? 'Stopped.' : 'Nothing is running.';
+      }
+      return 'Talk to me like in Scorpion on your computer. Voice messages work too.\n/new starts a fresh chat\n/stop cancels what I am doing';
+    },
+    onStatus: (st) => setTgStatus(st.ok ? { state: 'on', bot: st.bot?.username, error: st.error || null } : { state: 'error', bot: st.bot?.username, error: st.error }),
+  });
+  try {
+    await bot.start();
+    tg = bot;
+  } catch (err) {
+    setTgStatus({ state: 'error', error: err.message });
+  }
+  return telegramView();
+}
+
+// ---- MCP tool servers ----
+function connectMcp(server) {
+  return mcp.connect(server, {
+    env: mcp.parseLines(secrets.getSecret(`mcp:${server.id}:env`), '='),
+    headers: mcp.parseLines(secrets.getSecret(`mcp:${server.id}:headers`), ':'),
+    version: app.getVersion(),
+  });
+}
+function mcpView() {
+  return (store.getSettings().mcpServers || []).map((s) => ({ ...s, ...mcp.status(s.id), id: s.id, hasEnv: secrets.hasSecret(`mcp:${s.id}:env`), hasHeaders: secrets.hasSecret(`mcp:${s.id}:headers`) }));
+}
+// The agent's own browser window (separate profile), made on first use.
+let agentBrowser = null;
+const browser = () => (agentBrowser ??= createAgentBrowser({ BrowserWindow, session }));
+
+// Tools from outside Scorpion's own table: MCP servers and the agent browser.
+const extraTools = () => ({ ...mcp.mcpTools(), ...(store.getSettings().browserEnabled ? browserTools(browser()) : {}) });
+
+// ---- model sources: the local model, or a server (Ollama, LM Studio, cloud) ----
+// What the UI may know: never the keys, only whether one is set.
+function sourcesView() {
+  return (store.getSettings().providers || []).map((p) => ({ ...p, hasKey: secrets.hasSecret(`provider:${p.id}`), local: remote.isLocalUrl(p.baseUrl) }));
+}
+function sourceById(id) {
+  if (!id) return null;
+  if (id === 'local') return store.getSettings().chatModel ? { id: 'local', remote: false } : null;
+  const p = (store.getSettings().providers || []).find((x) => x.id === id);
+  return p ? { ...p, remote: true } : null;
+}
+function activeSource() {
+  return sourceById(store.getSettings().chatSource) || { id: 'local', remote: false };
+}
+const sameSource = (a, b) => (a.remote ? a.id : 'local') === (b.remote ? b.id : 'local');
+const sourceLabel = (src) => (src.remote ? `${src.model || '?'} · ${src.name}` : engine.chatModelName() || modelNameOf(store.getSettings().chatModel));
+const modelNameOf = (p) => (p ? path.basename(p, '.gguf') : 'local model');
+const providerKey = (p) => secrets.getSecret(`provider:${p.id}`);
+
+async function runTurnWith(src, turn) {
+  if (!src.remote) {
+    if (turn.slot !== 'voice' && !engine.isChatReady()) await loadChat();
+    return engine.runTurn(turn);
+  }
+  if (!src.model) throw new Error(`Choose a model for ${src.name} in Settings → Connections.`);
+  try {
+    return await remote.runRemoteTurn({ ...turn, provider: src, apiKey: providerKey(src) });
+  } finally {
+    engine.forgetLoadedThread(); // the local context no longer matches this chat
+  }
+}
+
+function completeWith(src, req) {
+  return src.remote ? remote.remoteComplete({ ...req, provider: src, apiKey: providerKey(src) }) : engine.complete(req);
+}
+
+
+// The settings a turn runs with, and the inputs its prompt and tool list depend
+// on. Shared by real turns and the warm-up, so both read exactly the same text.
+function turnSettings(base, { workspace, mode, thread } = {}) {
+  const full = base.fileAccess === 'full';
+  // A chat works in the workspace it started in (if that folder still exists).
+  const own = thread?.workspace && fs.existsSync(thread.workspace) ? thread.workspace : null;
+  return { ...base, workspace: workspace ?? own ?? base.workspace ?? (full ? os.homedir() : null), mode: mode || thread?.mode || 'build' };
+}
+function promptFor(settings, agent, { canAskForFolders, spoken = false, speaker = null, mood = null }) {
+  return buildSystemPrompt(settings, {
+    docNames: rag.listDocuments().map((d) => d.name),
+    memoryBlock: settings.memoryEnabled ? memory.memoryPromptBlock() : '',
+    agent,
+    canAskForFolders,
+    spoken,
+    speaker: speaker ? String(speaker).slice(0, 60) : null,
+    mood: insights.EMOTIONS.includes(mood) && mood !== 'neutral' ? mood : null,
+  });
+}
+const toolFlags = () => ({
+  facesReady: faces.faceStatus().installed,
+  libraryReady: library.libraryStatus().counts.total > 0,
+  mediaReady: Object.values(mediaModelStatus()).some((m) => m.installed),
+  windowsReady: process.platform === 'win32', // the agent can run Windows (apps, windows, files, Settings)
+  extraTools: extraTools(),
+});
+
+// A fast model for spoken turns. "auto": when the chat model is slow on this
+// computer (a big one on the processor), talk with the best installed model
+// that runs fast here; null means "use the chat model".
+async function voiceModelPath() {
+  const s = store.getSettings();
+  if (s.voiceModel === 'same') return null;
+  const local = models.listLocalModels(modelEnv()).filter((m) => m.kind === 'chat');
+  if (s.voiceModel && s.voiceModel !== 'auto') return s.voiceModel !== s.chatModel && local.some((m) => m.path === s.voiceModel) ? s.voiceModel : null;
+  const hw = await engine.hardwareInfo().catch(() => null);
+  const main = local.find((m) => m.path === s.chatModel);
+  if (!main || engine.modelFit(main.bytes, hw) === 'fast') return null;
+  const fast = local.filter((m) => m.path !== s.chatModel && engine.modelFit(m.bytes, hw) === 'fast')
+    .sort((a, b) => models.catalogRank(a) - models.catalogRank(b));
+  return fast[0]?.path ?? null;
+}
+
+async function loadVoiceModel(file) {
+  if (engine.isChatReady('voice') && (await engine.engineInfo()).voiceModel === file) return;
+  const entry = models.listLocalModels(modelEnv()).find((m) => m.path === file);
+  await engine.loadChatModel(file, { contextSize: store.getSettings().contextSize, name: entry?.name, slot: 'voice' });
+}
+
+// Warm-up: read a new chat's instructions and tool list in the background
+// right after a model loads, so the first message is answered quickly.
+async function warmUp({ spoken = false } = {}) {
+  if (activeSource().remote || running.size) return false;
+  const base = store.getSettings();
+  const settings = turnSettings(base, { mode: spoken ? undefined : base.lastChatMode });
+  const agent = agents.getAgent('scorpion');
+  const voicePath = spoken ? await voiceModelPath() : null;
+  const slot = voicePath ? 'voice' : 'main';
+  if (voicePath) await loadVoiceModel(voicePath);
+  if (!engine.isChatReady(slot)) return false;
+  const functions = buildFunctions({
+    settings, agent, rag: rag.createSearcher(settings), memory, threadId: null, emit() {}, requestApproval: async () => false,
+    requestFolderAccess: async () => null, allowedFolders: [], streamedText: () => '', runHelper: async () => '', ...toolFlags(),
+  });
+  return engine.warmUp({
+    systemPrompt: promptFor(settings, agent, { canAskForFolders: true, spoken }),
+    functions,
+    effort: engine.usesReasoningEffort(slot) ? thinkingFor(base.thinking, { mode: settings.mode, spoken }) : null,
+    slot,
+  });
+}
+
 /**
  * One agent turn on a thread, used by chats and scheduled agents alike.
  * `approve` decides write/exec actions; chats ask the user in the UI, schedules
  * use their "allow changes" setting. `workspace` overrides the folder.
  */
-async function runAgentTurn({ thread, text, displayText = text, approve, workspace, mode, interactive = false, spoken = false, speaker = null }) {
+async function runAgentTurn({ thread, text, displayText = text, approve, workspace, mode, interactive = false, spoken = false, speaker = null, mood = null, intents = interactive }) {
   const threadId = thread.id;
   if (running.has(threadId)) throw new Error('Scorpion is still answering in this chat');
   const base = store.getSettings();
   const full = base.fileAccess === 'full';
   // Full access: every drive is allowed, and relative paths start at home.
-  const settings = { ...base, workspace: workspace ?? base.workspace ?? (full ? os.homedir() : null), mode: mode || thread.mode || 'build' };
+  const settings = turnSettings(base, { workspace, mode, thread });
   const agent = agents.getAgent(thread.agentId || 'scorpion');
-  if (!engine.isChatReady()) await loadChat();
+  let source = activeSource();
+  // Spoken turns use the fast voice model when the chat model is slow here.
+  const voicePath = spoken && !source.remote ? await voiceModelPath() : null;
+  const slot = voicePath ? 'voice' : 'main';
+  if (voicePath) await loadVoiceModel(voicePath);
+  else if (!source.remote && !engine.isChatReady()) await loadChat();
 
-  const assistant = { role: 'assistant', blocks: [], model: engine.chatModelName(), agentId: agent.id, mode: settings.mode, createdAt: Date.now() };
+  const assistant = { role: 'assistant', blocks: [], model: voicePath ? engine.chatModelName('voice') : sourceLabel(source), agentId: agent.id, mode: settings.mode, createdAt: Date.now() };
   thread.messages.push({ role: 'user', text: displayText, createdAt: Date.now() }, assistant);
   if (thread.title === 'New chat') thread.title = displayText.replace(/\s+/g, ' ').slice(0, 60);
   store.saveThread(thread);
@@ -361,36 +648,58 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
 
   const searcher = rag.createSearcher(settings);
   let streamed = '';
-  const info = await engine.engineInfo();
+  const info = source.remote ? { contextSize: source.contextSize || 32768, maxToolChars: 16000 } : await engine.engineInfo();
+  const effort = !source.remote && engine.usesReasoningEffort(slot) ? thinkingFor(settings.thinking, { mode: settings.mode, spoken }) : null;
+  // Questions of fact: the model's most likely answer, not a creative one.
+  const baseTemperature = agent.temperature ?? settings.temperature;
+  const temperature = settings.preciseAnswers !== false && isFactualQuestion(text) ? Math.min(baseTemperature, 0.2) : baseTemperature;
   try {
     const recall = settings.memoryEnabled && settings.recallEnabled ? withConversationRecall(text, memory, threadId) : text;
-    thread.history = await engine.runTurn({
+    // Standing intents: "when X comes up, do Y" (only for messages from a person).
+    const due = intents && settings.memoryEnabled ? memory.fireIntents(text) : [];
+    if (due.length) send('memory:changed');
+    // A long chat: summarize its older turns instead of letting them fall off.
+    try {
+      thread.history = await summarizeIfLong(thread.history, info.contextSize, (req) => completeWith(source, { ...req, slot }));
+    } catch { /* keep the full history; the engine trims it as before */ }
+    const turn = {
       threadId,
+      slot,
+      effort,
       history: thread.history,
-      systemPrompt: buildSystemPrompt(settings, {
-        docNames: rag.listDocuments().map((d) => d.name),
-        memoryBlock: settings.memoryEnabled ? memory.memoryPromptBlock() : '',
-        agent,
-        canAskForFolders: Boolean(requestFolderAccess),
-        spoken,
-        speaker: speaker ? String(speaker).slice(0, 60) : null,
-      }),
-      text: await withDocumentContext(recall, searcher),
-      temperature: agent.temperature ?? settings.temperature,
+      systemPrompt: promptFor(settings, agent, { canAskForFolders: Boolean(requestFolderAccess), spoken, speaker, mood }),
+      text: [await withDocumentContext(recall, searcher), memory.intentsNote(due)].filter(Boolean).join('\n\n'),
+      temperature,
       // Building writes whole files and iterates on errors, so it gets more room.
       // A single reply also has to fit in the context, so cap it at half of it.
       // A spoken conversation wants short, quick turns, like talking to a person.
       maxTokens: spoken ? 400 : Math.min(settings.mode === 'build' ? 6144 : 3072, Math.floor((info.contextSize || 8192) / 2)),
       signal: controller.signal,
       functions: buildFunctions({
-        settings, agent, rag: searcher, memory, threadId, emit, requestApproval, requestFolderAccess, allowedFolders, facesReady: faces.faceStatus().installed,
-        signal: controller.signal, streamedText: () => streamed, runHelper: engine.runHelperTurn,
+        settings, agent, rag: searcher, memory, threadId, emit, requestApproval, requestFolderAccess, allowedFolders, ...toolFlags(),
+        signal: controller.signal, streamedText: () => streamed,
+        runHelper: (opts) => (source.remote ? remote.runRemoteHelper({ ...opts, provider: source, apiKey: providerKey(source) }) : engine.runHelperTurn({ ...opts, slot })),
         maxToolChars: info.maxToolChars ?? undefined,
+        onAllowCommand: (command) => {
+          const list = store.getSettings().commandAllowlist || [];
+          if (!list.includes(command)) send('settings:changed', store.updateSettings({ commandAllowlist: [...list, command] }));
+        },
       }),
       continuation: () => continuationPrompt(assistant.blocks),
       onText: (delta) => { streamed += delta; emit({ type: 'text', delta }); },
       onThought: (delta) => emit({ type: 'thought', delta }),
-    });
+    };
+    try {
+      thread.history = await runTurnWith(source, turn);
+    } catch (err) {
+      // Fallback: the chosen source failed before saying anything.
+      const fallback = sourceById(settings.fallbackSource);
+      if (!fallback || streamed || controller.signal.aborted || sameSource(fallback, source)) throw err;
+      emit({ type: 'text', delta: `*${sourceLabel(source)} failed (${String(err?.message || err).slice(0, 160)}). Answering with ${sourceLabel(fallback)} instead.*\n\n` });
+      source = fallback;
+      assistant.model = sourceLabel(source);
+      thread.history = await runTurnWith(source, turn);
+    }
     if (controller.signal.aborted) assistant.stopped = true;
   } catch (err) {
     assistant.error = err?.message || String(err);
@@ -423,9 +732,75 @@ function askUser(info, signal, threadId) {
   });
 }
 
+// ---- media for the Library: short-lived links to files in the library ----
+const mediaTokens = new Map(); // token -> { file, expires }
+function mediaUrl(file) {
+  const token = crypto.randomBytes(12).toString('hex');
+  mediaTokens.set(token, { file, expires: Date.now() + 30 * 60 * 1000 });
+  return `scorpion://app/media/${token}/${encodeURIComponent(path.basename(file))}`;
+}
+const MEDIA_TYPES = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.ogv': 'video/ogg',
+  '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.opus': 'audio/opus', '.flac': 'audio/flac', '.wav': 'audio/wav' };
+// Serves a library file with Range support, so videos can seek.
+function serveMedia(request, token) {
+  const t = mediaTokens.get(token);
+  if (!t || t.expires < Date.now()) return new Response('Gone', { status: 410 });
+  const size = fs.statSync(t.file).size;
+  const type = MEDIA_TYPES[path.extname(t.file).toLowerCase()] || 'application/octet-stream';
+  const m = /bytes=(\d*)-(\d*)/.exec(request.headers.get('range') || '');
+  if (!m) return new Response(Readable.toWeb(fs.createReadStream(t.file)), { status: 200, headers: { 'Content-Type': type, 'Content-Length': String(size), 'Accept-Ranges': 'bytes' } });
+  const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+  const end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+  if (start >= size) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } });
+  return new Response(Readable.toWeb(fs.createReadStream(t.file, { start, end })), {
+    status: 206, headers: { 'Content-Type': type, 'Content-Length': String(end - start + 1), 'Content-Range': `bytes ${start}-${end}/${size}`, 'Accept-Ranges': 'bytes' },
+  });
+}
+
+// Videos and music are decoded by the window (Chromium plays them); the
+// library asks for a few frames or 16 kHz sample windows and waits.
+const decodeWaiters = new Map();
+function decodeInWindow(kind, file) {
+  if (!win || win.isDestroyed()) return Promise.reject(new Error('Videos and music need the Scorpion window open'));
+  const id = crypto.randomBytes(8).toString('hex');
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { decodeWaiters.delete(id); reject(new Error('Decoding took too long')); }, 120000);
+    decodeWaiters.set(id, (res) => { clearTimeout(timer); res.error ? reject(new Error(res.error)) : resolve(res); });
+    send('library:decode', { id, kind, url: mediaUrl(file) });
+  });
+}
+
 // What the lock screen may call while Scorpion is locked.
 const LOCK_SCREEN_CHANNELS = new Set(['lock:status', 'lock:face', 'lock:pin', 'camera:use', 'window:fullscreen']);
 let lockStreak = 0; // consecutive frames that showed the owner
+const LIVE_TO_UNLOCK = 0.7; // stricter than DeepFace's plain yes/no, for unlocking
+
+// A camera frame from the page (RGBA) as an image for the face code.
+const frameImage = ({ data, width, height }) => ({ data: data instanceof Uint8Array || data instanceof Uint8ClampedArray ? data : new Uint8Array(data), width, height, channels: 4 });
+
+// Live analysis like DeepFace's stream: expression and liveness on every frame
+// (small models), age and gender (two 500 MB models) at most every 3 seconds
+// for the largest face, reused for the frames in between.
+let liveDemo = { at: 0, box: null, age: null, gender: null };
+async function describeLive(img, seen) {
+  if (!seen.length) return seen;
+  const st = insights.insightsStatus();
+  const main = seen.reduce((a, b) => (b.box[2] * b.box[3] > a.box[2] * a.box[3] ? b : a));
+  const out = await insights.describeFaces(img, seen, { demography: false });
+  if (st.demography.installed) {
+    if (Date.now() - liveDemo.at > 3000 || !liveDemo.box || faces.boxOverlap(liveDemo.box, main.box) < 0.3) {
+      const [d] = await insights.describeFaces(img, [main], { live: false });
+      // Same face as before: average with earlier samples, so one odd frame
+      // (light, angle, blur) doesn't flip the answer.
+      const same = liveDemo.box && faces.boxOverlap(liveDemo.box, main.box) >= 0.3 && liveDemo.gender && d.gender;
+      const scores = same ? Object.fromEntries(Object.entries(d.gender.scores).map(([k, v]) => [k, liveDemo.gender.scores[k] * 0.6 + v * 0.4])) : d.gender?.scores;
+      const gender = scores ? (([label, score]) => ({ label, score, scores }))(Object.entries(scores).reduce((x, y) => (y[1] > x[1] ? y : x))) : null;
+      liveDemo = { at: Date.now(), box: main.box, age: same && d.age != null ? Math.round(liveDemo.age * 0.6 + d.age * 0.4) : d.age, gender };
+    }
+    for (const f of out) if (faces.boxOverlap(f.box, liveDemo.box) >= 0.3) Object.assign(f, { age: liveDemo.age, gender: liveDemo.gender });
+  }
+  return out;
+}
 
 // Folders allowed until Scorpion quits ("Allow" without "Always allow").
 const sessionFolders = new Set();
@@ -467,10 +842,10 @@ async function askFolderAccess({ folder, name, summary }, signal) {
   return { folder };
 }
 
-async function chatSend({ threadId, text, spoken = false, speaker = null }) {
+async function chatSend({ threadId, text, spoken = false, speaker = null, mood = null }) {
   const thread = store.getThread(threadId);
   if (!thread) throw new Error('Chat not found');
-  const result = await runAgentTurn({ thread, text, approve: askUser, interactive: true, spoken, speaker });
+  const result = await runAgentTurn({ thread, text, approve: askUser, interactive: true, spoken, speaker, mood });
   return { ok: !result.error };
 }
 
@@ -508,6 +883,137 @@ async function runScheduled(schedule, reason) {
   return result;
 }
 
+// Scorpion stays in the tray when closed while it has background work:
+// scheduled agents, check-ins or the phone (Telegram) connection.
+function keepsRunning() {
+  const s = store.getSettings();
+  return scheduler.hasEnabledSchedules() || Boolean(s.heartbeatEnabled) || Boolean(s.telegram?.enabled);
+}
+
+// Dreaming: once a day, while the computer sits idle and a model is already
+// loaded, turn what the user said recently into lasting memories.
+let dreaming = false;
+async function runDream({ force = false } = {}) {
+  const s = store.getSettings();
+  if (dreaming || lock.isLocked()) return null;
+  // Dreams read your chats unattended, so they only use a model on this
+  // computer (or a server on your own network), never a cloud service.
+  const chosen = activeSource();
+  const src = chosen.remote && remote.isLocalUrl(chosen.baseUrl) ? chosen : { id: 'local', remote: false };
+  const ready = src.remote || engine.isChatReady();
+  if (!force && (!ready || !dreamDue(s, { last: dreamState().last, idleSeconds: powerMonitor.getSystemIdleTime(), busy: running.size > 0 }))) return null;
+  if (!s.memoryEnabled) throw new Error('Turn on memory first (Settings → General → Memory).');
+  if (!src.remote && !s.chatModel) throw new Error('Dreaming needs a model on this computer (Models) or a server on your own network.');
+  dreaming = true;
+  try {
+    if (!src.remote && !engine.isChatReady()) await loadChat();
+    const entry = await dream({ memory, complete: (req) => completeWith(src, req), skipThreads: [s.heartbeatThreadId].filter(Boolean) });
+    if (entry.added.length) send('memory:changed');
+    return entry;
+  } finally {
+    dreaming = false;
+  }
+}
+
+// Check-ins (heartbeat): review HEARTBEAT.md, notify only when something
+// needs the user. An all-clear (HEARTBEAT_OK) is removed from the chat again.
+let heartbeatBusy = false;
+async function runHeartbeat({ force = false } = {}) {
+  const s = store.getSettings();
+  const checklist = persona.getChecklist();
+  if (heartbeatBusy || !checklist.trim() || lock.isLocked()) return null;
+  if (!force && (running.size || !persona.heartbeatDue(s, { lastRun: persona.heartbeatState().lastRun, checklist }))) return null;
+  heartbeatBusy = true;
+  try {
+    let thread = s.heartbeatThreadId && store.getThread(s.heartbeatThreadId);
+    if (!thread) {
+      thread = store.createThread();
+      thread.title = 'Check-ins';
+      store.saveThread(thread);
+      store.updateSettings({ heartbeatThreadId: thread.id });
+      send('threads:changed');
+    }
+    const before = { messages: thread.messages.length, history: thread.history };
+    const result = await runAgentTurn({ thread, text: persona.heartbeatPrompt(checklist), displayText: 'Check-in', approve: async () => false, mode: 'build' });
+    const ok = !result.error && persona.isHeartbeatOk(result.text);
+    persona.recordHeartbeat(result.error ? 'error' : ok ? 'ok' : 'alert');
+    if (ok) {
+      thread.messages.length = before.messages;
+      thread.history = before.history;
+      store.saveThread(thread);
+    } else if (Notification.isSupported()) {
+      const n = new Notification({ title: result.error ? 'Check-in failed' : 'Scorpion check-in', body: (result.error || result.text).replace(/[#*`>_]/g, '').trim().slice(0, 180), silent: false });
+      n.on('click', () => { showWindow(); send('open-thread', thread.id); });
+      n.show();
+    }
+    send('threads:changed');
+    return { ok, text: result.text, error: result.error };
+  } finally {
+    heartbeatBusy = false;
+  }
+}
+
+// ---------- Scorpion as the Windows desktop ----------
+// What Windows runs at sign-in when Scorpion is this account's desktop.
+function shellCommand() {
+  const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+  return app.isPackaged ? `"${exe}" --shell` : `"${exe}" "${APP_ROOT}" --shell`;
+}
+async function desktopStatus() {
+  if (process.platform !== 'win32') return { supported: false };
+  const userShell = await winctl.getUserShell().catch(() => null);
+  const exe = (process.env.PORTABLE_EXECUTABLE_FILE || process.execPath).toLowerCase();
+  return { supported: true, mode: desktop.shellMode(), userShell, isScorpion: Boolean(userShell && userShell.toLowerCase().includes(exe)), packaged: app.isPackaged, command: shellCommand() };
+}
+
+// Program icons for the taskbar, once per program.
+const icons = new Map();
+async function fileIcon(exe) {
+  if (!exe) return null;
+  if (!icons.has(exe)) icons.set(exe, await app.getFileIcon(exe, { size: 'normal' }).then((i) => i.toDataURL()).catch(() => null));
+  return icons.get(exe);
+}
+
+// A folder for the Files screen; no folder means "This PC" (the drives).
+function listFolder(dir) {
+  if (!dir) {
+    const drives = [];
+    for (let c = 67; c <= 90; c++) { const d = `${String.fromCharCode(c)}:\\`; if (fs.existsSync(d)) drives.push({ name: d, path: d, dir: true }); }
+    const home = os.homedir();
+    const places = ['Desktop', 'Documents', 'Downloads', 'Pictures', 'Music', 'Videos'].map((n) => ({ name: n, path: path.join(home, n), dir: true })).filter((p) => fs.existsSync(p.path));
+    return { dir: null, parent: null, items: [...places, ...drives] };
+  }
+  const items = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    let st = null;
+    try { st = fs.statSync(p); } catch { /* no access */ }
+    if (!st) continue;
+    items.push({ name: e.name, path: p, dir: st.isDirectory(), size: st.isDirectory() ? null : st.size, modified: st.mtimeMs, hidden: e.name.startsWith('.') || /^(desktop\.ini|thumbs\.db|\$recycle\.bin|system volume information)$/i.test(e.name) });
+  }
+  items.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  const parent = path.dirname(dir);
+  return { dir, parent: parent === dir ? '' : parent, items };
+}
+
+// Folders open in Scorpion's Files screen while it is the desktop, otherwise in
+// File Explorer.
+function openFolder(p) {
+  if (desktop.shellMode() === 'shell') showView('files', { dir: p });
+  else shell.openPath(p);
+}
+
+// The taskbar's power menu: what the user picked, done right away (as in the
+// Windows Start menu; programs can still stop a restart to save work).
+async function powerAction(action) {
+  if (action === 'lock' || action === 'sleep') return winctl.systemControl(action);
+  if (action === 'signout') return winctl.signOut();
+  if (action === 'restart' || action === 'shutdown') return winctl.runPs(`shutdown.exe ${action === 'restart' ? '/r' : '/s'} /t 0`);
+  if (action === 'explorer') { await desktop.stopShell(); return winctl.explorerRunning().then((on) => on || winctl.startExplorer()); }
+  if (action === 'end-preview') return desktop.stopShell();
+  throw new Error('Unknown power action');
+}
+
 function registerIpc() {
   const h = (channel, fn) => ipcMain.handle(channel, (_e, arg) => {
     if (lock.isLocked() && !LOCK_SCREEN_CHANNELS.has(channel)) throw new Error('Scorpion is locked');
@@ -515,6 +1021,187 @@ function registerIpc() {
   });
 
   h('app:state', state);
+  // ---- skills ----
+  h('skills:list', () => skills.listSkills());
+  h('skills:get', (name) => skills.getSkill(name));
+  h('skills:save', (input) => { skills.saveSkill(input || {}); return skills.listSkills(); });
+  h('skills:delete', (name) => { skills.deleteSkill(name); return skills.listSkills(); });
+  h('skills:undo', (name) => { skills.undoSkill(name); return skills.listSkills(); });
+  h('skills:enable', ({ name, on }) => { skills.setSkillEnabled(name, on); return skills.listSkills(); });
+  h('skills:import', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Choose a skill folder (with a SKILL.md) or a folder of skills', properties: ['openDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return { imported: [], skills: skills.listSkills() };
+    return { imported: skills.importSkills(r.filePaths[0]), skills: skills.listSkills() };
+  });
+  h('skills:openFolder', () => shell.openPath(skills.skillsFolder()));
+  // ---- personality and check-ins ----
+  h('persona:get', () => ({ soul: persona.getSoul(), checklist: persona.getChecklist(), heartbeat: persona.heartbeatState() }));
+  h('persona:saveSoul', (text) => persona.saveSoul(text));
+  h('persona:saveChecklist', (text) => persona.saveChecklist(text));
+  h('persona:checkNow', () => runHeartbeat({ force: true }));
+  // ---- dreaming and standing intents ----
+  h('memory:dreams', () => dreamState());
+  h('memory:dreamNow', () => runDream({ force: true }));
+  h('intents:list', () => memory.listIntents());
+  h('intents:delete', (id) => { memory.cancelIntent(id); return memory.listIntents(); });
+  // ---- model sources ----
+  h('sources:presets', () => remote.PRESETS);
+  h('sources:save', ({ provider, key }) => {
+    const s = store.getSettings();
+    const list = s.providers || [];
+    const preset = remote.PRESETS[provider.kind] || remote.PRESETS.custom;
+    const clean = {
+      id: provider.id || store.newId(),
+      kind: remote.PRESETS[provider.kind] ? provider.kind : 'custom',
+      name: String(provider.name || preset.name).slice(0, 60),
+      baseUrl: String(provider.baseUrl || preset.baseUrl).trim(),
+      model: String(provider.model || '').trim(),
+      contextSize: Math.max(2048, Number(provider.contextSize) || 32768),
+    };
+    if (!/^https?:\/\//.test(clean.baseUrl)) throw new Error('The server address must start with http:// or https://');
+    if (key !== undefined && key !== null) secrets.setSecret(`provider:${clean.id}`, key); // '' removes it
+    const next = list.some((p) => p.id === clean.id) ? list.map((p) => (p.id === clean.id ? clean : p)) : [...list, clean];
+    send('settings:changed', store.updateSettings({ providers: next }));
+    return sourcesView();
+  });
+  h('sources:delete', (id) => {
+    const s = store.getSettings();
+    secrets.setSecret(`provider:${id}`, null);
+    send('settings:changed', store.updateSettings({
+      providers: (s.providers || []).filter((p) => p.id !== id),
+      chatSource: s.chatSource === id ? 'local' : s.chatSource,
+      fallbackSource: s.fallbackSource === id ? null : s.fallbackSource,
+    }));
+    return sourcesView();
+  });
+  h('sources:models', async ({ id, provider, key }) => {
+    const p = id ? sourceById(id) : provider;
+    if (!p) throw new Error('Unknown source');
+    return remote.listRemoteModels(p, key || (id ? providerKey(p) : null));
+  });
+  // ---- phone (Telegram) ----
+  h('telegram:status', () => telegramView());
+  h('telegram:save', async ({ token, enabled }) => {
+    if (token !== undefined && token !== null) {
+      const t = String(token).trim();
+      if (t && !/^\d+:[\w-]{30,}$/.test(t)) throw new Error('That doesn\'t look like a bot token. It looks like 123456789:ABCdef… (from @BotFather).');
+      secrets.setSecret('telegram:token', t);
+    }
+    if (enabled !== undefined) updateTelegram({ enabled: Boolean(enabled) });
+    ensureTrayHint();
+    return startTelegram();
+  });
+  h('telegram:approve', (chatId) => {
+    const t = tgSettings();
+    const p = t.pending.find((x) => x.chatId === chatId);
+    if (!p) throw new Error('That request is gone');
+    updateTelegram({ pending: t.pending.filter((x) => x !== p), allowed: [...t.allowed.filter((a) => a.chatId !== chatId), { chatId, name: p.name, username: p.username, threadId: null }] });
+    tg?.send(chatId, 'You are approved. Ask me anything.').catch(() => {});
+    return telegramView();
+  });
+  h('telegram:deny', (chatId) => { updateTelegram({ pending: tgSettings().pending.filter((x) => x.chatId !== chatId) }); return telegramView(); });
+  h('telegram:remove', (chatId) => { updateTelegram({ allowed: tgSettings().allowed.filter((a) => a.chatId !== chatId) }); return telegramView(); });
+  // ---- the agent's browser ----
+  h('browser:show', () => { browser().show(); return true; });
+  h('browser:close', () => { agentBrowser?.close(); return true; });
+  h('browser:clear', async () => { await browser().clearData(); return true; });
+  // ---- MCP tool servers ----
+  h('mcp:list', () => mcpView());
+  h('mcp:save', async ({ server, env, headers }) => {
+    const list = store.getSettings().mcpServers || [];
+    const clean = {
+      id: server.id || store.newId(),
+      name: String(server.name || '').trim().slice(0, 40),
+      transport: ['stdio', 'http', 'sse'].includes(server.transport) ? server.transport : 'stdio',
+      command: String(server.command || '').trim(),
+      args: String(server.args || '').trim(),
+      url: String(server.url || '').trim(),
+      enabled: server.enabled !== false,
+      trusted: Boolean(server.trusted),
+    };
+    if (!clean.name) throw new Error('Give the server a name');
+    if (clean.transport === 'stdio' && !clean.command) throw new Error('Enter the command that starts the server (for example npx)');
+    if (clean.transport !== 'stdio' && !/^https?:\/\//.test(clean.url)) throw new Error('Enter the server URL (http:// or https://)');
+    if (list.some((s) => s.id !== clean.id && mcp.serverKey(s.name) === mcp.serverKey(clean.name))) throw new Error('Another server already has that name');
+    if (env !== undefined && env !== null) secrets.setSecret(`mcp:${clean.id}:env`, env);
+    if (headers !== undefined && headers !== null) secrets.setSecret(`mcp:${clean.id}:headers`, headers);
+    const next = list.some((s) => s.id === clean.id) ? list.map((s) => (s.id === clean.id ? clean : s)) : [...list, clean];
+    send('settings:changed', store.updateSettings({ mcpServers: next }));
+    if (clean.enabled) await connectMcp(clean); else await mcp.disconnect(clean.id);
+    return mcpView();
+  });
+  h('mcp:delete', async (id) => {
+    await mcp.disconnect(id);
+    secrets.setSecret(`mcp:${id}:env`, null);
+    secrets.setSecret(`mcp:${id}:headers`, null);
+    send('settings:changed', store.updateSettings({ mcpServers: (store.getSettings().mcpServers || []).filter((s) => s.id !== id) }));
+    return mcpView();
+  });
+  h('mcp:reconnect', async (id) => {
+    const s = (store.getSettings().mcpServers || []).find((x) => x.id === id);
+    if (s) await connectMcp(s);
+    return mcpView();
+  });
+  h('sources:test', async (id) => {
+    const p = sourceById(id);
+    if (!p?.remote) throw new Error('Unknown source');
+    const started = Date.now();
+    const text = await remote.remoteComplete({ provider: p, apiKey: providerKey(p), systemPrompt: 'Reply with one short sentence.', text: 'Say hello.', maxTokens: 30, signal: AbortSignal.timeout(60000) });
+    return { text: text.trim().slice(0, 200), ms: Date.now() - started };
+  });
+  // ---- media library ----
+  h('library:status', () => library.libraryStatus());
+  h('library:addFolder', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Choose a folder of photos, videos or music', properties: ['openDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return library.libraryStatus();
+    library.addFolder(r.filePaths[0]);
+    library.scan().catch(() => {});
+    return library.libraryStatus();
+  });
+  h('library:removeFolder', (folder) => { library.removeFolder(folder); return library.libraryStatus(); });
+  h('library:setFeatures', (patch) => { library.setFeatures(patch); library.scan().catch(() => {}); return library.libraryStatus(); });
+  // Downloads what the enabled features need (CLIP, the audio model, faces).
+  h('library:install', async () => {
+    const f = library.libraryStatus().features;
+    const keys = [];
+    if (f.objects || f.landmarks || f.video) keys.push('clip');
+    if (f.music) keys.push('audio');
+    const facesNeeded = f.faces && !faces.faceStatus().installed;
+    const total = keys.reduce((n, k) => n + (mediaModelStatus()[k].installed ? 0 : mediaModelStatus()[k].bytes), 0) + (facesNeeded ? faces.FACE_DOWNLOAD_BYTES : 0);
+    let base = 0;
+    await installMediaModels(keys, (p) => { if (!p.done) send('library:download', { loaded: base + p.loaded, total }); });
+    base = total - (facesNeeded ? faces.FACE_DOWNLOAD_BYTES : 0);
+    if (facesNeeded) await faces.installFaces((p) => { if (!p.done) send('library:download', { loaded: base + p.loaded, total }); });
+    send('library:download', { done: true });
+    library.scan().catch(() => {});
+    return library.libraryStatus();
+  });
+  h('library:uninstallModels', async () => { library.stopScan(); await uninstallMediaModels(); return library.libraryStatus(); });
+  h('library:scan', () => { library.scan().catch(() => {}); return library.libraryStatus(); });
+  h('library:pause', (on) => { library.pauseScan(on); return library.libraryStatus(); });
+  h('library:clear', () => { library.stopScan(); library.clearLibrary(); return library.libraryStatus(); });
+  h('library:search', (q) => library.searchLibrary(q || {}));
+  h('library:tags', () => library.tagCloud());
+  h('library:clusters', async () => Promise.all(library.faceClusters().slice(0, 40).map(async (c) => ({
+    id: c.id, count: c.count, photos: c.photos,
+    faces: await Promise.all(c.sample.slice(0, 3).map((s) => library.faceCrop(s.path, s.box).catch(() => null))),
+  }))));
+  h('library:nameCluster', ({ id, name }) => library.nameCluster(id, name));
+  h('library:mediaUrl', (file) => (library.itemInfo(file) ? mediaUrl(file) : null));
+  h('library:open', (file) => (library.itemInfo(file) ? shell.openPath(file) : 'Not in the library'));
+  h('library:reveal', (file) => { if (library.itemInfo(file)) shell.showItemInFolder(file); return true; });
+  h('library:setLimits', (patch) => { library.setLimits(patch || {}); return library.libraryStatus(); });
+  h('library:resetFeature', (key) => { const s = library.resetFeature(key); library.scan().catch(() => {}); return s; });
+  h('library:share', (mode) => library.setShareMode(mode));
+  h('library:shareAll', () => library.shareAll());
+  h('library:unshareAll', () => library.unshareAll());
+  // Face corrections (crops are made here; the page only shows them).
+  const withCrops = (list) => Promise.all(list.map(async (f) => ({ ...f, crop: await library.faceCrop(f.path, f.box).catch(() => null) })));
+  h('library:personFaces', (id) => withCrops(library.personFaces(id).slice(0, 80)));
+  h('library:unassigned', () => withCrops(library.unassignedFaces(60)));
+  h('library:setFace', (req) => library.setFace(req));
+  h('library:mergePeople', ({ from, into }) => library.mergePeople(from, into));
+  h('library:decoded', (res) => { decodeWaiters.get(res?.id)?.(res); decodeWaiters.delete(res?.id); return true; });
   h('faces:install', async () => {
     await faces.installFaces((p) => send('faces:download', p));
     return faces.faceStatus();
@@ -528,15 +1215,31 @@ function registerIpc() {
   h('faces:remove', (id) => { faces.removePerson(id); return faces.faceStatus(); });
   h('faces:rename', ({ id, name }) => { faces.renamePerson(id, name); return faces.faceStatus(); });
   h('faces:setOwner', ({ id, owner }) => { faces.setOwner(id, owner); return faces.faceStatus(); });
-  h('faces:frame', (frame) => faces.analyzeFrame(frame));
+  h('faces:frame', async (frame) => {
+    const img = frameImage(frame);
+    const seen = (await faces.analyzeImage(img)).map(({ print, ...f }) => f);
+    return store.getSettings().faceInsightsLive === false ? seen : describeLive(img, seen);
+  });
+  h('insights:install', async (pack) => {
+    await insights.installInsights(pack, (p) => send('insights:download', { ...p, pack }));
+    return insights.insightsStatus();
+  });
+  h('insights:uninstall', (pack) => insights.uninstallInsights(pack));
   // Face lock. While locked only these work (see LOCK_SCREEN_CHANNELS).
   h('lock:status', () => lock.lockStatus());
   h('lock:face', async (frame) => {
-    const seen = await faces.analyzeFrame(frame);
-    const owner = seen.find((f) => f.person?.owner && f.person.similarity >= faces.UNLOCK);
+    const img = frameImage(frame);
+    const seen = await faces.analyzeImage(img);
+    let owner = seen.find((f) => f.person?.owner && f.person.similarity >= faces.UNLOCK);
+    // Liveness (from DeepFace): a printed photo or a screen of the owner doesn't unlock.
+    let fake = false;
+    if (owner && store.getSettings().lockLiveness !== false && insights.insightsStatus().insights.installed) {
+      const live = await insights.liveness(img, owner.box);
+      if (!live || !live.real || live.score < LIVE_TO_UNLOCK) { fake = true; owner = null; }
+    }
     lockStreak = owner ? lockStreak + 1 : 0;
     if (lockStreak >= 2) { lock.unlock(); lockStreak = 0; }
-    return { unlocked: !lock.isLocked(), faces: seen.map((f) => ({ box: f.box, known: Boolean(f.person?.owner) })) };
+    return { unlocked: !lock.isLocked(), fake, faces: seen.map((f) => ({ box: f.box, known: Boolean(f.person?.owner) })) };
   });
   h('lock:pin', (pin) => { if (lock.checkPin(pin)) lock.unlock(); return { unlocked: !lock.isLocked() }; });
   h('lock:setPin', (pin) => { lock.setPin(pin); return lock.lockStatus(); });
@@ -550,7 +1253,7 @@ function registerIpc() {
     await voice.installVoice((p) => send('voice:download', p));
     return voice.voiceStatus();
   });
-  h('voice:warm', () => { voice.warmUp(store.getSettings().voiceLanguage); return true; });
+  h('voice:warm', () => { voice.warmUp(store.getSettings().voiceLanguage); warmUp({ spoken: true }).catch(() => {}); return true; });
   h('voice:installLanguage', async (lang) => {
     await voice.installLanguageVoice(lang, (p) => send('voice:download', { ...p, lang }));
     return voice.voiceStatus();
@@ -598,6 +1301,7 @@ function registerIpc() {
       await engine.unloadChatModel();
       loadChat().catch(() => {});
     }
+    ensureTrayHint(); // check-ins turned on: keep running in the tray when closed
     return next;
   });
 
@@ -634,18 +1338,108 @@ function registerIpc() {
     return file;
   });
 
-  h('workspace:choose', async () => {
+  h('workspace:choose', async (threadId) => {
     const r = await dialog.showOpenDialog(win, { title: 'Choose the folder Scorpion may work in', properties: ['openDirectory', 'createDirectory'] });
     if (r.canceled || !r.filePaths[0]) return store.getSettings();
-    return store.updateSettings({ workspace: r.filePaths[0] });
+    const w = workspaces.addWorkspace(r.filePaths[0]);
+    const next = workspaces.useWorkspace(w.id);
+    const t = typeof threadId === 'string' && store.getThread(threadId);
+    if (t) { t.workspace = w.path; store.saveThread(t); }
+    return next;
   });
-  h('workspace:open', () => { const w = store.getSettings().workspace; if (w) shell.openPath(w); });
+  // ---- workspaces and the home screen ----
+  h('workspaces:list', () => workspaces.listWorkspaces());
+  h('workspaces:add', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Add a workspace folder', properties: ['openDirectory', 'createDirectory'] });
+    if (!r.canceled && r.filePaths[0]) workspaces.addWorkspace(r.filePaths[0]);
+    return workspaces.listWorkspaces();
+  });
+  h('workspaces:use', (id) => { send('settings:changed', workspaces.useWorkspace(id)); return workspaces.listWorkspaces(); });
+  h('workspaces:rename', ({ id, name }) => { workspaces.renameWorkspace(id, name); return workspaces.listWorkspaces(); });
+  h('workspaces:remove', (id) => { workspaces.removeWorkspace(id); send('settings:changed', store.getSettings()); return workspaces.listWorkspaces(); });
+  h('workspaces:open', (id) => { const w = workspaces.findWorkspace(id); if (w) openFolder(w.path); return true; });
+  h('home:get', () => ({
+    workspaces: workspaces.listWorkspaces(),
+    activity: recentActivity({ threads: store.listThreads(), getThread: store.getThread, schedules: scheduler.listSchedules(), dreams: dreamState(), heartbeat: persona.heartbeatState(), library: library.libraryStatus() }),
+  }));
+  h('workspace:open', (threadId) => { const t = typeof threadId === 'string' && store.getThread(threadId); const w = (t && t.workspace) || store.getSettings().workspace; if (w) openFolder(w); });
+
+  // ---- Scorpion as the Windows desktop: taskbar, Apps, Files ----
+  h('shell:status', desktopStatus);
+  h('shell:preview', async (on) => { if (on) await desktop.startShell('preview'); else if (desktop.shellMode() === 'preview') await desktop.stopShell(); return desktopStatus(); });
+  // Only ever from the user's own button in Settings → Desktop.
+  h('shell:setDesktop', async (on) => { await winctl.setUserShell(on ? shellCommand() : null); return desktopStatus(); });
+  h('shell:windows', async () => {
+    const own = new Set(BrowserWindow.getAllWindows().filter((w) => w !== win).map((w) => w.getNativeWindowHandle().readBigInt64LE().toString()));
+    const list = (await winctl.listWindows({ kept: true })).filter((w) => !own.has(w.hwnd));
+    for (const w of list) w.icon = await fileIcon(w.exe);
+    return list;
+  });
+  h('shell:window', ({ hwnd, action }) => winctl.windowByHandle(String(hwnd), action));
+  h('shell:tray', () => desktop.trayStatus());
+  h('shell:show', (view) => { showView(view || 'home'); return true; });
+  // The keyboard's volume keys (each step is 2%).
+  h('shell:volume', (action) => winctl.runPsKept(`(New-Object -ComObject WScript.Shell).SendKeys([char]${action === 'up' ? 175 : action === 'down' ? 174 : 173})`));
+  h('shell:power', powerAction);
+  // Menus open as native menus so they can reach above the thin taskbar.
+  ipcMain.handle('shell:menu', (e, { kind, hwnd, title } = {}) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const item = (label, click) => ({ label, click: () => Promise.resolve(click()).catch((err) => console.error(err)) });
+    let template;
+    if (kind === 'window') {
+      template = [{ label: title || 'Window', enabled: false }, { type: 'separator' },
+        item('Switch to', () => winctl.windowByHandle(String(hwnd), 'focus')),
+        item('Minimize', () => winctl.windowByHandle(String(hwnd), 'minimize')),
+        item('Close window', () => winctl.windowByHandle(String(hwnd), 'close'))];
+    } else if (kind === 'clock') {
+      template = [{ label: new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }), enabled: false }, { type: 'separator' },
+        item('Date and time settings', () => winctl.openSettings('time'))];
+    } else {
+      const preview = desktop.shellMode() === 'preview';
+      template = [item('Lock', () => powerAction('lock')), item('Sleep', () => powerAction('sleep')),
+        ...(preview ? [] : [item('Sign out', () => powerAction('signout')), item('Restart', () => powerAction('restart')), item('Shut down', () => powerAction('shutdown'))]),
+        { type: 'separator' },
+        preview ? item('End the preview', () => powerAction('end-preview')) : item('Switch to the Windows desktop', () => powerAction('explorer'))];
+    }
+    Menu.buildFromTemplate(template).popup({ window: owner });
+    return true;
+  });
+  h('shell:apps', async (fresh) => (await winctl.listApps({ fresh: Boolean(fresh) })).map((a) => ({ id: a.id, name: a.name })));
+  h('shell:launch', async ({ id, name }) => winctl.launchApp({ id, name }, { viaExplorer: desktop.shellMode() !== 'shell' }));
+  h('files:list', (dir) => listFolder(dir));
+  h('files:open', (p) => winctl.openPath(p));
+  h('files:newFolder', ({ dir, name }) => { const p = path.join(dir, String(name || 'New folder').replace(/[\\/:*?"<>|]/g, '').trim() || 'New folder'); if (fs.existsSync(p)) throw new Error(`${path.basename(p)} already exists`); fs.mkdirSync(p); return p; });
+  h('files:rename', ({ from, name }) => {
+    const clean = String(name || '').replace(/[\\/:*?"<>|]/g, '').trim();
+    if (!clean) throw new Error('Type a name');
+    const to = path.join(path.dirname(from), clean);
+    if (fs.existsSync(to)) throw new Error(`${clean} already exists`);
+    fs.renameSync(from, to);
+    return to;
+  });
+  h('files:paste', ({ items, dir, move }) => {
+    const done = [];
+    for (const from of items || []) {
+      if (move) {
+        const to = path.join(dir, path.basename(from));
+        if (fs.existsSync(to)) throw new Error(`${path.basename(from)} already exists here`);
+        try { fs.renameSync(from, to); } catch { winctl.copyPath(from, to); fs.rmSync(from, { recursive: true }); }
+        done.push(to);
+      } else done.push(winctl.copyPath(from, dir));
+    }
+    return done;
+  });
+  h('files:recycle', async (items) => { for (const p of items || []) await winctl.recyclePath(p); return true; });
 
   h('thread:create', (opts) => {
     const { agentId, mode } = typeof opts === 'string' ? { agentId: opts } : opts || {};
     const t = store.createThread();
     if (agentId) t.agentId = agents.getAgent(agentId).id;
-    if (['chat', 'plan', 'build'].includes(mode)) t.mode = mode;
+    if (['chat', 'plan', 'build'].includes(mode)) { t.mode = mode; if (mode !== store.getSettings().lastChatMode) store.updateSettings({ lastChatMode: mode }); }
+    // The chat starts in the given workspace (which becomes the active one), or the active one.
+    const wsId = typeof opts === 'object' && opts ? opts.workspaceId : null;
+    if (wsId) send('settings:changed', workspaces.useWorkspace(wsId));
+    t.workspace = store.getSettings().workspace || null;
     store.saveThread(t);
     return t;
   });
@@ -687,7 +1481,7 @@ function registerIpc() {
 
   h('chat:send', chatSend);
   h('chat:stop', (threadId) => running.get(threadId)?.abort());
-  h('chat:approve', ({ id, approved }) => { approvals.get(id)?.(Boolean(approved)); approvals.delete(id); });
+  h('chat:approve', ({ id, approved }) => { approvals.get(id)?.(approved === 'always' ? 'always' : Boolean(approved)); approvals.delete(id); });
 
   h('docs:add', async () => {
     const r = await dialog.showOpenDialog(win, {
@@ -733,26 +1527,58 @@ function allowMicAndGestureCamera() {
 
 // Starting minimized at login only makes sense if something is scheduled.
 function ensureTrayHint() {
-  if (scheduler.hasEnabledSchedules()) ensureTray();
+  if (keepsRunning()) ensureTray();
 }
 
 app.whenReady().then(async () => {
   store.initStore(app.getPath('userData'));
+  desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView });
+  winctl.setFolderOpener((dir, select) => { showView('files', { dir, select }); return dir; });
+  // Three starts as the desktop within three minutes means Scorpion keeps
+  // failing: bring up the Windows desktop instead, so the PC stays usable.
+  const asDesktop = shellLaunch && !desktop.recordShellStart();
+  if (shellLaunch && !asDesktop) winctl.startExplorer().catch(() => {});
+  if (asDesktop) process.on('uncaughtException', (err) => { console.error(err); winctl.explorerRunning().then((on) => on || winctl.startExplorer()).catch(() => {}); });
+  if (!asDesktop) desktop.recoverWorkArea().catch(() => {});
+  secrets.initSecrets(safeStorage);
   voice.initVoice(store.paths.models);
   faces.initFaces(store.paths.models, app.getPath('userData'));
+  insights.initFaceInsights(store.paths.models);
+  initMediaModels(store.paths.models);
+  library.initLibrary(app.getPath('userData'), {
+    decode: decodeInWindow,
+    busy: () => running.size > 0, // the scan waits while Scorpion is answering
+    onStatus: (s) => send('library:status', s),
+    onLowCpu: (on) => { setLowCpu(on); faces.setFaceThreads(on ? 1 : 0); },
+  });
+  library.watchFolders(true); // new, changed and deleted files are picked up live
   lock.initLock(app.getPath('userData'));
+  skills.initSkills(path.join(APP_ROOT, 'src', 'skills'), app.getPath('userData'));
+  persona.initPersona(app.getPath('userData'));
+  setInterval(() => runHeartbeat().catch(() => {}), 60_000); // check-ins, when due
+  setInterval(() => runDream().catch(() => {}), 10 * 60_000); // dreaming, once a day when idle
   gestures.initGestures(store.paths.models);
   allowMicAndGestureCamera();
   await autoSelectModels();
   serveApp();
   registerIpc();
   createWindow();
+  if (asDesktop) await desktop.startShell('shell').catch((err) => { console.error(err); return winctl.startExplorer(); });
   scheduler.startScheduler(runScheduled);
+  for (const server of store.getSettings().mcpServers || []) if (server.enabled) connectMcp(server).catch(() => {});
+  startTelegram().catch(() => {});
+  // Pick up new and changed files a little after start-up.
+  setTimeout(() => { if (library.libraryStatus().folders.length) library.scan().catch(() => {}); }, 20000);
   ensureTrayHint();
-  if (startHidden && !scheduler.hasEnabledSchedules()) showWindow();
+  if (startHidden && !keepsRunning()) showWindow();
   app.on('activate', showWindow);
 });
 
 app.on('second-instance', showWindow);
-app.on('window-all-closed', () => { if (process.platform !== 'darwin' && !scheduler.hasEnabledSchedules()) app.quit(); });
-app.on('before-quit', () => { quitting = true; scheduler.stopScheduler(); for (const c of running.values()) c.abort(); engine.shutdown(); });
+app.on('window-all-closed', () => { if (process.platform !== 'darwin' && !keepsRunning() && !desktop.shellMode()) app.quit(); });
+app.on('before-quit', (e) => {
+  // Leaving the desktop: put the screen area back (and the Windows desktop,
+  // when Scorpion was it) before quitting.
+  if (desktop.shellMode()) { e.preventDefault(); for (const w of BrowserWindow.getAllWindows()) w.hide(); desktop.stopShell().finally(() => app.quit()); return; }
+  winctl.stopPsKept();
+  quitting = true; scheduler.stopScheduler(); for (const m of mcp.allStatus()) mcp.disconnect(m.id); tg?.stop(); for (const c of running.values()) c.abort(); engine.shutdown(); });
