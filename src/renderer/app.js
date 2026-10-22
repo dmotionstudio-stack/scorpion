@@ -7,6 +7,8 @@ import { initLibrary } from './library-ui.js';
 import { initExtras } from './extras-ui.js';
 import { initHome } from './home-ui.js';
 import { initDesktop } from './desktop-ui.js';
+import { initOrbSystem } from './orb-system.js';
+import { initHandControl } from './hand-control.js';
 import { HandTracker, cameraError } from './gestures.js';
 
 const api = window.scorpion;
@@ -80,6 +82,8 @@ function setView(view) {
 let extras = null; // Skills, Personality, Connections and the Memory page extras
 let home = null; // the home screen (home-ui.js)
 let desktopUi = null; // Apps, Files and Settings → Windows desktop (desktop-ui.js)
+let orbSys = null; // the orb as the whole system (orb-system.js)
+let hands = null; // hand gestures on Scorpion's own screens (hand-control.js)
 
 // ---------- top bar ----------
 function renderTopbar() {
@@ -462,7 +466,7 @@ function renderSchedules() {
         <button class="btn small" data-del-sched="${s.id}">Delete</button>
       </div></div>`;
   }).join('') || '<div class="muted">No scheduled agents yet.</div>';
-  $('#open-at-login').checked = !!S.openAtLogin;
+  $('#open-at-login').checked = S.loginStart !== 'off';
   renderScheduleEditor();
 }
 
@@ -534,7 +538,7 @@ function voiceReady() {
   setView('settings');
   return false;
 }
-const speaksReplies = () => Boolean(S.voice?.installed && (S.settings.voiceSpeak || V.talk));
+const speaksReplies = () => Boolean(S.voice?.installed && (S.settings.voiceSpeak || V.talk || V.wakeTurn));
 
 function voiceOnChatEvent(ev) {
   if (ev.threadId !== S.thread?.id) return;
@@ -551,7 +555,7 @@ function voiceOnChatEvent(ev) {
     speaker.flush(); // continues the conversation once the reply is spoken
   }
 }
-speaker.onIdle = () => { if (V.replyDone) talkTurn(); };
+speaker.onIdle = () => { if (V.replyDone) { V.wakeTurn = false; talkTurn(); orbSys?.scheduleWake(300); } };
 speaker.onChange = () => renderVoiceButtons();
 
 function renderVoiceButtons() {
@@ -617,6 +621,7 @@ async function talkTurn() {
     if (!V.talk) return;
     if (!text) { talkTurn(); return; } // silence or noise: keep listening
     if (/^(stop|goodbye|bye|end (the )?conversation)[.!]?$/i.test(text.trim())) { stopTalk(); toast('Conversation ended.'); return; }
+    if (orbSys?.handleSpoken(text)) { setTimeout(talkTurn, 400); return; }
     sendMessage(text, { spoken: true });
   });
 }
@@ -631,6 +636,7 @@ function startTalk() {
     setView('models');
     return false;
   }
+  orbSys?.stopWake(); // the conversation takes the microphone over
   V.talk = true;
   renderVoiceButtons();
   talkTurn();
@@ -659,6 +665,7 @@ function stopTalk() {
   recorder.stop();
   speaker.stop();
   renderVoiceButtons();
+  orbSys?.scheduleWake(600); // back to listening for "Scorpion", if that's on
 }
 
 // ---- languages ----
@@ -734,6 +741,7 @@ function renderVoiceSettings() {
 function wireVoice() {
   $('#mic').onclick = async () => {
     if (V.talk) return;
+    if (orbSys?.wakeListening) orbSys.stopWake();
     if (recorder.active) { heard(recorder.stop()); return; } // stop early: use what was said
     if (!voiceReady()) return;
     speaker.stop();
@@ -817,12 +825,15 @@ const accentColor = () => {
   const [r, g, b] = accentProbe.getImageData(0, 0, 1, 1).data;
   return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 };
-const STATE_LABEL = { standby: 'Standby', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking' };
+const STATE_LABEL = { standby: 'Standby', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', acting: 'Working', waiting: 'Waiting for you' };
 
-async function openInteract() {
+// opts.desktop: the orb as the Windows desktop (under the taskbar, quiet until
+// spoken to); opts.signin: just signed in, so greet the person.
+async function openInteract(opts = {}) {
   if (IX.open) return;
   IX.open = true;
-  api.setFullScreen(true);
+  const desktop = opts?.desktop === true;
+  if (!desktop) api.setFullScreen(true);
   $('#interact').classList.remove('hidden');
   $('#interact').dataset.state = '';
   $('#ix-you').textContent = '';
@@ -830,20 +841,32 @@ async function openInteract() {
   renderInteract();
   IX.timer = setInterval(tickInteract, 50);
   try {
+    // The orb's screen: the 3D orb sphere, or the constellation launcher (a map
+    // of your projects), chosen in Settings → General → Orb look.
+    const look = S.settings.orbLook === 'constellation' ? 'constellation' : 'classic';
+    if (IX.orb && IX.look !== look) { IX.orb.dispose(); IX.orb = null; IX.loading = null; }
     if (!IX.orb) {
+      IX.look = look;
       // Full detail needs a graphics card with its own memory (or a Mac).
       const strong = IS_MAC || (S.hardware?.dedicatedVram || 0) >= 2 * 1024 ** 3;
-      IX.loading ??= import('./orb.js').then(({ createOrb }) => createOrb($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low' }));
+      IX.loading ??= look === 'classic'
+        ? import('./orb.js').then(({ createOrb }) => createOrb($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low' }))
+        : import('./constellation.js').then(({ createConstellation }) => createConstellation($('#ix-stage'), { accent: accentColor(), api, toast, errText, settings: () => S.settings }));
       IX.orb = await IX.loading;
+      $('#interact').classList.toggle('ix-constellation', look === 'constellation');
     } else {
       IX.orb.setAccent(accentColor());
     }
     if (IX.open) IX.orb.start();
   } catch (err) {
-    toast(`The 3D view couldn't start: ${errText(err)}`, 8000);
+    toast(`The orb's view couldn't start: ${errText(err)}`, 8000);
   }
-  if (S.voice?.installed && IX.open) startTalk();
-  else if (IX.open) $('#ix-input').focus();
+  if (!IX.open) return;
+  orbSys?.onOpen({ desktop, signin: opts?.signin === true });
+  // Hand tracking is always on in the orb (unless turned off with G).
+  if (S.settings.handsAlwaysOn !== false) startGestures();
+  if (S.voice?.installed && !desktop) startTalk();
+  else $('#ix-input').focus();
 }
 
 function closeInteract() {
@@ -853,16 +876,21 @@ function closeInteract() {
   clearInterval(IX.timer);
   IX.orb?.stop();
   if (V.talk) stopTalk();
-  stopGestures();
+  if (!handIsMouse()) stopGestures(); // as the mouse, hands keep working everywhere
   stopFace();
+  orbSys?.onClose();
   $('#interact').classList.add('hidden');
   $('#input').focus();
 }
 
 function interactState() {
   if (speaker.playing) return 'speaking';
-  if (V.transcribing || (S.thread && S.running.has(S.thread.id))) return 'thinking';
-  if (recorder.active) return 'listening';
+  const extra = orbSys?.state(); // waiting for a yes/no, or working on the PC
+  if (extra) return extra;
+  // Listening for the wake word looks like standby: it isn't a conversation.
+  const waking = orbSys?.wakeListening;
+  if ((V.transcribing && !waking) || (S.thread && S.running.has(S.thread.id))) return 'thinking';
+  if (recorder.active && !waking) return 'listening';
   return 'standby';
 }
 
@@ -886,7 +914,7 @@ function renderInteract() {
   const d = V.download;
   $('#ix-state').textContent = d
     ? `Downloading voice ${Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100))}%`
-    : state === 'standby' && V.talk ? 'Ready' : STATE_LABEL[state] || 'Standby';
+    : state === 'standby' && V.talk ? 'Ready' : state === 'standby' && orbSys?.wakeListening ? 'Say “Scorpion”' : STATE_LABEL[state] || 'Standby';
   $('#ix-model').textContent = S.engine?.chatModelName ? `· ${S.engine.chatModelName}` : '';
   if (document.activeElement !== $('#ix-lang')) $('#ix-lang').innerHTML = languageOptions();
   if (V.langDownload) $('#ix-state').textContent = `Downloading voice ${Math.min(100, Math.round(((V.langDownload.loaded || 0) / (V.langDownload.total || 1)) * 100))}%`;
@@ -902,12 +930,14 @@ function renderInteract() {
   $('#ix-voice').textContent = voiceOn ? 'Voice on' : 'Voice off';
 }
 
-// Hand gestures (gestures.js): pinch and move one hand to spin the orb, pinch
-// both and spread or close them to zoom. The camera is on only while GESTURES
-// is on and goes off when Interact closes. The hand model is a one-time ~8 MB
-// download; the tracker loads the first time gestures are switched on.
+// Hand tracking (gestures.js) in the orb: always on while the orb is open
+// (G or Settings → General turns it off, remembered), shown over the orb as a
+// live hand display. The orb, the apps inside it (orb-system.js) and the
+// places that open over it (hand-control.js) share it. It pauses while
+// Scorpion is minimized. The hand model is a one-time ~8 MB download.
 const G = { on: false, phase: '', tracker: null, error: '', download: null, hands: 0, mode: 'idle' };
-const GESTURE_MODE = { idle: 'Open hand', spin: 'Spin', zoom: 'Zoom' };
+const GESTURE_MODE = { spin: 'Pinch', zoom: 'Zoom' };
+const GESTURE_POSE = { point: 'Pointing', two: 'Scroll', open: 'Open hand', fist: 'Fist', thumbUp: 'Thumb up', thumbDown: 'Thumb down', other: 'Hand' };
 const GESTURE_MODEL_URL = '/gestures/hand_landmarker.task';
 
 async function startGestures() {
@@ -951,6 +981,9 @@ async function startGestures() {
     if (!G.on) { G.tracker.stopCamera(); api.gesturesCamera(false); return; }
     G.phase = 'on';
     renderGestures();
+    if (document.hidden) pauseGestures(); // started in the tray: wait until Scorpion is on screen
+    // The first time gestures come on, show what they are.
+    if (!G.guideShown) { G.guideShown = true; orbSys?.toggleGuide(true); }
   } catch (err) {
     if (G.on) stopGestures(errText(err));
   }
@@ -958,19 +991,87 @@ async function startGestures() {
 
 function stopGestures(error = '') {
   if (!G.on && !G.error && !error) return;
-  Object.assign(G, { on: false, phase: '', error });
+  Object.assign(G, { on: false, phase: '', error, paused: false });
   G.tracker?.stopCamera();
   api.gesturesCamera(false);
+  hands?.hideCursor();
+  orbSys?.drawHands([]); // the hand display empties
   renderGestures();
 }
 
-function onGestureFrame(r) {
-  if (r.rotate) IX.orb?.rotateBy(...r.rotate);
-  if (r.zoom) IX.orb?.zoomBy(r.zoom);
-  if (r.hands !== G.hands || r.mode !== G.mode) {
-    Object.assign(G, { hands: r.hands, mode: r.mode });
+// The G key, the orb's Gestures button, Off and the Settings switch: on or off,
+// remembered.
+async function toggleHands(on = !G.on) {
+  S.settings = await api.updateSettings({ handsAlwaysOn: on });
+  if (on) startGestures(); else stopGestures();
+  $('#hands-always').checked = on;
+}
+
+// Off screen (minimized, in the tray): the camera rests until Scorpion is back.
+function pauseGestures() {
+  if (!G.on || G.paused || G.phase !== 'on') return;
+  G.paused = true;
+  G.tracker.stopCamera();
+  api.gesturesCamera(false);
+  hands?.hideCursor();
+  renderGestures();
+}
+async function resumeGestures() {
+  if (!G.paused) return;
+  G.paused = false;
+  if (!G.on) return;
+  try {
+    if (!(await api.gesturesCamera(true))) throw Object.assign(new Error('Camera access denied'), { name: 'NotAllowedError' });
+    await G.tracker.startCamera();
+  } catch (err) { stopGestures(cameraError(err)); return; }
+  renderGestures();
+}
+document.addEventListener('visibilitychange', () => (document.hidden ? pauseGestures() : resumeGestures()));
+
+// Windows, with "Hand gestures replace the mouse" on (Settings → General).
+const handIsMouse = () => !IS_MAC && navigator.userAgent.includes('Windows') && S.settings.handMouse !== false;
+
+function onGestureFrame(r, landmarks) {
+  if (IX.open) orbSys?.drawHands(landmarks, r);
+  if (handIsMouse()) { handAsMouse(r); return; }
+  // The orb (with the apps inside it) when it is on screen, else Scorpion's
+  // own screens. What the orb doesn't use turns it.
+  const used = (IX.open && !orbSys?.away ? orbSys?.handleGesture(r) : hands?.handle(r)) || {};
+  if (r.rotate && !used.rotate) IX.orb?.rotateBy(...r.rotate);
+  if (r.zoom && !used.zoom) IX.orb?.zoomBy(r.zoom);
+  if (r.hands !== G.hands || r.mode !== G.mode || r.pose !== G.pose) {
+    Object.assign(G, { hands: r.hands, mode: r.mode, pose: r.pose });
     renderGestures();
   }
+}
+
+// The hand as the mouse, everywhere: the index finger moves the real pointer
+// over the whole screen; pinch clicks, thumb + middle right-clicks, fist then
+// open double-clicks, a held pinch drags, two fingers scroll, both hands zoom
+// (Ctrl + wheel). Sweeps, push, thumbs and signs keep their meanings, and a
+// held fist pauses it all.
+const HM = { lastMove: 0, wheel: 0, zoom: 0, smooth: null };
+function handAsMouse(r) {
+  if (r.hold === 'fist') orbSys?.togglePause();
+  if (orbSys?.paused) return;
+  const g = { ...r, hold: r.hold === 'fist' ? null : r.hold };
+  if (IX.open && !orbSys.away) orbSys.handleGlobals(g); else hands?.handleGlobals(g);
+  const send = (cmd) => api.handMouse(cmd).catch(() => {});
+  if (r.pointer) {
+    // A little extra steadiness: the whole screen magnifies a shaking finger.
+    HM.smooth = HM.smooth ? { x: HM.smooth.x + (r.pointer.x - HM.smooth.x) * 0.5, y: HM.smooth.y + (r.pointer.y - HM.smooth.y) * 0.5 } : r.pointer;
+    if (performance.now() - HM.lastMove > 16) { HM.lastMove = performance.now(); send({ move: HM.smooth }); }
+  } else if (!r.hands) HM.smooth = null;
+  if (r.tap) { hands?.flash('Click'); send({ click: 'left', at: HM.smooth || r.tap }); }
+  if (r.rightTap) { hands?.flash('Right-click'); send({ click: 'right', at: HM.smooth || r.rightTap }); }
+  if (r.bloom) { hands?.flash('Double-click'); send({ click: 'double', at: HM.smooth || r.bloom }); }
+  if (r.drag) send({ drag: r.drag.phase, at: r.drag });
+  if (r.scroll) { HM.wheel += r.scroll; const n = Math.trunc(HM.wheel); if (n) { HM.wheel -= n; send({ wheel: n }); } }
+  if (r.mode === 'zoom' && r.zoom) {
+    HM.zoom -= Math.log(r.zoom) * 8;
+    const n = Math.trunc(HM.zoom);
+    if (n) { HM.zoom -= n; hands?.flash(n > 0 ? 'Zoom in' : 'Zoom out'); send({ wheel: n, ctrl: true }); }
+  } else HM.zoom = 0;
 }
 
 function renderGestures() {
@@ -978,15 +1079,15 @@ function renderGestures() {
   btn.setAttribute('aria-pressed', String(G.on));
   btn.textContent = G.on ? 'Gestures on' : 'Gestures off';
   const cam = $('#ix-cam');
-  cam.classList.toggle('hidden', !G.on && !G.error);
+  cam.classList.toggle('hidden', (!G.on && !G.error) || G.paused);
   cam.toggleAttribute('data-error', Boolean(G.error));
   const d = G.download;
   $('#ix-cam-status').textContent = G.error
     || (G.phase === 'download' ? `DOWNLOADING HAND MODEL ${Math.min(100, Math.round(((d?.loaded || 0) / (d?.total || 1)) * 100))}%`
       : G.phase === 'loading' ? 'Loading hand tracker…'
         : G.phase === 'camera' ? 'Starting camera…'
-          : G.hands ? `${G.hands} HAND${G.hands > 1 ? 'S' : ''} · ${GESTURE_MODE[G.mode]}`
-            : 'NO HANDS · PINCH + MOVE TO SPIN · PINCH BOTH HANDS AND SPREAD TO ZOOM');
+          : G.hands ? `${G.hands} HAND${G.hands > 1 ? 'S' : ''} · ${GESTURE_MODE[G.mode] || GESTURE_POSE[G.pose] || 'Hand'}`
+            : 'NO HANDS · SHOW ONE HAND TO THE CAMERA · ? FOR THE GESTURE GUIDE');
 }
 
 // Markdown reads badly as a caption: keep the words.
@@ -1014,7 +1115,14 @@ function wireInteract() {
   $('#ix-zoom-in').onclick = () => IX.orb?.zoomIn();
   $('#ix-zoom-out').onclick = () => IX.orb?.zoomOut();
   $('#ix-reset').onclick = () => IX.orb?.resetView();
-  $('#ix-gestures').onclick = () => (G.on ? stopGestures() : startGestures());
+  $('#ix-gestures').onclick = () => toggleHands();
+  $('#hand-off').onclick = () => toggleHands(false);
+  $('#hands-always').onchange = (e) => toggleHands(e.target.checked);
+  $('#hand-mouse').onchange = async (e) => {
+    S.settings = await api.updateSettings({ handMouse: e.target.checked });
+    // As the mouse, tracking runs everywhere; otherwise only in the orb.
+    if (e.target.checked && S.settings.handsAlwaysOn !== false) startGestures(); else if (!e.target.checked && !IX.open) stopGestures();
+  };
   api.onGesturesDownload((p) => {
     if (G.phase !== 'download') return;
     G.download = p.done ? null : p;
@@ -1031,9 +1139,22 @@ function wireInteract() {
   };
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); IX.open ? closeInteract() : openInteract(); return; }
-    if (!IX.open) return;
-    if (e.key === 'Escape') { e.preventDefault(); closeInteract(); return; }
+    if (!IX.open || orbSys?.away) return;
+    if (e.key === 'Escape' && IX.orb?.handleEscape?.()) { e.preventDefault(); return; }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      // Full mode: Esc twice leaves full screen (main.js), so one Esc closes
+      // the orb only if a second doesn't follow.
+      if (S.fullMode) {
+        if (IX.escTimer) { clearTimeout(IX.escTimer); IX.escTimer = 0; return; }
+        IX.escTimer = setTimeout(() => { IX.escTimer = 0; closeInteract(); }, 450);
+        return;
+      }
+      closeInteract();
+      return;
+    }
     if (e.target.closest?.('input, textarea, select')) return;
+    if (IX.orb?.takesTyping && e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.altKey && !e.metaKey) return;
     if (e.key === ' ') {
       e.preventDefault();
       // Talking over Scorpion interrupts it, like in a real conversation.
@@ -1043,6 +1164,7 @@ function wireInteract() {
     else if (e.key === 'r' || e.key === 'R') IX.orb?.resetView();
     else if (e.key === 'g' || e.key === 'G') $('#ix-gestures').click();
     else if (e.key === 'f' || e.key === 'F') $('#ix-face').click();
+    else if (e.key === '?' || e.key === 'h' || e.key === 'H') orbSys?.toggleGuide();
     else if (e.key === '+' || e.key === '=') IX.orb?.zoomIn();
     else if (e.key === '-' || e.key === '_') IX.orb?.zoomOut();
   });
@@ -1160,9 +1282,13 @@ function setSpeaker(person, count) {
     renderInteract();
     // Greet someone new to the conversation, once per Interact session.
     const last = FX.greeted.get(person.id) || 0;
-    if (V.talk && !speaker.playing && Date.now() - last > 10 * 60 * 1000) {
+    if ((V.talk || FX.greetOnce) && !speaker.playing && Date.now() - last > 10 * 60 * 1000) {
       FX.greeted.set(person.id, Date.now());
-      speaker.say((GREETING[currentLanguage().id] || 'Hi') + ' ' + person.name + '!');
+      const custom = FX.greetOnce?.(person);
+      const signin = Boolean(FX.greetOnce);
+      FX.greetOnce = null;
+      speaker.say(custom || (GREETING[currentLanguage().id] || 'Hi') + ' ' + person.name + '!');
+      if (signin) orbSys?.greeted();
     }
   } else if (!person && before) renderInteract();
 }
@@ -1402,6 +1528,13 @@ function renderSettings() {
   renderOnlineBadge();
   const full = S.settings.fileAccess === 'full';
   $('#file-access').value = full ? 'full' : 'ask';
+  $('#login-start').value = S.loginStart || 'off';
+  $('#full-at-start').checked = S.settings.fullModeAtStart !== false;
+  $('#orb-look').value = S.settings.orbLook === 'constellation' ? 'constellation' : 'classic';
+  if (document.activeElement !== $('#const-shortcut')) $('#const-shortcut').value = S.settings.constellationShortcut ?? 'Super+Space';
+  for (const box of document.querySelectorAll('[data-const]')) box.checked = { recommend: true, motion: true, large: false, contrast: false, ...(S.settings.constellation || {}) }[box.dataset.const];
+  $('#hands-always').checked = S.settings.handsAlwaysOn !== false;
+  $('#hand-mouse').checked = S.settings.handMouse !== false;
   $('#file-access-hint').textContent = full
     ? 'Scorpion can read, create, edit and move files anywhere on this computer. Changes and commands still ask first unless Auto-approve is on. System folders (Windows, Program Files) stay read-only.'
     : 'Scorpion works in the workspace folder and asks before touching files anywhere else.';
@@ -1522,7 +1655,9 @@ async function sendMessage(text, { spoken = false } = {}) {
 function applyChatEvent(ev) {
   voiceOnChatEvent(ev);
   if (ev.type === 'done') home?.refresh(); // recent activity
-  if (ev.type === 'approval') { S.pending.set(ev.id, ev); }
+  if (ev.type === 'approval') { S.pending.set(ev.id, ev); if (ev.threadId === S.thread?.id) orbSys?.onApproval(ev); }
+  if (ev.type === 'tool-result') orbSys?.clearApproval(ev.id);
+  if (ev.type === 'done' && ev.threadId === S.thread?.id) orbSys?.clearApproval();
   if (ev.type === 'memory') { reloadMemories(); return; }
   if (ev.type === 'done') {
     S.running.delete(ev.threadId);
@@ -1597,17 +1732,53 @@ function wire() {
   wireInteract();
   wirePeople();
   const libraryView = initLibrary({ api, $, esc, toast, errText, gb });
-  desktopUi = initDesktop({ api, $, esc, toast, errText, setView });
+  desktopUi = initDesktop({ api, $, esc, toast, errText, setView, S });
+  orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse });
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
+  hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
-  api.onNavView?.(({ view, dir, select }) => {
-    if (view === 'apps') desktopUi.showApps();
-    else if (view === 'files') desktopUi.showFiles(dir, select);
-    else if (view === 'library') $('#open-library').click();
-    else if (VIEWS.includes(view)) setView(view);
-  });
+  const onNav = ({ view, dir, select, signin, search }) => {
+    if (view === 'orb' && search) {
+      const ready = () => IX.orb?.focusSearch?.();
+      if (IX.open) { orbSys.returnToOrb(); ready(); } else openInteract({ desktop: true, signin }).then(ready);
+      return;
+    }
+    // The desktop: the orb (Settings → Windows desktop), or the Home page.
+    if (view === 'orb') { if (IX.open) orbSys.returnToOrb(); else openInteract({ desktop: true, signin }); return; }
+    if (view === 'desktop') {
+      if (S.settings.orbDesktop === false) { if (orbSys.desktop) closeInteract(); setView('home'); }
+      else if (IX.open) orbSys.returnToOrb();
+      else openInteract({ desktop: true, signin });
+      return;
+    }
+    const open = () => {
+      if (view === 'apps') desktopUi.showApps();
+      else if (view === 'files') desktopUi.showFiles(dir, select);
+      else if (view === 'library') $('#open-library').click();
+      else if (VIEWS.includes(view)) setView(view);
+    };
+    // Over the orb desktop the place opens on top of it; "back" returns.
+    if (IX.open && !orbSys.away) orbSys.leave(open); else open();
+  };
+  api.onNavView?.(onNav);
+  // Anything asked for before this page was ready (the desktop at sign-in).
+  api.navReady?.().then((pending) => pending && onNav(pending)).catch(() => {});
   extras = initExtras({ api, $, esc, toast, errText, S, setView, reloadMemories, renderAll: () => renderAll() });
   $('#open-library').onclick = () => { setView('library'); libraryView.show(); };
+  // The sidebar can be hidden for more room (Ctrl+B); remembered on this computer.
+  const setSidebar = (hidden) => {
+    document.body.classList.toggle('sidebar-hidden', hidden);
+    const b = $('#sidebar-toggle');
+    b.setAttribute('aria-pressed', String(hidden));
+    b.title = hidden ? 'Show the sidebar (Ctrl+B)' : 'Hide the sidebar for more room (Ctrl+B)';
+    b.setAttribute('aria-label', hidden ? 'Show the sidebar' : 'Hide the sidebar');
+    try { localStorage.setItem('sidebarHidden', hidden ? '1' : ''); } catch { /* not kept */ }
+  };
+  let sidebarHidden = false;
+  try { sidebarHidden = localStorage.getItem('sidebarHidden') === '1'; } catch { /* default */ }
+  setSidebar(sidebarHidden);
+  $('#sidebar-toggle').onclick = () => setSidebar(!document.body.classList.contains('sidebar-hidden'));
+  document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'b' && !IX.open) { e.preventDefault(); $('#sidebar-toggle').click(); } });
 
   $('#messages').onclick = (e) => {
     const s = e.target.closest('.suggestion');
@@ -1808,13 +1979,29 @@ function wire() {
     try { await api.saveSchedule({ ...s, enabled: e.target.checked }); } catch (err) { toast(errText(err)); }
     reloadSchedules();
   });
-  $('#open-at-login').onchange = async (e) => { S.openAtLogin = await api.setOpenAtLogin(e.target.checked); };
+  // Scheduled agents need Scorpion running: this starts it in the tray (or keeps "Open the orb").
+  $('#open-at-login').onchange = async (e) => { S.loginStart = await api.setLoginStart(e.target.checked ? (S.loginStart === 'orb' ? 'orb' : 'tray') : 'off'); $('#login-start').value = S.loginStart; };
+  $('#orb-look').onchange = async (e) => { S.settings = await api.updateSettings({ orbLook: e.target.value }); if (IX.open) toast('The new look shows the next time the orb opens.'); };
+  $('#const-shortcut-save').onclick = async () => {
+    const got = await api.constShortcut($('#const-shortcut').value.trim());
+    $('#const-shortcut-now').textContent = got ? `In use: ${got}` : 'That combination is taken by Windows or another app.';
+  };
+  for (const box of document.querySelectorAll('[data-const]')) {
+    box.onchange = async () => { S.settings = await api.updateSettings({ constellation: { recommend: true, motion: true, large: false, contrast: false, ...(S.settings.constellation || {}), [box.dataset.const]: box.checked } }); IX.orb?.refreshSettings?.(); };
+  }
+  $('#full-at-start').onchange = async (e) => { S.settings = await api.updateSettings({ fullModeAtStart: e.target.checked }); };
+  $('#full-now').onclick = () => api.setFullMode(true);
+  api.onFullMode?.((on) => {
+    S.fullMode = on;
+    if (on) toast('Full screen. To leave: Ctrl+Esc, or press Esc twice. F11 brings it back.', 6000);
+  });
+  $('#login-start').onchange = async (e) => { S.loginStart = await api.setLoginStart(e.target.value); e.target.value = S.loginStart; $('#open-at-login').checked = S.loginStart !== 'off'; };
 
   api.onThreadsChanged(async () => { S.threads = (await api.state()).threads; renderThreads(); });
   api.onSchedulesChanged(reloadSchedules);
   api.onOpenThread((id) => openThread(id));
   // The agent can set the workspace or allow a folder mid-chat.
-  api.onSettingsChanged((settings) => { S.settings = settings; renderTopbar(); renderModes(); renderSettings(); renderVoiceButtons(); });
+  api.onSettingsChanged((settings) => { S.settings = settings; renderTopbar(); renderModes(); renderSettings(); renderVoiceButtons(); IX.orb?.refreshSettings?.(); });
   const setOnline = async (on) => {
     S.settings = await api.updateSettings({ online: on });
     renderSettings();
@@ -1867,4 +2054,10 @@ await refresh();
 if (S.threads[0]) await openThread(S.threads[0].id);
 setView('home');
 if (S.settings.chatModel && !S.engine?.chatModel) api.loadModel().catch(() => {});
+// The hand as the mouse: tracking runs whenever Scorpion is open.
+if (handIsMouse() && S.settings.handsAlwaysOn !== false) startGestures();
+// Room at the bottom for Scorpion's taskbar while Scorpion is full screen.
+const setInset = (px) => document.documentElement.style.setProperty('--tb-h', `${px || 0}px`);
+setInset(S.taskbarInset);
+api.onTaskbarInset?.(setInset);
 if (S.voice?.installed && S.settings.voiceSpeak) api.warmVoice();

@@ -43,6 +43,21 @@ const DEFAULT_SETTINGS = {
   voiceName: 'af_heart', // Kokoro voice id
   voiceSpeed: 1, // 0.5–2
   voiceLanguage: 'en', // the language you speak and Scorpion replies in (see voice.js LANGUAGES)
+  fullModeAtStart: true, // Scorpion starts in full mode: the whole screen, over every window (Ctrl+Esc or Esc twice to leave, F11 back)
+  constellationShortcut: 'Super+Space', // summons the constellation launcher (falls back to Win+Alt+Space)
+  // The constellation map: recommendations (relevance ordering and suggestions), motion, bigger items, high contrast.
+  constellation: { recommend: true, motion: true, large: false, contrast: false },
+  handMouse: true, // Windows: hand tracking runs whenever Scorpion is open and the hand moves the real mouse everywhere
+  // Scorpion's taskbar: pinned apps ({ id, name }: a Start menu app or a program path), app
+  // names or icons only, centered, size, look, and which tray items show.
+  taskbar: { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', show: { network: true, battery: true, volume: true, clock: true } },
+  taskbarAlwaysOn: true, // Windows: the holographic taskbar in place of the Windows one whenever Scorpion runs
+  orbDesktop: true, // as the Windows desktop, show the orb (false: the Home page)
+  orbGreet: true, // at sign-in, the orb greets the person it recognizes (face recognition installed)
+  orbSpeakEvents: false, // the orb says PC events out loud (battery, downloads, schedules, check-ins)
+  orbApps: true, // while the orb is open, apps open inside it (framed in its panel)
+  handsAlwaysOn: true, // hand gestures run whenever Scorpion is on screen (camera; off while minimized)
+  wakeWord: false, // saying "Scorpion" starts listening while the orb is open
 };
 
 let dataDir = null;

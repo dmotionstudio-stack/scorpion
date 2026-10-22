@@ -1,27 +1,105 @@
-/* The taskbar shown while Scorpion is the Windows desktop (or previewing it). */
+/* Scorpion's taskbar (as the Windows desktop, or in place of the Windows one),
+   in the orb's holographic look: see-through glass tinted with the theme's
+   accent, a glowing edge, scan lines, a slow light sweep, and glowing
+   monospace text and icons. The window itself is transparent (shell.js). */
+html, body.taskbar { background: transparent; }
 body.taskbar {
-  height: 48px; overflow: hidden; display: flex; align-items: center; gap: 6px; padding: 0 8px;
-  background: var(--panel); border-top: 1px solid var(--border); user-select: none; font-size: 12px;
+  --glow: color-mix(in srgb, var(--accent) 70%, transparent);
+  --faint: color-mix(in srgb, var(--accent) 22%, transparent);
+  height: 48px; overflow: hidden; display: flex; align-items: center; gap: 6px; padding: 0 8px; position: relative;
+  background:
+    linear-gradient(to top, rgba(0, 0, 0, .82), rgba(0, 0, 0, .55)),
+    linear-gradient(to top, color-mix(in srgb, var(--accent) 10%, transparent), transparent);
+  color: var(--accent); user-select: none; font: 12px/1.2 Consolas, "Courier New", monospace; letter-spacing: .06em;
+  text-shadow: 0 0 6px var(--glow);
 }
-.tb-start, .tb-tray { display: flex; align-items: center; gap: 2px; flex: none; }
+/* The glowing top edge, brighter in the middle like the orb's scan rings. */
+body.taskbar::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent) 20%, var(--accent) 80%, transparent);
+  box-shadow: 0 0 8px var(--accent), 0 0 18px var(--glow);
+}
+/* Scan lines over everything, and a slow band of light crossing the bar. */
+.tb-scan { position: absolute; inset: 0; pointer-events: none; z-index: 2; opacity: .35;
+  background: repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(0, 0, 0, .35) 2px, rgba(0, 0, 0, .35) 3px); }
+.tb-sweep { position: absolute; top: 0; bottom: 0; width: 180px; left: -200px; pointer-events: none; z-index: 2;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 16%, transparent), transparent);
+  animation: tb-sweep 9s linear infinite; }
+@keyframes tb-sweep { from { transform: translateX(0); } to { transform: translateX(calc(100vw + 400px)); } }
+@media (prefers-reduced-motion: reduce) { .tb-sweep { display: none; } }
+
+.tb-start, .tb-tray { display: flex; align-items: center; gap: 2px; flex: none; position: relative; z-index: 1; }
 .tb-btn {
-  height: 38px; min-width: 38px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent;
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: default;
+  height: 38px; min-width: 38px; padding: 0 8px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: default; font: inherit; text-shadow: inherit;
+  transition: border-color .12s, background .12s, box-shadow .12s;
 }
-.tb-btn:hover { background: var(--panel-2); }
+.tb-btn:hover { border-color: var(--faint); background: color-mix(in srgb, var(--accent) 8%, transparent); box-shadow: inset 0 0 12px var(--faint); }
 .tb-btn:active { transform: translateY(1px); }
-.tb-logo { width: 26px; height: 26px; }
-.tb-ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* The logo, glowing, inside a slowly turning dashed ring. */
+.tb-home { position: relative; }
+.tb-home::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; border: 1px dashed var(--glow); animation: tb-turn 14s linear infinite; pointer-events: none; }
+@keyframes tb-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tb-home::after { animation: none; } }
+.tb-logo { width: 24px; height: 24px; filter: drop-shadow(0 0 4px var(--glow)); }
+.tb-ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 3px var(--glow)); }
 .tb-fill { fill: currentColor; stroke: none; }
-.tb-windows { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; padding: 0 6px; border-left: 1px solid var(--border); margin-left: 4px; }
-.tb-win { max-width: 200px; min-width: 44px; flex: 0 1 200px; justify-content: flex-start; position: relative; }
+.tb-windows { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; padding: 0 6px; margin-left: 4px; position: relative; z-index: 1;
+  border-left: 1px solid var(--faint); }
+.tb-win { max-width: 200px; min-width: 44px; flex: 0 1 200px; justify-content: flex-start; position: relative; color: color-mix(in srgb, var(--accent) 55%, #fff); }
 .tb-win img, .tb-win .tb-initial { width: 20px; height: 20px; flex: none; }
-.tb-win .tb-initial { border-radius: 5px; background: var(--panel-2); color: var(--accent-text); display: grid; place-items: center; font-weight: 700; font-size: 11px; }
+.tb-win img { filter: drop-shadow(0 0 3px var(--faint)); }
+.tb-win .tb-initial { border-radius: 4px; border: 1px solid var(--glow); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 11px; }
 .tb-win span.tb-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tb-win::after { content: ""; position: absolute; left: 50%; bottom: 2px; width: 6px; height: 3px; border-radius: 2px; background: var(--muted); transform: translateX(-50%); }
-.tb-win.active { background: var(--panel-2); }
-.tb-win.active::after { width: 16px; background: var(--accent); }
-.tb-item { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; color: var(--text); }
-.tb-clock { flex-direction: column; gap: 0; line-height: 1.25; text-align: right; align-items: flex-end; padding: 0 10px; }
-.tb-badge { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--accent); color: var(--accent-text); font-size: 11px; margin-right: 6px; }
-.tb-battery-low { color: var(--danger); }
+.tb-win::after { content: ""; position: absolute; left: 50%; bottom: 2px; width: 6px; height: 2px; border-radius: 2px; background: var(--glow); transform: translateX(-50%); }
+.tb-win.active { border-color: var(--glow); background: color-mix(in srgb, var(--accent) 12%, transparent); color: #fff; box-shadow: inset 0 0 14px var(--faint), 0 0 10px var(--faint); }
+.tb-win.active::after { width: 22px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.tb-item { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; color: inherit; }
+.tb-clock { flex-direction: column; gap: 1px; line-height: 1.15; text-align: right; align-items: flex-end; padding: 0 10px; letter-spacing: .12em; }
+#tb-time { font-size: 13px; color: color-mix(in srgb, var(--accent) 60%, #fff); }
+#tb-date { font-size: 10px; opacity: .75; }
+.tb-battery-low { color: var(--danger); text-shadow: 0 0 6px var(--danger); }
+
+/* Pinned apps and open windows: one area, optionally centered. */
+.tb-apps-area { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 0 6px; margin-left: 4px; position: relative; z-index: 1; border-left: 1px solid var(--faint); overflow: hidden; }
+.tb-apps-area .tb-windows { flex: 0 1 auto; border-left: 0; margin: 0; padding: 0; }
+.tb-pinned { display: flex; align-items: center; gap: 4px; flex: none; }
+.tb-sep { width: 1px; height: 26px; background: var(--faint); flex: none; margin: 0 2px; }
+body.tb-centered .tb-apps-area { justify-content: center; }
+/* Icons only: square buttons, the name in the tooltip. */
+body.tb-icons-only .tb-win { flex: none; min-width: 0; width: 44px; justify-content: center; padding: 0; }
+body.tb-icons-only .tb-win .tb-title { display: none; }
+.tb-pin { flex: none; }
+.tb-pin:not(.running) { color: var(--muted, #aaa); }
+body:not(.tb-icons-only) .tb-pin { max-width: 160px; }
+/* Icons: a little bigger and lifted on hover; a dot under running apps, a bar under the one in front. */
+.tb-win img, .tb-win .tb-initial { transition: transform .15s ease; }
+.tb-win:hover img, .tb-win:hover .tb-initial { transform: translateY(-2px) scale(1.15); }
+.tb-win:not(.running)::after { display: none; }
+.tb-pin.launching img, .tb-pin.launching .tb-initial { animation: tb-launch .6s ease-in-out 2; }
+@keyframes tb-launch { 50% { transform: translateY(-5px); } }
+@media (prefers-reduced-motion: reduce) { .tb-win img, .tb-win .tb-initial { transition: none; } .tb-pin.launching img { animation: none; } }
+/* Sizes */
+body.tb-size-small .tb-win img, body.tb-size-small .tb-win .tb-initial { width: 16px; height: 16px; }
+body.tb-size-small .tb-btn { height: 34px; }
+body.tb-size-small.tb-icons-only .tb-win { width: 36px; }
+body.tb-size-large .tb-win img, body.tb-size-large .tb-win .tb-initial { width: 28px; height: 28px; }
+body.tb-size-large.tb-icons-only .tb-win { width: 48px; }
+body.tb-size-large .tb-logo { width: 30px; height: 30px; }
+/* Looks: holographic (above, the default), neon, glass, solid. */
+body.tb-style-neon { background: linear-gradient(to top, rgba(0, 0, 0, .9), rgba(0, 0, 0, .75)); }
+body.tb-style-neon::before { height: 2px; box-shadow: 0 0 10px var(--accent), 0 0 26px var(--accent), 0 0 46px var(--glow); }
+body.tb-style-neon .tb-scan, body.tb-style-glass .tb-scan, body.tb-style-solid .tb-scan,
+body.tb-style-glass .tb-sweep, body.tb-style-solid .tb-sweep { display: none; }
+body.tb-style-neon .tb-win.active { box-shadow: inset 0 0 14px var(--glow), 0 0 16px var(--glow); }
+body.tb-style-neon .tb-ico, body.tb-style-neon .tb-logo { filter: drop-shadow(0 0 6px var(--accent)); }
+body.tb-style-glass { background: linear-gradient(to top, rgba(28, 28, 34, .72), rgba(44, 44, 52, .55)); color: var(--text, #eee); text-shadow: none; font-family: "Segoe UI", system-ui, sans-serif; letter-spacing: 0; }
+body.tb-style-glass::before { background: rgba(255, 255, 255, .18); box-shadow: none; }
+body.tb-style-glass .tb-ico, body.tb-style-glass .tb-logo, body.tb-style-glass .tb-win img { filter: none; }
+body.tb-style-glass .tb-win { color: var(--text, #eee); }
+body.tb-style-glass .tb-win.active { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .12); box-shadow: none; color: #fff; }
+body.tb-style-solid { background: var(--panel, #17181b); color: var(--text, #eee); text-shadow: none; font-family: "Segoe UI", system-ui, sans-serif; letter-spacing: 0; }
+body.tb-style-solid::before { background: var(--border, #333); box-shadow: none; }
+body.tb-style-solid .tb-ico, body.tb-style-solid .tb-logo, body.tb-style-solid .tb-win img { filter: none; }
+body.tb-style-solid .tb-win { color: var(--text, #eee); }
+body.tb-style-solid .tb-win.active { background: var(--panel-2, #222); border-color: var(--border, #333); box-shadow: none; }

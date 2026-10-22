@@ -581,3 +581,60 @@ test('Scorpion as the desktop: app kinds and the crash-loop guard', async () => 
   assert.equal(desktop.shellMode(), null);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('orb commands: wake word, spoken yes/no, shortcut names', async () => {
+  const { parseWake, parseYesNo, matchShortcut, nextIndex } = await import('../src/renderer/orb-commands.js');
+  assert.deepEqual(parseWake('Scorpion.'), { command: '' });
+  assert.deepEqual(parseWake('Hey Scorpion, open my files!'), { command: 'open my files' });
+  assert.deepEqual(parseWake('Scorpio what time is it'), { command: 'what time is it' });
+  assert.equal(parseWake('the scorpion is an arachnid'), null);
+  assert.equal(parseWake(''), null);
+  assert.equal(parseYesNo('Yes, please.'), true);
+  assert.equal(parseYesNo('Go ahead'), true);
+  assert.equal(parseYesNo("No, don't."), false);
+  assert.equal(parseYesNo('Cancel'), false);
+  assert.equal(parseYesNo('what was that?'), null);
+  const items = [{ id: 'files', label: 'Files', say: ['my files', 'file explorer'] }, { id: 'apps', label: 'Apps' },
+    { id: 'w1', kind: 'window', label: 'Inbox - Outlook', app: 'Outlook' }, { id: 'w2', kind: 'window', label: 'Google Chrome', app: 'chrome' }];
+  assert.equal(matchShortcut('Files', items).item.id, 'files');
+  assert.equal(matchShortcut('Open my files', items).item.id, 'files');
+  assert.equal(matchShortcut('show me the apps please', items).item.id, 'apps');
+  assert.equal(matchShortcut('switch to outlook', items).item.id, 'w1');
+  assert.equal(matchShortcut('open google', items).item.id, 'w2');
+  assert.equal(matchShortcut('outlook', items), null, 'a bare window name could be a question; the model handles it');
+  assert.deepEqual(matchShortcut('Go back', items), { back: true });
+  assert.deepEqual(matchShortcut('close it', items), { back: true });
+  assert.equal(matchShortcut('open the files I worked on yesterday about taxes', items), null);
+  assert.equal(nextIndex(-1, 3, 'right'), 0);
+  assert.equal(nextIndex(2, 3, 'right'), 0);
+  assert.equal(nextIndex(0, 3, 'left'), 2);
+  assert.equal(nextIndex(-1, 3, 'left'), 2);
+  assert.equal(nextIndex(0, 0, 'left'), -1);
+});
+
+test('apps inside the orb: which windows are framed', async () => {
+  const { parseInfo, frameable } = await import('../src/main/orb-frame.js');
+  const line = (o = {}) => ['132456', o.pid ?? '4321', o.cls ?? 'Notepad', o.style ?? String(0x14CF0000), o.ex ?? '256', o.owned ?? '0', o.cloaked ?? '0', o.visible ?? '1', '0', '0', '10 20 810 620', o.title ?? 'notes.txt - Notepad'].join('\t');
+  const info = parseInfo(line());
+  assert.deepEqual([info.hwnd, info.pid, info.cls, info.rect.right, info.title], ['132456', 4321, 'Notepad', 810, 'notes.txt - Notepad']);
+  assert.equal(parseInfo(''), null);
+  assert.equal(frameable(info, { selfPid: 1 }), true);
+  assert.equal(frameable(parseInfo(line({ owned: '1' })), { selfPid: 1 }), false, 'dialogs stay with their app');
+  assert.equal(frameable(parseInfo(line({ style: String(0x94000000) })), { selfPid: 1 }), false, 'no title bar: popups, full-screen games');
+  assert.equal(frameable(parseInfo(line({ ex: String(0x80) })), { selfPid: 1 }), false, 'tool windows');
+  assert.equal(frameable(parseInfo(line({ ex: String(0x8) })), { selfPid: 1 }), false, 'always-on-top windows');
+  assert.equal(frameable(parseInfo(line({ cls: 'Shell_TrayWnd' })), { selfPid: 1 }), false, "Windows' own shell");
+  assert.equal(frameable(parseInfo(line({ pid: '1' })), { selfPid: 1 }), false, "Scorpion's own windows");
+  assert.equal(frameable(parseInfo(line({ cloaked: '1' })), { selfPid: 1 }), false, 'hidden Store apps');
+  assert.equal(frameable(parseInfo(line({ title: '' })), { selfPid: 1 }), false);
+  assert.equal(frameable(info, { selfPid: 1, skip: new Set(['132456']) }), false, 'refused before');
+});
+
+test('the air mouse stays inside the framed app', async () => {
+  const { toPanel } = await import('../src/main/orb-frame.js');
+  const area = { x: 100, y: 200, w: 800, h: 600 };
+  assert.deepEqual(toPanel({ x: 0.5, y: 0.5 }, area), { x: 500, y: 500 });
+  // Far outside the camera's middle: clamped to the panel's edges.
+  assert.deepEqual(toPanel({ x: -1, y: 2 }, area), { x: 100, y: 799 });
+  assert.deepEqual(toPanel({ x: 0.95, y: 0.05 }, area), { x: 899, y: 200 });
+});

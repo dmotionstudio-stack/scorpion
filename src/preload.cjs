@@ -1,6 +1,6 @@
 // The only bridge between the UI and the main process. The renderer gets a
 // fixed list of calls, never Node.js or raw ipcRenderer.
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const invoke = (channel) => (arg) => ipcRenderer.invoke(channel, arg);
 const on = (channel) => (fn) => {
@@ -32,7 +32,7 @@ contextBridge.exposeInMainWorld('scorpion', {
 
   // Scorpion as the Windows desktop: taskbar, Apps and Files.
   shellStatus: invoke('shell:status'),
-  shellPreview: invoke('shell:preview'),
+  shellTaskbar: invoke('shell:taskbar'),
   shellSetDesktop: invoke('shell:setDesktop'),
   shellWindows: invoke('shell:windows'),
   shellWindow: invoke('shell:window'),
@@ -43,6 +43,22 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellMenu: invoke('shell:menu'),
   shellApps: invoke('shell:apps'),
   shellLaunch: invoke('shell:launch'),
+  shellAppIcons: invoke('shell:appIcons'),
+  constGet: invoke('const:get'),
+  constSave: invoke('const:save'),
+  constOpen: invoke('const:open'),
+  constExport: invoke('const:export'),
+  constImport: invoke('const:import'),
+  constPick: invoke('const:pick'),
+  constRecent: invoke('const:recent'),
+  constPathInfo: invoke('const:pathInfo'),
+  constIcon: invoke('const:icon'),
+  constPreview: invoke('const:preview'),
+  constShortcut: invoke('const:shortcut'),
+  // A file dragged in (from File Explorer): its path on disk.
+  pathForFile: (f) => webUtils.getPathForFile(f),
+  shellPin: invoke('shell:pin'),
+  shellPinned: invoke('shell:pinned'),
   filesList: invoke('files:list'),
   filesOpen: invoke('files:open'),
   filesNewFolder: invoke('files:newFolder'),
@@ -50,6 +66,14 @@ contextBridge.exposeInMainWorld('scorpion', {
   filesPaste: invoke('files:paste'),
   filesRecycle: invoke('files:recycle'),
   onNavView: on('nav:view'),
+  navReady: invoke('nav:ready'),
+  pcEvents: invoke('pc:events'),
+  onPcEvent: on('pc:event'),
+  orbFrame: invoke('orb:frame'),
+  orbMouse: invoke('orb:mouse'),
+  handMouse: invoke('hand:mouse'),
+  onTaskbarInset: on('layout:taskbar'),
+  onFrameChanged: on('frame:changed'),
   openWorkspace: invoke('workspace:open'),
 
   createThread: invoke('thread:create'),
@@ -110,7 +134,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   deleteSchedule: invoke('schedules:delete'),
   runSchedule: invoke('schedules:run'),
   chooseFolder: invoke('dialog:folder'),
-  setOpenAtLogin: invoke('app:setOpenAtLogin'),
+  setLoginStart: invoke('app:setLoginStart'),
 
   send: invoke('chat:send'),
   stop: invoke('chat:stop'),
@@ -142,6 +166,8 @@ contextBridge.exposeInMainWorld('scorpion', {
   warmVoice: invoke('voice:warm'),
   installLanguageVoice: invoke('voice:installLanguage'),
   setFullScreen: invoke('window:fullscreen'),
+  setFullMode: invoke('window:fullMode'),
+  onFullMode: on('fullmode:changed'),
   onVoiceDownload: on('voice:download'),
 
   installFaces: invoke('faces:install'),

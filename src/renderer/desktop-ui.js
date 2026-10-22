@@ -11,35 +11,75 @@ const ICON = {
 const KB = 1024;
 const size = (n) => (n == null ? '' : n < KB ? `${n} B` : n < KB ** 2 ? `${(n / KB).toFixed(0)} KB` : n < KB ** 3 ? `${(n / KB ** 2).toFixed(1)} MB` : `${(n / KB ** 3).toFixed(1)} GB`);
 
-export function initDesktop({ api, $, esc, toast, errText, setView }) {
-  const A = { apps: [], query: '' };
+export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
+  const A = { apps: [], icons: {}, query: '' };
   const F = { dir: null, parent: null, items: [], selected: new Set(), clip: null, hidden: false, renaming: null, history: [] };
 
   // ---------- Apps ----------
+  // Every installed app with its own icon: the apps pinned to the taskbar
+  // first, then A to Z in letter sections (a letter bar jumps to one). Search
+  // shows the best matches. Right-click an app to pin it to the taskbar.
+  const letterOf = (name) => { const c = name.trim().charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : '#'; };
+  const pinnedIds = () => new Set((S.settings.taskbar?.pinned || []).map((p) => p.id));
+  const tile = (a) => `<button type="button" class="app-tile${pinnedIds().has(a.id) ? ' pinned' : ''}" data-app="${esc(a.id)}" title="${esc(a.name)}${pinnedIds().has(a.id) ? ' (pinned to the taskbar)' : ''}">${
+    A.icons[a.id] ? `<img class="app-icon" src="${esc(A.icons[a.id])}" alt="">` : `<span class="app-initial">${esc(a.name.slice(0, 1).toUpperCase())}</span>`
+  }<span class="app-name">${esc(a.name)}</span></button>`;
+
   function renderApps() {
     const q = A.query.trim().toLowerCase();
-    const list = q ? A.apps.filter((a) => a.name.toLowerCase().includes(q)) : A.apps;
-    $('#apps-grid').innerHTML = list.length
-      ? list.map((a) => `<button type="button" class="app-tile" data-app="${esc(a.id)}" title="${esc(a.name)}"><span class="app-initial">${esc(a.name.slice(0, 1).toUpperCase())}</span><span class="app-name">${esc(a.name)}</span></button>`).join('')
-      : `<p class="muted">${A.apps.length ? 'No app matches that.' : 'Loading your apps…'}</p>`;
+    if (!A.apps.length) { $('#apps-grid').innerHTML = '<p class="muted">Loading your apps…</p>'; $('#apps-letters').innerHTML = ''; return; }
+    if (q) {
+      // Names starting with the search first, then names containing it.
+      const hits = A.apps.filter((a) => a.name.toLowerCase().includes(q))
+        .sort((x, y) => (y.name.toLowerCase().startsWith(q) - x.name.toLowerCase().startsWith(q)) || x.name.localeCompare(y.name));
+      $('#apps-grid').innerHTML = hits.length ? `<div class="apps-section"><div class="apps-tiles">${hits.map(tile).join('')}</div></div>` : '<p class="muted">No app matches that.</p>';
+      $('#apps-letters').innerHTML = '';
+      return;
+    }
+    const sorted = [...A.apps].sort((x, y) => x.name.localeCompare(y.name, undefined, { sensitivity: 'base' }));
+    const groups = new Map();
+    for (const a of sorted) { const l = letterOf(a.name); if (!groups.has(l)) groups.set(l, []); groups.get(l).push(a); }
+    const pinned = sorted.filter((a) => pinnedIds().has(a.id));
+    $('#apps-grid').innerHTML = (pinned.length ? `<section class="apps-section"><h2 class="apps-letter">Pinned</h2><div class="apps-tiles">${pinned.map(tile).join('')}</div></section>` : '')
+      + [...groups].map(([l, list]) => `<section class="apps-section" id="apps-${l === '#' ? 'num' : l}"><h2 class="apps-letter">${l}</h2><div class="apps-tiles">${list.map(tile).join('')}</div></section>`).join('');
+    $('#apps-letters').innerHTML = [...groups.keys()].map((l) => `<button type="button" data-letter="${l === '#' ? 'num' : l}">${l}</button>`).join('');
   }
+
   async function showApps() {
     setView('apps');
     if (!$('#apps-page').dataset.ready) {
       $('#apps-page').dataset.ready = '1';
       $('#apps-page').innerHTML = `
-        <div class="files-head"><h1>Apps</h1><span class="spacer"></span><button class="btn small" id="apps-refresh" type="button">Refresh</button></div>
+        <div class="files-head"><h1>Apps</h1><span class="muted small" id="apps-count"></span><span class="spacer"></span><button class="btn small" id="apps-refresh" type="button">Refresh</button></div>
         <input class="text-input apps-search" id="apps-search" placeholder="Search your apps" aria-label="Search apps" autocomplete="off">
-        <div class="apps-grid" id="apps-grid"></div>`;
+        <p class="muted small apps-hint">Click to open. Right-click to pin to the taskbar, or unpin.</p>
+        <div class="apps-body"><div class="apps-grid" id="apps-grid"></div><nav class="apps-letters" id="apps-letters" aria-label="Jump to a letter"></nav></div>`;
       $('#apps-search').addEventListener('input', (e) => { A.query = e.target.value; renderApps(); });
       $('#apps-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#apps-grid .app-tile')?.click(); });
       $('#apps-refresh').onclick = () => loadApps(true);
+      $('#apps-letters').addEventListener('click', (e) => {
+        const l = e.target.closest('[data-letter]')?.dataset.letter;
+        if (l) document.getElementById(`apps-${l}`)?.scrollIntoView({ block: 'start' });
+      });
       $('#apps-grid').addEventListener('click', async (e) => {
         const b = e.target.closest('[data-app]');
         if (!b) return;
         const app = A.apps.find((a) => a.id === b.dataset.app);
         toast(`Opening ${app.name}…`);
         try { await api.shellLaunch(app); } catch (err) { toast(errText(err), 'error'); }
+      });
+      // Right-click: pin to the taskbar, or unpin.
+      $('#apps-grid').addEventListener('contextmenu', async (e) => {
+        const b = e.target.closest('[data-app]');
+        if (!b) return;
+        e.preventDefault();
+        const app = A.apps.find((a) => a.id === b.dataset.app);
+        const on = !pinnedIds().has(app.id);
+        try {
+          S.settings = await api.shellPin({ id: app.id, name: app.name, on });
+          toast(on ? `${app.name} is pinned to the taskbar.` : `${app.name} is unpinned.`);
+          renderApps();
+        } catch (err) { toast(errText(err), 'error'); }
       });
     }
     renderApps();
@@ -48,7 +88,14 @@ export function initDesktop({ api, $, esc, toast, errText, setView }) {
     if (!A.apps.length) await loadApps(false);
   }
   async function loadApps(fresh) {
-    try { A.apps = await api.shellApps(fresh); renderApps(); } catch (err) { toast(errText(err), 'error'); }
+    try {
+      A.apps = await api.shellApps(fresh);
+      $('#apps-count').textContent = `${A.apps.length} apps`;
+      renderApps();
+      // The icons (from disk at once; looked up again on Refresh).
+      A.icons = await api.shellAppIcons(fresh);
+      renderApps();
+    } catch (err) { toast(errText(err), 'error'); }
   }
 
   // ---------- Files ----------
@@ -206,23 +253,32 @@ export function initDesktop({ api, $, esc, toast, errText, setView }) {
     const st = await api.shellStatus().catch(() => null);
     $('#desktop-field').classList.toggle('hidden', !st?.supported);
     if (!st?.supported) return;
-    const now = st.mode === 'shell' ? ' Scorpion is your desktop right now.' : st.mode === 'preview' ? ' The taskbar preview is showing.' : '';
+    const now = st.mode === 'shell' ? ' Scorpion is your desktop right now.' : st.mode === 'bar' ? " Scorpion's taskbar is in place of the Windows one." : '';
     $('#desktop-settings').innerHTML = `
       <p>${st.isScorpion
         ? '<strong>Scorpion is your Windows desktop.</strong> When you sign in, Scorpion starts in place of the Windows taskbar, Start menu and desktop.'
         : 'When you sign in, Windows starts its own desktop (taskbar, Start menu, File Explorer).'}${now}</p>
       <div class="row">
-        ${st.mode === 'shell' ? '' : `<button class="btn" id="desktop-preview" type="button">${st.mode === 'preview' ? 'End the preview' : 'Preview the taskbar'}</button>`}
         ${st.isScorpion
           ? '<button class="btn" id="desktop-off" type="button">Go back to the Windows desktop</button>'
           : `<button class="btn primary" id="desktop-on" type="button"${st.packaged ? '' : ' disabled title="Install Scorpion first: Windows starts the installed app"'}>Use Scorpion as my Windows desktop</button>`}
         ${st.isScorpion && st.mode !== 'shell' ? '<button class="btn" id="desktop-signout" type="button">Sign out now</button>' : ''}
         ${st.mode === 'shell' ? '<button class="btn" id="desktop-explorer" type="button">Switch to the Windows desktop now</button>' : ''}
       </div>
-      <p class="muted small">Preview shows Scorpion's taskbar over your normal desktop and changes nothing. Using Scorpion as your desktop changes only your own Windows account, removes nothing from Windows, and takes effect the next time you sign in. Your apps and files stay where they are: open them from Apps and Files, or ask Scorpion.</p>
-      <p class="muted small">If anything goes wrong: press Ctrl+Alt+Delete, open Task Manager, choose Run new task and type <code>explorer.exe</code> to get the Windows desktop back. If Scorpion fails to start three times in a row, Windows' own desktop starts instead.</p>`;
+      <p class="muted small">Using Scorpion as your desktop changes only your own Windows account, removes nothing from Windows, and takes effect the next time you sign in. Your apps and files stay where they are: open them from Apps and Files, or ask Scorpion.</p>
+      <p class="muted small">If anything goes wrong: press Ctrl+Alt+Delete, open Task Manager, choose Run new task and type <code>explorer.exe</code> to get the Windows desktop back. If Scorpion fails to start three times in a row, Windows' own desktop starts instead.</p>
+      <label class="toggle"><input type="checkbox" id="taskbar-always"${S.settings.taskbarAlwaysOn ? ' checked' : ''}${st.mode === 'shell' || st.isScorpion ? ' disabled' : ''}><span>Use Scorpion's holographic taskbar instead of the Windows taskbar whenever Scorpion runs (no sign-out needed; the Windows taskbar comes back when Scorpion quits${st.isScorpion ? '; as your desktop Scorpion always has its own' : ''})</span></label>
+      <label class="toggle"><input type="checkbox" data-orb-setting="orbDesktop"${S.settings.orbDesktop !== false ? ' checked' : ''}><span>Show the orb as the desktop (otherwise the Home page)</span></label>
+      <label class="toggle"><input type="checkbox" data-orb-setting="orbApps"${S.settings.orbApps !== false ? ' checked' : ''}><span>Open apps inside the orb (Windows): the app in front fills a panel next to the orb; Pop out gives it its normal window</span></label>
+      <label class="toggle"><input type="checkbox" data-orb-setting="orbGreet"${S.settings.orbGreet !== false ? ' checked' : ''}><span>Greet me by name when I sign in (uses the camera briefly; needs face recognition from People)</span></label>
+      <label class="toggle"><input type="checkbox" data-orb-setting="orbSpeakEvents"${S.settings.orbSpeakEvents ? ' checked' : ''}><span>Say PC events out loud: low battery, finished downloads, schedules and check-ins</span></label>
+      <p class="muted small">The orb: its shortcuts orbit it (Apps, Files, Library, Chats, People, Settings and your open windows). Pick one by saying its name, pointing and pinching with Gestures on, or clicking. Saying "back", or pushing your open hand toward the screen, returns to the orb. With the wake word on (in the orb's controls), saying "Scorpion" starts listening; the speech is turned into text on this computer and nothing is kept.</p>`;
+    for (const box of document.querySelectorAll('[data-orb-setting]')) {
+      box.onchange = async () => { S.settings = await api.updateSettings({ [box.dataset.orbSetting]: box.checked }); };
+    }
     const act = (id, fn) => { const b = $(`#${id}`); if (b) b.onclick = async () => { b.disabled = true; try { await fn(); } catch (err) { toast(errText(err), 'error'); } renderSettings(); }; };
-    act('desktop-preview', () => api.shellPreview(st.mode !== 'preview'));
+    const bar = $('#taskbar-always');
+    if (bar) bar.onchange = async () => { bar.disabled = true; try { await api.shellTaskbar(bar.checked); S.settings.taskbarAlwaysOn = bar.checked; } catch (err) { toast(errText(err), 'error'); } renderSettings(); };
     act('desktop-on', async () => {
       if (!confirm('Use Scorpion as your Windows desktop?\n\nNext time you sign in, Scorpion starts instead of the Windows taskbar and Start menu. You can switch back here at any time, or with Ctrl+Alt+Delete → Task Manager → Run new task → explorer.exe.')) return;
       await api.shellSetDesktop(true);

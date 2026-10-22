@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage, session, systemPreferences, powerMonitor, safeStorage } from 'electron';
+import { app, BrowserWindow, screen, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage, session, systemPreferences, powerMonitor, safeStorage, desktopCapturer, globalShortcut } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -29,6 +29,10 @@ import * as workspaces from './workspaces.js';
 import { recentActivity } from './activity.js';
 import * as desktop from './shell.js';
 import * as winctl from './windows-control.js';
+import * as appFrame from './orb-frame.js';
+import * as appIcons from './app-icons.js';
+import * as constellations from './constellations.js';
+import { startKeyWatch, stopKeyWatch } from './key-watch.js';
 import { createAgentBrowser, browserTools } from './agent-browser.js';
 import { TelegramBot, pairingCode } from './telegram.js';
 import { TOOLS, fileSystemRoots } from './tools.js';
@@ -92,11 +96,29 @@ else if (app.isPackaged && portableDir) {
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
+// Covered by other windows, Scorpion still counts as on screen, so hand
+// tracking (which replaces the mouse) keeps running; only minimized pauses it.
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
 let win = null;
 let tray = null;
 let quitting = false;
 const startHidden = process.argv.includes('--hidden');
+// Started at sign-in to open the orb (Settings → General → When I sign in).
+const startOrb = process.argv.includes('--orb');
+
+// What Scorpion does when you sign in: nothing, start in the tray, or open the orb.
+const LOGIN_ARGS = { tray: ['--hidden'], orb: ['--orb'] };
+function loginStart() {
+  for (const [mode, args] of Object.entries(LOGIN_ARGS)) if (app.getLoginItemSettings({ args }).openAtLogin) return mode;
+  return 'off';
+}
+function setLoginStart(mode) {
+  const current = loginStart();
+  if (current !== 'off' && current !== mode) app.setLoginItemSettings({ openAtLogin: false, args: LOGIN_ARGS[current] });
+  if (LOGIN_ARGS[mode]) app.setLoginItemSettings({ openAtLogin: true, args: LOGIN_ARGS[mode] });
+  return loginStart();
+}
 // Started by Windows at sign-in as this account's desktop (Settings → Desktop).
 const shellLaunch = process.argv.includes('--shell') && process.platform === 'win32';
 const running = new Map(); // threadId -> AbortController
@@ -177,6 +199,7 @@ const themeBg = () => THEME_BG[store.getSettings().theme] || THEME_BG.classic;
 
 function createWindow() {
   const native = glassMode() === 'native';
+  navReady = false;
   win = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -205,6 +228,25 @@ function createWindow() {
   win.webContents.on('will-navigate', (e, url) => {
     if (!url.startsWith('scorpion://')) e.preventDefault();
   });
+  win.webContents.on('did-start-loading', () => { navReady = false; appFrame.setPanel(null).catch(() => {}); });
+  let lastEsc = 0;
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'F11') { e.preventDefault(); setFullMode(!fullMode); return; }
+    if (input.key !== 'Escape' || !fullMode) return;
+    if (input.control) { e.preventDefault(); setFullMode(false); return; }
+    const now = Date.now();
+    if (now - lastEsc < 450) { lastEsc = 0; setFullMode(false); } else lastEsc = now;
+  });
+  win.on('focus', () => {
+    if (!fullMode) return;
+    win.setAlwaysOnTop(true, 'screen-saver');
+    if (appFrame.framed()) appFrame.raise().catch(() => {});
+    desktop.raiseTaskbar();
+  });
+  // Another app in use: Scorpion stops pinning itself on top, so that app can
+  // come in front (keeping it on top regardless made the two fight: flicker).
+  win.on('blur', () => { if (fullMode) win.setAlwaysOnTop(false); });
   win.loadURL('scorpion://app/index.html');
   if (!startHidden || process.env.SCORPION_SCREENSHOT) win.once('ready-to-show', () => win.show());
 
@@ -232,6 +274,48 @@ function createWindow() {
   }
 }
 
+// Full mode: Scorpion fills the screen over every other window, with no title
+// bar or window buttons. Ctrl+Esc, or Esc twice, leaves it; F11 comes back.
+// Apps opened inside the orb stay above it (orb-frame.js); an app brought to
+// the front opens the orb so it lands inside it.
+let fullMode = false;
+let fullWatch = 0;
+function setFullMode(on) {
+  if (!win || win.isDestroyed()) return false;
+  fullMode = Boolean(on);
+  if (fullMode) { if (!win.isVisible()) win.show(); if (win.isMinimized()) win.restore(); }
+  win.setFullScreen(fullMode);
+  win.setAlwaysOnTop(fullMode && win.isFocused(), 'screen-saver');
+  if (fullMode) win.focus();
+  desktop.raiseTaskbar();
+  sendTaskbarInset();
+  // The exit keys, wherever the keyboard is (key-watch.js); Ctrl+Esc then
+  // doesn't open the Start menu.
+  if (fullMode) startKeyWatch(() => setFullMode(false)); else stopKeyWatch();
+  clearInterval(fullWatch);
+  fullWatch = fullMode && process.platform === 'win32' ? setInterval(pullAppsIntoOrb, 1000) : 0;
+  send('fullmode:changed', fullMode);
+  return fullMode;
+}
+// In full mode Scorpion's screens end above its taskbar (which stays on top).
+const taskbarInset = () => (fullMode && desktop.shellMode() ? desktop.TASKBAR_PX : 0);
+function sendTaskbarInset() { send('layout:taskbar', taskbarInset()); }
+
+// Full mode covers everything, so an app the user brings to the front (from
+// Apps, Files, a voice request…) opens the orb and is framed inside it.
+let pulling = false;
+let pendingFrame = null; // the app to put inside the orb once its panel exists
+async function pullAppsIntoOrb() {
+  if (pulling || !fullMode || appFrame.hasPanel()) return;
+  pulling = true;
+  try {
+    const fg = await appFrame.foregroundApp();
+    // Open the orb behind the app (no focus taken), then frame that app
+    // as soon as the orb's panel is there.
+    if (fg && navReady) { pendingFrame = fg.hwnd; send('nav:view', { view: 'orb' }); }
+  } catch { /* next time */ } finally { pulling = false; }
+}
+
 function showWindow() {
   if (!win || win.isDestroyed()) createWindow();
   if (win.isMinimized()) win.restore();
@@ -241,10 +325,65 @@ function showWindow() {
 
 // Brings Scorpion forward on one of its screens (the taskbar's buttons, folders
 // opened while Scorpion is the desktop).
+// Until the page says it is ready (after the lock screen), the request waits.
+let navReady = false;
+let pendingNav = null;
 function showView(view, detail) {
   showWindow();
-  const go = () => send('nav:view', { view, ...detail });
-  if (win.webContents.isLoading()) win.webContents.once('did-finish-load', () => setTimeout(go, 300)); else go();
+  const msg = { view, ...detail };
+  if (navReady) send('nav:view', msg); else pendingNav = msg;
+}
+
+// ---- PC events for the orb: battery, downloads, schedules, check-ins ----
+// Only while the orb is open (it asks with pc:events).
+let pcWatch = null;
+function pcEvent(kind, text, level = 'info') {
+  if (pcWatch) send('pc:event', { kind, text, level, at: Date.now() });
+}
+function startPcEvents() {
+  if (pcWatch) return;
+  pcWatch = { seen: new Map(), lastBattery: null };
+  const onAc = () => pcEvent('power', 'Plugged in: charging.', 'ok');
+  const onBattery = () => { pcEvent('power', 'Running on battery.'); checkBattery(); };
+  powerMonitor.on('on-ac', onAc);
+  powerMonitor.on('on-battery', onBattery);
+  pcWatch.off = () => { powerMonitor.off('on-ac', onAc); powerMonitor.off('on-battery', onBattery); };
+  // On battery: say so when it runs low (20% and 10%).
+  const checkBattery = async () => {
+    if (!pcWatch || !powerMonitor.isOnBatteryPower()) return;
+    const t = await desktop.trayStatus().catch(() => ({}));
+    if (!pcWatch || typeof t.battery !== 'number') return;
+    const before = pcWatch.lastBattery;
+    pcWatch.lastBattery = t.battery;
+    for (const mark of [20, 10]) if (before != null && before > mark && t.battery <= mark && !t.charging) pcEvent('battery', `Battery at ${t.battery}%. Plug in soon.`, 'alert');
+  };
+  pcWatch.timer = setInterval(checkBattery, 120_000);
+  checkBattery();
+  // Downloads: a new finished file in the Downloads folder (browsers rename
+  // their partial file to the real name when the download completes).
+  try {
+    const dir = app.getPath('downloads');
+    pcWatch.dl = fs.watch(dir, (type, name) => {
+      if (!name || /\.(crdownload|part|partial|tmp|download|opdownload)$/i.test(name) || /^(~\$|\.)/.test(name)) return;
+      const last = pcWatch?.seen.get(name) || 0;
+      if (Date.now() - last < 60_000) return;
+      setTimeout(() => {
+        try {
+          const st = fs.statSync(path.join(dir, name));
+          if (!st.isFile() || !st.size || Date.now() - st.mtimeMs > 120_000 || !pcWatch) return;
+          pcWatch.seen.set(name, Date.now());
+          pcEvent('download', `Download finished: ${name}`, 'ok');
+        } catch { /* gone again (a temporary file) */ }
+      }, 1500);
+    });
+  } catch { /* no Downloads folder */ }
+}
+function stopPcEvents() {
+  if (!pcWatch) return;
+  pcWatch.off?.();
+  clearInterval(pcWatch.timer);
+  pcWatch.dl?.close();
+  pcWatch = null;
 }
 
 function ensureTray() {
@@ -287,7 +426,9 @@ async function state() {
     agents: agents.listAgents(),
     tools: Object.entries(TOOLS).map(([name, t]) => ({ name, access: t.access, description: t.description.split('. ')[0] })).concat([{ name: 'ask_agent', access: 'agent', description: 'Hand subtasks to other agents' }]),
     schedules: scheduleView(),
-    openAtLogin: app.getLoginItemSettings().openAtLogin,
+    loginStart: loginStart(),
+    fullMode,
+    taskbarInset: taskbarInset(),
     supportedDocs: rag.SUPPORTED_EXTENSIONS,
     voice: voice.voiceStatus(),
     faces: faces.faceStatus(),
@@ -880,6 +1021,7 @@ async function runScheduled(schedule, reason) {
     n.show();
   }
   send('schedules:changed');
+  pcEvent('schedule', result.error ? `${schedule.name} failed.` : `${schedule.name} is done.`, result.error ? 'alert' : 'ok');
   return result;
 }
 
@@ -941,7 +1083,10 @@ async function runHeartbeat({ force = false } = {}) {
       thread.messages.length = before.messages;
       thread.history = before.history;
       store.saveThread(thread);
-    } else if (Notification.isSupported()) {
+    } else {
+      pcEvent('checkin', (result.error || result.text).replace(/[#*`>_]/g, '').trim().slice(0, 160), 'alert');
+    }
+    if (!ok && Notification.isSupported()) {
       const n = new Notification({ title: result.error ? 'Check-in failed' : 'Scorpion check-in', body: (result.error || result.text).replace(/[#*`>_]/g, '').trim().slice(0, 180), silent: false });
       n.on('click', () => { showWindow(); send('open-thread', thread.id); });
       n.show();
@@ -1010,8 +1155,57 @@ async function powerAction(action) {
   if (action === 'signout') return winctl.signOut();
   if (action === 'restart' || action === 'shutdown') return winctl.runPs(`shutdown.exe ${action === 'restart' ? '/r' : '/s'} /t 0`);
   if (action === 'explorer') { await desktop.stopShell(); return winctl.explorerRunning().then((on) => on || winctl.startExplorer()); }
-  if (action === 'end-preview') return desktop.stopShell();
   throw new Error('Unknown power action');
+}
+
+// The constellation launcher's summon shortcut (Settings → General →
+// Constellation): brings Scorpion forward with the map and its search ready.
+// Windows keeps some combinations for itself (Win+Space switches keyboard
+// layouts); if the chosen one can't be had, Win+Alt+Space (or Ctrl+Shift+Space) is used.
+let summonKey = null;
+function registerSummon(accel) {
+  if (accel !== undefined) store.updateSettings({ constellationShortcut: String(accel || '') });
+  if (summonKey) { globalShortcut.unregister(summonKey); summonKey = null; }
+  const wanted = store.getSettings().constellationShortcut ?? 'Super+Space';
+  const summon = () => { showWindow(); if (navReady) send('nav:view', { view: 'orb', search: true }); else pendingNav = { view: 'orb', search: true }; };
+  for (const key of [wanted, 'Super+Alt+Space', 'Control+Shift+Space'].filter(Boolean)) {
+    try { if (globalShortcut.register(key, summon)) { summonKey = key; break; } } catch { /* not a valid combination */ }
+  }
+  return summonKey;
+}
+
+// The taskbar's own settings, with defaults for anything missing.
+function taskbarSettings() {
+  const t = store.getSettings().taskbar || {};
+  return { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', ...t, show: { network: true, battery: true, volume: true, clock: true, ...(t.show || {}) } };
+}
+function setTaskbarLook(t) {
+  const s = store.updateSettings({ taskbar: t });
+  send('settings:changed', s);
+  return s;
+}
+// Pin an app (a Start menu app id, or a program's path) to the taskbar, or unpin it.
+function setPinned({ id, name, on }) {
+  const t = taskbarSettings();
+  const rest = t.pinned.filter((p) => p.id.toLowerCase() !== String(id).toLowerCase());
+  return setTaskbarLook({ ...t, pinned: on ? [...rest, { id: String(id), name: String(name || id) }] : rest });
+}
+// A program's own name ("Google Chrome" for chrome.exe).
+async function programName(exe) {
+  const desc = await winctl.runPs(`(Get-Item -LiteralPath ${winctl.psQuote(exe)}).VersionInfo.FileDescription`).catch(() => '');
+  return desc.trim() || path.basename(exe, path.extname(exe));
+}
+
+// The holographic taskbar whenever Scorpion runs (Settings → General → Windows
+// desktop), in place of the Windows taskbar. Scorpion as the desktop has its own.
+async function setTaskbarAlwaysOn(on) {
+  send('settings:changed', store.updateSettings({ taskbarAlwaysOn: Boolean(on) }));
+  const m = desktop.shellMode();
+  if (on && !m) await desktop.startShell('bar');
+  else if (!on && m === 'bar') await desktop.stopShell();
+  desktop.raiseTaskbar();
+  sendTaskbarInset();
+  return desktopStatus();
 }
 
 function registerIpc() {
@@ -1267,9 +1461,10 @@ function registerIpc() {
   // macOS asks the user once; Windows uses its own privacy setting.
   // Interact takes over the whole screen (no title bar or taskbar).
   h('window:fullscreen', (on) => {
-    if (win && !win.isDestroyed()) win.setFullScreen(Boolean(on));
+    if (win && !win.isDestroyed() && !fullMode) win.setFullScreen(Boolean(on));
     return Boolean(win?.isFullScreen());
   });
+  h('window:fullMode', (on) => setFullMode(on));
   h('voice:micAccess', async () => {
     if (process.platform !== 'darwin') return true;
     if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true;
@@ -1366,13 +1561,39 @@ function registerIpc() {
 
   // ---- Scorpion as the Windows desktop: taskbar, Apps, Files ----
   h('shell:status', desktopStatus);
-  h('shell:preview', async (on) => { if (on) await desktop.startShell('preview'); else if (desktop.shellMode() === 'preview') await desktop.stopShell(); return desktopStatus(); });
+  h('nav:ready', () => { navReady = true; const p = pendingNav; pendingNav = null; return p; });
+  h('pc:events', (on) => { if (on) startPcEvents(); else stopPcEvents(); return true; });
+  // Hand gestures inside the framed app: the real pointer, clicks, drags, the wheel (only within its panel).
+  h('orb:mouse', (cmd) => (process.platform === 'win32' ? appFrame.mouse(cmd) : false));
+  // Hands replacing the mouse: the real pointer over the whole (main) screen.
+  h('hand:mouse', (cmd) => {
+    if (process.platform !== 'win32') return false;
+    const p = screen.dipToScreenRect(null, screen.getPrimaryDisplay().bounds);
+    return appFrame.mouse(cmd, { area: { x: p.x, y: p.y, w: p.width, h: p.height } });
+  });
+  // The orb's app panel: where it is (or null), a place covering the orb, an app to show, or a strip button.
+  h('orb:frame', async ({ panel, away, frame, action } = {}) => {
+    if (process.platform !== 'win32') return null;
+    if (panel !== undefined) await appFrame.setPanel(panel);
+    if (panel && pendingFrame) { const h = pendingFrame; pendingFrame = null; await appFrame.frameWindow(h); }
+    if (away !== undefined) await appFrame.setAway(Boolean(away));
+    if (frame) return appFrame.frameWindow(frame);
+    if (action === 'popout' && fullMode) setFullMode(false);
+    if (action) {
+      const self = win.getNativeWindowHandle().readBigInt64LE().toString();
+      const windows = action === 'prev' || action === 'next' ? (await winctl.listWindows({ kept: true })).filter((w) => w.hwnd !== self && !/^Scorpion/.test(w.title)) : [];
+      return appFrame.action(action, { windows });
+    }
+    return appFrame.framed();
+  });
+  h('shell:taskbar', (on) => (process.platform === 'win32' ? setTaskbarAlwaysOn(on) : desktopStatus()));
   // Only ever from the user's own button in Settings → Desktop.
   h('shell:setDesktop', async (on) => { await winctl.setUserShell(on ? shellCommand() : null); return desktopStatus(); });
   h('shell:windows', async () => {
     const own = new Set(BrowserWindow.getAllWindows().filter((w) => w !== win).map((w) => w.getNativeWindowHandle().readBigInt64LE().toString()));
+    const self = win && !win.isDestroyed() ? win.getNativeWindowHandle().readBigInt64LE().toString() : null;
     const list = (await winctl.listWindows({ kept: true })).filter((w) => !own.has(w.hwnd));
-    for (const w of list) w.icon = await fileIcon(w.exe);
+    for (const w of list) { w.icon = await fileIcon(w.exe); w.self = w.hwnd === self; }
     return list;
   });
   h('shell:window', ({ hwnd, action }) => winctl.windowByHandle(String(hwnd), action));
@@ -1382,27 +1603,71 @@ function registerIpc() {
   h('shell:volume', (action) => winctl.runPsKept(`(New-Object -ComObject WScript.Shell).SendKeys([char]${action === 'up' ? 175 : action === 'down' ? 174 : 173})`));
   h('shell:power', powerAction);
   // Menus open as native menus so they can reach above the thin taskbar.
-  ipcMain.handle('shell:menu', (e, { kind, hwnd, title } = {}) => {
+  ipcMain.handle('shell:menu', async (e, { kind, hwnd, title, id, name, exe } = {}) => {
     const owner = BrowserWindow.fromWebContents(e.sender);
     const item = (label, click) => ({ label, click: () => Promise.resolve(click()).catch((err) => console.error(err)) });
     let template;
     if (kind === 'window') {
+      const pinnedAlready = exe && taskbarSettings().pinned.some((p) => p.id.toLowerCase() === String(exe).toLowerCase());
       template = [{ label: title || 'Window', enabled: false }, { type: 'separator' },
         item('Switch to', () => winctl.windowByHandle(String(hwnd), 'focus')),
         item('Minimize', () => winctl.windowByHandle(String(hwnd), 'minimize')),
-        item('Close window', () => winctl.windowByHandle(String(hwnd), 'close'))];
+        item('Close window', () => winctl.windowByHandle(String(hwnd), 'close')),
+        ...(exe ? [item(pinnedAlready ? 'Unpin from taskbar' : 'Pin to taskbar', async () => setPinned({ id: exe, name: await programName(exe), on: !pinnedAlready }))] : []),
+        { type: 'separator' },
+        // Force-quit, for an app that no longer responds (unsaved work is lost).
+        item('End task', () => winctl.endTask(String(hwnd), { ownPids: app.getAppMetrics().map((m) => m.pid) })
+          .catch((err) => dialog.showMessageBox(owner, { type: 'info', message: 'End task', detail: err.message })))];
+    } else if (kind === 'pinned') {
+      template = [{ label: name || 'App', enabled: false }, { type: 'separator' },
+        item('Open', () => winctl.launchApp({ id, name }, { viaExplorer: desktop.shellMode() !== 'shell' })),
+        item('Unpin from taskbar', () => setPinned({ id, name, on: false }))];
+    } else if (kind === 'bar') {
+      // Customizing the taskbar (right-click on an empty part of it).
+      const t = taskbarSettings();
+      const set = (patch) => setTaskbarLook({ ...t, ...patch });
+      const show = (k) => ({ label: { network: 'Network', battery: 'Battery', volume: 'Volume', clock: 'Clock' }[k], type: 'checkbox', checked: t.show[k] !== false, click: () => set({ show: { ...t.show, [k]: t.show[k] === false } }) });
+      template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' },
+        { label: 'Show app names', type: 'checkbox', checked: t.labels, click: () => set({ labels: !t.labels }) },
+        { label: 'Center the apps', type: 'checkbox', checked: t.center, click: () => set({ center: !t.center }) },
+        { label: 'Size', submenu: ['small', 'normal', 'large'].map((v) => ({ label: v[0].toUpperCase() + v.slice(1), type: 'radio', checked: t.size === v, click: () => set({ size: v }) })) },
+        { label: 'Look', submenu: [['holo', 'Holographic'], ['neon', 'Neon'], ['glass', 'Glass'], ['solid', 'Solid']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.style === v, click: () => set({ style: v }) })) },
+        { label: 'Show', submenu: ['network', 'battery', 'volume', 'clock'].map(show) },
+        { type: 'separator' },
+        item('Apps…', () => showView('apps')),
+        ...(t.pinned.length ? [item('Unpin all apps', () => setTaskbarLook({ ...t, pinned: [] }))] : [])];
     } else if (kind === 'clock') {
       template = [{ label: new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }), enabled: false }, { type: 'separator' },
         item('Date and time settings', () => winctl.openSettings('time'))];
     } else {
-      const preview = desktop.shellMode() === 'preview';
+      const m = desktop.shellMode();
       template = [item('Lock', () => powerAction('lock')), item('Sleep', () => powerAction('sleep')),
-        ...(preview ? [] : [item('Sign out', () => powerAction('signout')), item('Restart', () => powerAction('restart')), item('Shut down', () => powerAction('shutdown'))]),
+        item('Sign out', () => powerAction('signout')), item('Restart', () => powerAction('restart')), item('Shut down', () => powerAction('shutdown')),
         { type: 'separator' },
-        preview ? item('End the preview', () => powerAction('end-preview')) : item('Switch to the Windows desktop', () => powerAction('explorer'))];
+        m === 'bar' ? item('Back to the Windows taskbar', () => setTaskbarAlwaysOn(false))
+          : item('Switch to the Windows desktop', () => powerAction('explorer'))];
     }
     Menu.buildFromTemplate(template).popup({ window: owner });
     return true;
+  });
+  h('shell:appIcons', (fresh) => appIcons.appIcons({ fresh: Boolean(fresh) }));
+  // The constellation launcher (constellations.js).
+  h('const:get', () => constellations.load(taskbarSettings().pinned));
+  h('const:save', (data) => constellations.save(data));
+  h('const:open', (node) => constellations.open(node));
+  h('const:export', (data) => constellations.exportTo(data));
+  h('const:import', (data) => constellations.importFrom(data));
+  h('const:pick', (kind) => constellations.pick(kind));
+  h('const:recent', () => constellations.recent());
+  h('const:pathInfo', (p) => constellations.pathInfo(String(p)));
+  h('const:icon', (p) => constellations.iconFor(String(p)));
+  h('const:preview', (what) => constellations.preview(what || {}));
+  h('const:shortcut', (accel) => registerSummon(accel));
+  h('shell:pin', ({ id, name, on }) => setPinned({ id, name, on }));
+  // The pinned apps with their icons, for the taskbar.
+  h('shell:pinned', async () => {
+    const known = await appIcons.appIcons();
+    return Promise.all(taskbarSettings().pinned.map(async (p) => ({ ...p, icon: known[p.id] || (/^[a-z]:\\/i.test(p.id) ? await fileIcon(p.id) : null) })));
   });
   h('shell:apps', async (fresh) => (await winctl.listApps({ fresh: Boolean(fresh) })).map((a) => ({ id: a.id, name: a.name })));
   h('shell:launch', async ({ id, name }) => winctl.launchApp({ id, name }, { viaExplorer: desktop.shellMode() !== 'shell' }));
@@ -1471,10 +1736,7 @@ function registerIpc() {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
     return r.canceled ? null : r.filePaths[0];
   });
-  h('app:setOpenAtLogin', (on) => {
-    app.setLoginItemSettings({ openAtLogin: Boolean(on), args: ['--hidden'] });
-    return app.getLoginItemSettings().openAtLogin;
-  });
+  h('app:setLoginStart', (mode) => setLoginStart(['tray', 'orb'].includes(mode) ? mode : 'off'));
   h('thread:get', (id) => store.getThread(id));
   h('thread:delete', (id) => { running.get(id)?.abort(); store.deleteThread(id); memory.invalidateRecall(); });
   h('thread:rename', ({ id, title }) => { const t = store.getThread(id); if (t) { t.title = String(title).slice(0, 80); store.saveThread(t); } });
@@ -1534,12 +1796,30 @@ app.whenReady().then(async () => {
   store.initStore(app.getPath('userData'));
   desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView });
   winctl.setFolderOpener((dir, select) => { showView('files', { dir, select }); return dir; });
+  // Apps inside the orb (orb-frame.js): the panel is given in CSS pixels of
+  // Scorpion's window; Windows wants physical screen pixels.
+  appIcons.initAppIcons({ app, nativeImage, dataDir: app.getPath('userData') });
+  constellations.initConstellations({
+    app, shell, nativeImage, desktopCapturer, dialog, dataDir: app.getPath('userData'), getWindow: () => win,
+    launchApp: (a) => winctl.launchApp(a, { viaExplorer: desktop.shellMode() !== 'shell' }),
+  });
+  registerSummon();
+  appFrame.initFrame({
+    dataDir: app.getPath('userData'),
+    panelToScreen: (r) => {
+      const b = win.getContentBounds();
+      const p = screen.dipToScreenRect(win, { x: Math.round(b.x + r.x), y: Math.round(b.y + r.y), width: Math.round(r.width), height: Math.round(r.height) });
+      return { x: p.x, y: p.y, w: p.width, h: p.height };
+    },
+    notify: (v) => send('frame:changed', v),
+  });
+  if (process.platform === 'win32') appFrame.recover().catch(() => {});
   // Three starts as the desktop within three minutes means Scorpion keeps
   // failing: bring up the Windows desktop instead, so the PC stays usable.
   const asDesktop = shellLaunch && !desktop.recordShellStart();
   if (shellLaunch && !asDesktop) winctl.startExplorer().catch(() => {});
   if (asDesktop) process.on('uncaughtException', (err) => { console.error(err); winctl.explorerRunning().then((on) => on || winctl.startExplorer()).catch(() => {}); });
-  if (!asDesktop) desktop.recoverWorkArea().catch(() => {});
+  if (!asDesktop) await desktop.recoverWorkArea().catch(() => {});
   secrets.initSecrets(safeStorage);
   voice.initVoice(store.paths.models);
   faces.initFaces(store.paths.models, app.getPath('userData'));
@@ -1564,6 +1844,7 @@ app.whenReady().then(async () => {
   registerIpc();
   createWindow();
   if (asDesktop) await desktop.startShell('shell').catch((err) => { console.error(err); return winctl.startExplorer(); });
+  else if (process.platform === 'win32' && store.getSettings().taskbarAlwaysOn !== false) desktop.startShell('bar').then(() => { desktop.raiseTaskbar(); sendTaskbarInset(); }).catch((err) => console.error(err));
   scheduler.startScheduler(runScheduled);
   for (const server of store.getSettings().mcpServers || []) if (server.enabled) connectMcp(server).catch(() => {});
   startTelegram().catch(() => {});
@@ -1571,14 +1852,20 @@ app.whenReady().then(async () => {
   setTimeout(() => { if (library.libraryStatus().folders.length) library.scan().catch(() => {}); }, 20000);
   ensureTrayHint();
   if (startHidden && !keepsRunning()) showWindow();
+  // Full mode from the start (once the window is on screen, so nothing flashes).
+  if (!startHidden && store.getSettings().fullModeAtStart !== false) { if (win.isVisible()) setFullMode(true); else win.once('show', () => setFullMode(true)); }
+  // Signed in with "Open the orb": Scorpion fills the screen with the orb.
+  if (startOrb && !asDesktop) { win.maximize(); showView('orb', { signin: true }); }
   app.on('activate', showWindow);
 });
 
 app.on('second-instance', showWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' && !keepsRunning() && !desktop.shellMode()) app.quit(); });
+app.on('will-quit', () => { stopKeyWatch(); globalShortcut.unregisterAll(); });
 app.on('before-quit', (e) => {
   // Leaving the desktop: put the screen area back (and the Windows desktop,
   // when Scorpion was it) before quitting.
+  if (appFrame.framed()) { e.preventDefault(); appFrame.setPanel(null).finally(() => app.quit()); return; }
   if (desktop.shellMode()) { e.preventDefault(); for (const w of BrowserWindow.getAllWindows()) w.hide(); desktop.stopShell().finally(() => app.quit()); return; }
   winctl.stopPsKept();
   quitting = true; scheduler.stopScheduler(); for (const m of mcp.allStatus()) mcp.disconnect(m.id); tg?.stop(); for (const c of running.values()) c.abort(); engine.shutdown(); });

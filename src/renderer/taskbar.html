@@ -10,8 +10,9 @@
   <script type="module" src="taskbar.js"></script>
 </head>
 <body class="taskbar">
+  <div class="tb-scan" aria-hidden="true"></div><div class="tb-sweep" aria-hidden="true"></div>
   <div class="tb-start">
-    <button class="tb-btn tb-home" id="tb-home" title="Scorpion home">
+    <button class="tb-btn tb-home" id="tb-home" title="Scorpion: the orb (or Home)">
       <svg class="tb-logo" viewBox="0 0 100 100" aria-hidden="true">
         <g transform="rotate(-45 50 53) translate(50 53) scale(1.18) translate(-50 -53)">
           <polygon points="43.7,47 38.5,36.6 50,10 61.5,36.6 56.3,47" fill="var(--accent)"/>
@@ -25,9 +26,8 @@
     <button class="tb-btn" id="tb-apps" title="Apps"><svg class="tb-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg></button>
     <button class="tb-btn" id="tb-files" title="Files"><svg class="tb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
   </div>
-  <nav class="tb-windows" id="tb-windows" aria-label="Open windows"></nav>
+  <div class="tb-apps-area" id="tb-apps-area"><nav class="tb-pinned" id="tb-pinned" aria-label="Pinned apps"></nav><span class="tb-sep" id="tb-sep" hidden></span><nav class="tb-windows" id="tb-windows" aria-label="Open windows"></nav></div>
   <div class="tb-tray">
-    <span class="tb-badge" id="tb-preview" hidden>Preview</span>
     <span class="tb-item" id="tb-net" title="Network"><svg class="tb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9a15 15 0 0 1 20 0"/><path d="M5.5 12.5a10 10 0 0 1 13 0"/><path d="M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="1"/></svg></span>
     <span class="tb-item" id="tb-battery" hidden><svg class="tb-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2"/><rect id="tb-battery-fill" x="4" y="9" width="14" height="6" rx="1" class="tb-fill"/></svg><span id="tb-battery-pct"></span></span>
     <button class="tb-btn tb-item" id="tb-volume" title="Volume: click to mute, scroll to change"><svg class="tb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a9 9 0 0 1 0 12"/></svg></button>

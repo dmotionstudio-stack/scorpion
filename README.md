@@ -4,12 +4,10 @@ An offline AI assistant and agent for Windows and macOS. Scorpion runs open-weig
 GGUF models on your own computer with llama.cpp. You don't need an API key, an
 account, or an internet connection to chat.
 
-- **Home screen** (the Scorpion shell): Scorpion opens on a home screen with an ask box, a
-  launcher for all its tools (each with a live status line), your **workspaces** (saved
-  folders: use one, start a new chat in it, open, rename or remove; each chat keeps the
-  workspace it started in), and **recent activity** (chats, files the agent saved, apps
-  it opened, scheduled runs, check-ins, memories, library scans). Everything underneath
-  is the same local AI.
+- **Home screen** (the Scorpion shell): Scorpion opens on a home screen with an ask box
+  and all its tools as holographic tiles (each with a live status line) that fill the
+  screen. The sidebar can be hidden for more room (the button in its corner, or
+  Ctrl+B). Everything underneath is the same local AI.
 - **Chat** with local models (Qwen, Llama, any GGUF file), with streaming and Markdown.
 - **Agent**: Scorpion reads, writes and edits files and runs terminal commands inside a
   workspace folder you choose. For files anywhere else it asks first: *Allow*,
@@ -102,6 +100,77 @@ account, or an internet connection to chat.
   restart, shut down and emptying the Recycle Bin always ask (even with Auto-approve),
   restart and shut down wait 30 seconds and can be cancelled, apps are closed like
   pressing their X (never force-quit), and Windows' own system folders stay read-only.
+- **Scorpion as the Windows desktop** (Windows only, Settings → General → Windows
+  desktop): Scorpion starts in place of the Windows taskbar and Start menu when you sign
+  in, with its own taskbar (open windows, network, battery, volume, clock, power menu),
+  an Apps screen and a Files screen. The switch changes only your own account and is
+  yours to press. Without it, "Use Scorpion's holographic taskbar" (same place, on by
+  default) puts Scorpion's taskbar in place of the Windows one whenever Scorpion runs,
+  on top even when Scorpion is full screen (its screens end above it): the Windows
+  taskbar is only hidden, comes back when Scorpion quits (or at its next start after a
+  crash), and restarting Explorer also brings it back. If Scorpion
+  fails to start three times in a row, the Windows desktop starts instead, and
+  Ctrl+Alt+Delete → Task Manager → Run new task → `explorer.exe` always brings it back.
+- **Apps screen and taskbar** (Windows): the Apps screen shows every installed app with
+  its own icon (from the program, its Start menu shortcut, or a Store app's logo),
+  pinned apps first, then A to Z in letter sections with a letter bar to jump; search
+  shows the best matches. Right-click an app there, or a window on the taskbar, to pin
+  it to the taskbar. The taskbar shows the pinned apps and the open windows with their
+  icons (a pinned app's windows share its button: a dot while it runs, a lit bar when
+  it is in front). Right-click an empty part of the taskbar to customize it: app names
+  or icons only, centered, small, normal or large, a holographic, neon, glass or solid
+  look, and which of network, battery, volume and clock show.
+- **Mini orb**: the orb's **Minimize** button (or opening a place over the orb) shrinks
+  it to a small living orb that floats over everything; click it to bring the orb back,
+  drag it anywhere (it stays where you put it).
+- **Constellation launcher** (an optional look for the orb's screen, in Settings →
+  General → Orb look; the orb sphere is the default): instead of "which app do I
+  need?", it asks "what am I working on?". Each project is a constellation: a warm star with its
+  apps (coloured planets, with their icons), folders and documents (moons) and
+  websites orbiting it. Orbit distance is relevance (recent, frequent, usual at this
+  hour, open now; recommendations can be turned off), brightness is recent use, lines
+  are your connections, open apps carry their windows as satellites, missing files show
+  as red eclipses, and archived projects are dimmed. Click an item to open it, the star
+  to **resume** the project (its saved session, from **Save session**), drag an item
+  onto another to connect them or anywhere to pin it there for good, scroll or pinch
+  out to the galaxy of all projects, drag the background to look around, and type to
+  search (matches light up; Enter opens the first). Hover or focus an item for a preview:
+  a live picture of its window, or the document's thumbnail. **+ Add** offers apps (with
+  icons), recent and recently changed files, websites, files and folders; files dragged
+  in from File Explorer join the project. **List** shows everything as plain lists for
+  screen readers and keyboards; arrow keys walk the orbits; motion, bigger items and high
+  contrast are in Settings → General → Orb look, with the summon shortcut
+  (Win+Space if Windows lets go of it, otherwise Win+Alt+Space). Projects are saved on
+  this computer and can be exported and imported in a shared format
+  (`scorpion-constellations/1`). The classic 3D orb is still there as an option.
+- **The orb as the system**: in Interact (and as the desktop) shortcuts orbit the orb:
+  Apps, Files, Library, Chats, People, Settings and every open window, with its icon.
+  Pick one by saying its name ("files", "switch to Outlook"), clicking it, or with
+  Gestures on: point with an open hand and pinch quickly. Sweep your hand sideways to
+  switch windows; say "back" or push your open hand toward the screen to return to the
+  orb. Spoken requests run Windows through the agent, and anything that changes
+  something is asked out loud ("Should I close Word? Say yes or no"). The orb shows
+  what it's doing (listening, thinking, working, waiting for you), pulses for low
+  battery, finished downloads, schedules and check-ins (and says them, if you turn that
+  on), greets you by name at sign-in when face recognition is installed, and with the
+  wake word on, saying "Scorpion" starts listening (speech is turned into text on your
+  computer; nothing is kept).
+- **Apps open inside the orb** (Windows): while the orb is open, the app you bring to
+  the front (from the orb, the taskbar, by voice, or a file opened from Files) loses its
+  title bar and fills a panel next to the orb, which moves to the right. Scorpion's strip
+  above it switches apps, goes back to the orb (the app waits, minimized), pops it out
+  as a normal window, or closes it (it can still ask to save). One app at a time; the
+  others are ordinary minimized windows. Leaving the orb or quitting Scorpion gives every
+  app its normal window back, and so does the next start if Scorpion ever stops
+  unexpectedly. Apps running as administrator can't be framed and open normally. Turn it
+  off in Settings → General → Windows desktop.
+- **Full screen** (Settings → General → Full screen, on by default): Scorpion starts
+  filling the whole screen, over every other window, with no title bar or window
+  buttons. Leave it with **Ctrl+Esc** or **Esc pressed twice** (both work even while an
+  app inside the orb has the keyboard, and Ctrl+Esc doesn't open the Start menu while
+  Scorpion is full screen); **F11** goes back. Apps you open from Scorpion show inside
+  the orb, on top of it. Windows itself (Ctrl+Alt+Delete, sign-in, its alerts) can still
+  come in front.
 - **Private by design**: Scorpion stores data only in your OS app-data folder, makes no
   network calls while you chat unless you turn on Online mode, has a sandboxed UI and
   a locked-down IPC bridge.
@@ -221,16 +290,52 @@ Settings → Privacy & Security → Microphone**.
 
 ## Hand gestures
 
-In Interact, press **G** or click **GESTURES OFF** to steer the orb with your
-hands through the webcam:
+**Your hand replaces the mouse** (Windows, Settings → General → Hand gestures, on by
+default): hand tracking runs whenever Scorpion is open, even behind other windows, and
+rests only while Scorpion is minimized. Your index finger moves the real Windows
+pointer over the whole screen; a quick pinch clicks, thumb + middle right-clicks, a
+fist then open hand double-clicks, a held pinch drags, two fingers up scroll, and both
+hands spreading or closing zoom (Ctrl + wheel). This works in every app, in Scorpion
+and on its taskbar. Sweeps, push, thumbs and signs keep their meanings below, and a
+**held fist pauses** everything until you hold a fist again. Turn the camera off with
+**G** in the orb, **Off** under the camera preview, or the switch in Settings; turn off
+"Hands replace the mouse" to go back to gestures only inside the orb.
 
-- **Spin**: pinch your thumb and index finger together on one hand and move it.
-- **Zoom**: pinch with both hands, then spread them apart to zoom in or bring
-  them together to zoom out.
-- Let go of the pinch to stop. Press **G** again to turn gestures and the camera off.
+In the orb your hands are also drawn over it as glowing skeletons, with what each hand
+is doing written by the wrist. With no hand in view the tracker checks only every
+third camera frame, to save power.
+
+The same gestures work on the orb, inside the apps it opens (your hand moves the
+real mouse pointer) and in the places that open over it (Files, Apps, Library,
+Settings…, with a hand cursor). Press **?** or **H** (or **Gesture guide** under
+the camera preview) for this list on screen:
+
+| Gesture | On the orb | Inside an app / a place |
+|---|---|---|
+| Point (index finger up) | Aim at a shortcut; **hold 1 s to open it** | Move the pointer / hand cursor |
+| Quick pinch, thumb + index | Open the shortcut | Click |
+| Quick pinch, thumb + middle | | Right-click |
+| Pinch, hold and move | Spin the orb | Drag |
+| Fist, then open wide ("zoom in") | Open the shortcut | Double-click (open a file or folder) |
+| Both hands pinched, spread | Aimed at a shortcut: **fly into it and open it**; else zoom in | Files: **open the folder**; apps: zoom in |
+| Both hands pinched, close | Zoom out | Files: **up a folder**; apps: zoom out |
+| Two fingers up, move up or down | Turn the shortcut rings | Scroll |
+| Three fingers up | Files | Files |
+| Open hand, sweep left or right | Previous / next app | Previous / next app |
+| Open hand, sweep up | Home | Home (the orb; the app waits, minimized) |
+| Open hand, sweep down | Apps | Apps |
+| Open hand, push toward the screen | Back | Back |
+| Thumb + little finger out | Talk / stop talking | same |
+| Thumb up or down, held | Yes / No to a question | same |
+| Open palm, held still | Stop (Scorpion stops speaking) | same |
+| Fist, held | Pause / resume your hands | same |
+
+Inside an app the hand moves the real mouse pointer, but only within that app's
+panel: a gesture can never click anything else. On Scorpion's screens: point to move the hand cursor, quick pinch to click, fist-then-open to double-click (open a file in Files), thumb + middle for the right-click menu, two fingers to scroll; sweeping left or right brings your other apps forward. Press **G** again to turn
+gestures and the camera off.
 
 A small mirrored camera preview shows the hand points Scorpion sees and a status
-line (how many hands, and whether you're spinning or zooming). Hand tracking uses
+line (how many hands and what they're doing; each gesture shows its name as it happens). Hand tracking uses
 Google's MediaPipe hand landmarker, which runs inside Scorpion. The first time you
 turn gestures on, Scorpion downloads its hand model once (about 8 MB); after that
 it works offline.

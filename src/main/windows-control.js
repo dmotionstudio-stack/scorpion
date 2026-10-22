@@ -40,22 +40,27 @@ let kept = null;
 export function runPsKept(script, { timeout = 15000 } = {}) {
   if (!kept) {
     const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-Command', '-'], { windowsHide: true });
-    kept = { p, out: '', queue: [] };
+    // Each PowerShell's own state: output can still arrive after it was
+    // stopped, and an old one exiting must not drop its replacement.
+    const own = (kept = { p, out: '', queue: [] });
     p.stdout.setEncoding('utf8');
     p.stdout.on('data', (d) => {
-      kept.out += d;
+      own.out += d;
       let i;
-      while (kept && (i = kept.out.indexOf('<<SCORPION-END>>')) >= 0) {
-        const text = kept.out.slice(0, i);
-        kept.out = kept.out.slice(i + 16).replace(/^\r?\n/, '');
-        const job = kept.queue.shift();
+      while ((i = own.out.indexOf('<<SCORPION-END>>')) >= 0) {
+        const text = own.out.slice(0, i);
+        own.out = own.out.slice(i + 16).replace(/^\r?\n/, '');
+        const job = own.queue.shift();
         clearTimeout(job?.timer);
         if (!job) continue;
         const err = /^<<SCORPION-ERR>>(.*)/s.exec(text.trim());
         if (err) job.reject(new Error(err[1].trim() || 'PowerShell failed')); else job.resolve(text.trim());
       }
     });
-    const fail = () => { const k = kept; kept = null; for (const job of k?.queue || []) { clearTimeout(job.timer); job.reject(new Error('PowerShell stopped')); } };
+    const fail = () => {
+      if (kept === own) kept = null;
+      for (const job of own.queue.splice(0)) { clearTimeout(job.timer); job.reject(new Error('PowerShell stopped')); }
+    };
     p.on('exit', fail);
     p.on('error', fail);
     p.stdin.write("$ProgressPreference = 'SilentlyContinue'; [Console]::OutputEncoding = [Text.Encoding]::UTF8\n");
@@ -406,6 +411,61 @@ export async function runStartupApps() {
       Get-ChildItem -Path $d -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.lnk', '.url', '.exe' -and $_.Name -notmatch 'Scorpion' } | ForEach-Object { try { Start-Process -FilePath $_.FullName; $n++ } catch {} }
     }
     $n`, { timeout: 60000 });
+}
+
+// Windows' own taskbar (and the ones on other screens), hidden while
+// Scorpion's takes its place, and shown again after. Only the windows are
+// hidden: no Windows setting changes, and restarting Explorer brings it back.
+// Explorer sometimes shows it again (opening Start, a screen change), so the
+// keeper calls this every few seconds; with a work area it also keeps the
+// screen space for apps above Scorpion's bar.
+// The work area is in scaled pixels, like Electron's. This runs in the kept
+// PowerShell, whose thread the pointer and window helpers switch to real
+// pixels; so it switches back first, or on a scaled screen it would read the
+// area doubled and "correct" it to half (windows jumping every few seconds).
+const TRAY = `Add-Type -Namespace ScorpionTb -Name T -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr c, string cls, string t); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c); [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h); [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr c);';`;
+export function setWindowsTaskbar(visible, area = null) {
+  const keepArea = area ? `[ScorpionTb.T]::SetThreadDpiAwarenessContext([IntPtr](-1)) | Out-Null; ${SPI} $r = New-Object ScorpionSpi.S+R; [ScorpionSpi.S]::SystemParametersInfo(0x30, 0, [ref]$r, 0) | Out-Null; if ($r.B -ne ${Math.round(area.bottom)} -or $r.T -ne ${Math.round(area.top)}) { $r.L = ${Math.round(area.left)}; $r.T = ${Math.round(area.top)}; $r.Rt = ${Math.round(area.right)}; $r.B = ${Math.round(area.bottom)}; [ScorpionSpi.S]::SystemParametersInfo(0x2F, 0, [ref]$r, 3) | Out-Null }` : '';
+  return runPsKept(`${TRAY} foreach ($cls in 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd') { $h = [IntPtr]::Zero; while (($h = [ScorpionTb.T]::FindWindowEx([IntPtr]::Zero, $h, $cls, $null)) -ne [IntPtr]::Zero) { if ([ScorpionTb.T]::IsWindowVisible($h) -ne $${Boolean(visible)}) { [ScorpionTb.T]::ShowWindow($h, ${visible ? 5 : 0}) | Out-Null } } } ${keepArea}`);
+}
+
+// End task (the taskbar's right-click menu): force-quit the program behind a
+// window, like Windows' own End task; unsaved work in it is lost. A Store app's
+// window belongs to ApplicationFrameHost, which holds every Store app's frame,
+// so the app's own process is found inside it. Windows' own parts and Scorpion
+// are never ended.
+const END = `Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
+public static class ScorpionEnd {
+  delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr p, EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  public static uint Pid(IntPtr h) {
+    uint pid; GetWindowThreadProcessId(h, out pid);
+    try {
+      if (System.Diagnostics.Process.GetProcessById((int)pid).ProcessName != "ApplicationFrameHost") return pid;
+    } catch { return pid; }
+    uint frame = pid, found = 0;
+    EnumChildWindows(h, (c, l) => { uint p; GetWindowThreadProcessId(c, out p); if (p != frame) { found = p; return false; } return true; }, IntPtr.Zero);
+    return found;
+  }
+}
+'@;`;
+const KEEP_RUNNING = new Set(['explorer', 'dwm', 'csrss', 'winlogon', 'wininit', 'lsass', 'services', 'smss', 'svchost', 'system', 'fontdrvhost', 'applicationframehost', 'shellexperiencehost', 'startmenuexperiencehost', 'searchhost', 'textinputhost', 'sihost', 'ctfmon']);
+// The program End task would stop for a window, or an error saying why not.
+export async function endTaskTarget(hwnd, { ownPids = [] } = {}) {
+  const pid = Number(await runPsKept(`${END} [ScorpionEnd]::Pid(([IntPtr][long]${psQuote(hwnd)}))`));
+  if (!pid) throw new Error("Couldn't find that app's program (it may be suspended).");
+  if (ownPids.includes(pid)) throw new Error("That's Scorpion itself: quit it from its own menu instead.");
+  const name = (await runPsKept(`(Get-Process -Id ${pid}).ProcessName`)).trim();
+  if (/^scorpion$/i.test(name)) throw new Error("That's Scorpion itself: quit it from its own menu instead.");
+  if (KEEP_RUNNING.has(name.toLowerCase())) throw new Error(`${name} is part of Windows and can't be ended here.`);
+  return { pid, name };
+}
+export async function endTask(hwnd, opts) {
+  const { pid, name } = await endTaskTarget(hwnd, opts);
+  await runPsKept(`Stop-Process -Id ${pid} -Force`);
+  return name;
 }
 
 // Sign out of Windows (the shell's power menu).

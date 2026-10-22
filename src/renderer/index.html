@@ -12,6 +12,7 @@
 </head>
 <body>
   <div class="app">
+    <button type="button" class="sidebar-toggle" id="sidebar-toggle" title="Hide the sidebar for more room (Ctrl+B)" aria-label="Hide the sidebar" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
     <aside class="sidebar">
       <div class="brand">
         <svg class="logo" viewBox="0 0 100 100" aria-hidden="true">
@@ -157,7 +158,7 @@
           <p class="muted">Agents that work on their own: on a timer, every day at a set time, or whenever files in a folder change. Each one posts results to its own chat and shows a notification. They run while Scorpion is open, and Scorpion stays in the system tray when you close the window.</p>
           <div class="row">
             <button class="btn primary" id="new-schedule">＋ New scheduled agent</button>
-            <label class="toggle"><input type="checkbox" id="open-at-login"><span>Start Scorpion in the tray when I log in</span></label>
+            <label class="toggle"><input type="checkbox" id="open-at-login"><span>Start Scorpion when I sign in</span></label>
           </div>
           <form class="editor hidden" id="schedule-editor">
             <h2 id="schedule-editor-title">New scheduled agent</h2>
@@ -301,6 +302,40 @@
             </select>
             <p class="muted small" id="file-access-hint"></p>
           </div>
+          <div class="field">
+            <label>Hand gestures</label>
+            <label class="toggle"><input type="checkbox" id="hands-always"><span>Hand gestures on (camera)</span></label>
+            <label class="toggle"><input type="checkbox" id="hand-mouse"><span>Hands replace the mouse, everywhere (Windows): your index finger moves the real pointer over the whole screen; pinch clicks, thumb + middle right-clicks, fist then open double-clicks, a held pinch drags, two fingers scroll. A held fist pauses it</span></label>
+            <p class="muted small">With the hand as the mouse, the camera runs whenever Scorpion is open (even behind other windows) and rests while Scorpion is minimized. Otherwise it runs only while the orb is open. The video stays on this computer and is never recorded. With no hand in view it checks less often, to save power.</p>
+          </div>
+          <div class="field">
+            <label for="orb-look">Orb look</label>
+            <select id="orb-look">
+              <option value="classic">The orb sphere</option>
+              <option value="constellation">A constellation map of your projects</option>
+            </select>
+            <div class="row"><label for="const-shortcut" class="small">Summon shortcut</label><input class="text-input narrow" id="const-shortcut" placeholder="Super+Space" aria-label="Summon shortcut"><button class="btn small" type="button" id="const-shortcut-save">Set</button><span class="muted small" id="const-shortcut-now"></span></div>
+            <label class="toggle"><input type="checkbox" data-const="recommend"><span>Recommendations: the most relevant items orbit closest (recent, frequent, usual at this time, open now)</span></label>
+            <label class="toggle"><input type="checkbox" data-const="motion"><span>Motion: drifting, twinkling and gliding</span></label>
+            <label class="toggle"><input type="checkbox" data-const="large"><span>Bigger items and more space</span></label>
+            <label class="toggle"><input type="checkbox" data-const="contrast"><span>High contrast: plain labels, and status in words (open, missing)</span></label>
+            <p class="muted small">The settings above are for the constellation map. Projects are constellations: their apps, folders, documents and websites orbit them. Click an item to open it, the star to resume the project, drag one item onto another to connect them, or anywhere to pin it there. Scroll out for the galaxy of all projects; type to search; List shows the same as plain lists. Shortcut examples: Super+Space, Super+Alt+Space, Control+Shift+Space (Windows keeps Win+Space for keyboard layouts; then Win+Alt+Space is used).</p>
+          </div>
+          <div class="field">
+            <label>Full screen</label>
+            <label class="toggle"><input type="checkbox" id="full-at-start"><span>Start Scorpion in full screen, over every other window, with no window buttons</span></label>
+            <div class="row"><button class="btn" id="full-now" type="button">Full screen now</button></div>
+            <p class="muted small">To leave full screen: Ctrl+Esc, or press Esc twice quickly. F11 goes back to full screen. Apps you open from Scorpion show inside the orb, on top of it. Windows itself (Ctrl+Alt+Delete, sign-in, its own alerts) can still come in front.</p>
+          </div>
+          <div class="field">
+            <label for="login-start">When I sign in</label>
+            <select id="login-start">
+              <option value="off">Don't start Scorpion</option>
+              <option value="tray">Start Scorpion in the tray</option>
+              <option value="orb">Open the orb</option>
+            </select>
+            <p class="muted small">Open the orb: Scorpion starts with the orb filling the screen, greets you by name when face recognition is installed, and waits until you speak to it (or say "Scorpion" with the wake word on).</p>
+          </div>
           <div class="field hidden" id="desktop-field">
             <label>Windows desktop</label>
             <div id="desktop-settings"></div>
@@ -382,6 +417,7 @@
     <div class="ix-hud ix-title">S.C.O.R.P.I.O.N.</div>
     <div class="ix-hud ix-status"><span class="ix-dot" id="ix-dot"></span><span id="ix-state">Standby</span><span class="ix-dim" id="ix-model"></span></div>
     <button type="button" class="ix-btn ix-close" id="ix-close" title="Back to chat (Esc)">✕ Exit</button>
+    <button type="button" class="ix-btn ix-min" id="ix-min" title="Minimize the orb to a small floating orb">— Minimize</button>
     <div class="ix-captions" id="ix-captions" aria-live="polite">
       <div class="ix-you" id="ix-you"></div>
       <div class="ix-reply" id="ix-reply"></div>
@@ -393,24 +429,65 @@
         <button type="button" class="ix-btn" id="ix-voice" aria-pressed="false" title="Read replies aloud">Voice off</button>
         <select class="ix-btn ix-lang" id="ix-lang" aria-label="Language" title="The language you speak and Scorpion replies in"></select>
         <button type="button" class="ix-btn" id="ix-face" aria-pressed="false" title="Track faces and know who is talking, using the camera (F)">Face off</button>
-        <button type="button" class="ix-btn" id="ix-gestures" aria-pressed="false" title="Spin and zoom the orb with your hands, using the camera (G)">Gestures off</button>
+        <button type="button" class="ix-btn" id="ix-gestures" aria-pressed="false" title="Point, pick, switch windows and spin the orb with your hands, using the camera (G)">Gestures off</button>
+        <button type="button" class="ix-btn" id="ix-wake" aria-pressed="false" title="Say “Scorpion” to start: listens and transcribes on this computer only">Wake word off</button>
         <span class="ix-gap"></span>
         <button type="button" class="ix-btn" id="ix-zoom-in" aria-label="Zoom in">+</button>
         <button type="button" class="ix-btn" id="ix-zoom-out" aria-label="Zoom out">−</button>
         <button type="button" class="ix-btn" id="ix-reset">Reset</button>
       </div>
     </div>
-    <div class="ix-hud ix-hint" id="ix-hint"><span class="key">Space</span> talk / interrupt <span class="key">Drag</span> spin <span class="key">Scroll</span> zoom <span class="key">F</span> face <span class="key">G</span> gestures <span class="key">R</span> reset <span class="key">Esc</span> exit</div>
+    <div class="ix-approval hidden" id="ix-approval" role="alertdialog" aria-live="assertive"><div class="ix-approval-text" id="ix-approval-text"></div><div class="ix-row"><button type="button" class="ix-btn ix-yes" id="ix-approval-yes">Yes</button><button type="button" class="ix-btn" id="ix-approval-no">No</button></div><div class="ix-dim">Or say yes or no</div></div>
+    <div class="ix-event hidden" id="ix-event" aria-live="polite"></div>
+    <div class="ix-app hidden" id="ix-app" aria-label="App inside the orb">
+      <div class="ix-app-strip"><img id="ix-app-icon" alt="" hidden><span class="ix-app-title" id="ix-app-title"></span><span class="ix-gap"></span>
+        <button type="button" class="ix-btn" id="ix-app-prev" title="Previous app">‹</button><button type="button" class="ix-btn" id="ix-app-next" title="Next app">›</button>
+        <button type="button" class="ix-btn" id="ix-app-orb" title="Back to the orb (the app waits, minimized). Or say “back”, or push your hand toward the screen">Orb</button>
+        <button type="button" class="ix-btn" id="ix-app-pop" title="Give this app its normal window">Pop out</button>
+        <button type="button" class="ix-btn" id="ix-app-close" title="Close the app (it can still ask to save your work)">✕</button></div>
+      <div class="ix-app-body">Opening…</div>
+    </div>
+    <div class="ix-pointer hidden" id="ix-pointer"></div>
+    <canvas class="ix-hands" id="ix-hands" aria-hidden="true"></canvas>
+    <div class="ix-hud ix-hint" id="ix-hint"><span class="key">Click</span> a shortcut <span class="key">Space</span> talk / interrupt <span class="key">Drag</span> spin <span class="key">Scroll</span> zoom <span class="key">F</span> face <span class="key">G</span> gestures <span class="key">R</span> reset <span class="key">Esc</span> exit</div>
     <div class="ix-facecam hidden" id="ix-facecam" aria-live="polite">
       <div class="ix-cam-view"><video id="ix-face-video" muted playsinline></video><canvas id="ix-face-overlay" width="320" height="240"></canvas></div>
       <div class="ix-cam-status" id="ix-face-status"></div>
       <div class="ix-face-info" id="ix-face-info"></div>
     </div>
-    <div class="ix-cam hidden" id="ix-cam" aria-live="polite">
-      <div class="ix-cam-view"><video id="ix-cam-video" muted playsinline></video><canvas id="ix-cam-overlay" width="208" height="156"></canvas></div>
-      <div class="ix-cam-status" id="ix-cam-status"></div>
-    </div>
   </div>
+  <!-- Hand tracking: the camera preview, the gesture guide and the hand cursor, for all of Scorpion -->
+  <div class="ix-cam hand-cam hidden" id="ix-cam" aria-live="polite">
+    <div class="ix-cam-view"><video id="ix-cam-video" muted playsinline></video><canvas id="ix-cam-overlay" width="208" height="156"></canvas></div>
+    <div class="ix-cam-status" id="ix-cam-status"></div>
+    <div class="ix-gesture-flash" id="ix-gesture-flash" aria-live="polite"></div>
+    <div class="hand-cam-row"><button type="button" class="ix-btn ix-guide-btn" id="ix-guide-btn" title="All the hand gestures (? or H in the orb)">Gesture guide</button><button type="button" class="ix-btn ix-guide-btn" id="hand-off" title="Turn hand gestures and the camera off (Settings → General to turn them back on)">Off</button></div>
+  </div>
+  <div class="ix-guide hand-guide hidden" id="ix-guide" role="dialog" aria-label="Hand gestures">
+    <div class="ix-guide-head"><span>Hand gestures</span><button type="button" class="ix-btn" id="ix-guide-close" aria-label="Close the guide">✕</button></div>
+    <table>
+        <tr><th>Point (index finger up)</th><td>Aim at a shortcut. Hold on it to open it</td></tr>
+        <tr><th>Quick pinch, thumb + index</th><td>Open / select; click inside an app</td></tr>
+        <tr><th>Quick pinch, thumb + middle</th><td>Right-click inside an app</td></tr>
+        <tr><th>Pinch, hold and move</th><td>Spin the orb; drag inside an app</td></tr>
+        <tr><th>Fist, then open wide</th><td>Zoom in: open what you aim at (double-click in apps)</td></tr>
+        <tr><th>Both hands pinched, spread</th><td>Aimed at a shortcut: fly into it and open it. In Files: open the folder</td></tr>
+        <tr><th>Both hands pinched, close</th><td>Zoom out. In Files: up a folder</td></tr>
+        <tr><th>Two fingers up, move up or down</th><td>Turn the shortcut rings; scroll in apps and pages</td></tr>
+        <tr><th>Three fingers up</th><td>Files</td></tr>
+        <tr><th>Open hand, sweep left or right</th><td>Previous / next app</td></tr>
+        <tr><th>Open hand, sweep up</th><td>Home: the orb</td></tr>
+        <tr><th>Open hand, sweep down</th><td>Apps</td></tr>
+        <tr><th>Open hand, push toward the screen</th><td>Back</td></tr>
+        <tr><th>Thumb + little finger out</th><td>Talk / stop talking</td></tr>
+        <tr><th>Thumb up or down, hold</th><td>Yes / no to a question</td></tr>
+        <tr><th>Open palm, held still</th><td>Stop: Scorpion stops speaking</td></tr>
+        <tr><th>Fist, held</th><td>Pause / resume your hands</td></tr>
+    </table>
+    <p class="ix-dim">Your hand is the mouse everywhere (Settings → General): the index finger moves the real pointer over the whole screen, and the table's clicks, drags and scrolling work in any app. A held fist pauses it. Press ? or H in the orb for this guide.</p>
+  </div>
+  <div class="hand-pointer hidden" id="hand-pointer" aria-hidden="true"></div>
+  <button type="button" class="mini-orb hidden" id="mini-orb" title="Back to the orb (drag to move it)" aria-label="Back to the orb"><span class="mo-glow"></span><span class="mo-ring mo-r1"></span><span class="mo-ring mo-r2"></span><span class="mo-ring mo-r3"></span><span class="mo-core"></span></button>
   <!-- Enrolling a person with the camera -->
   <div class="face-capture hidden" id="face-capture" role="dialog" aria-modal="true" aria-labelledby="face-capture-title">
     <div class="face-capture-card">

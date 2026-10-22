@@ -1,6 +1,6 @@
-// The Scorpion shell's home screen: ask box, a launcher for Scorpion's tools
-// (with live status), workspaces, and recent activity. Everything it opens is
-// the same app underneath: chats, Interact, Library, Settings tabs.
+// The Scorpion shell's home screen: the ask box and Scorpion's tools (with live
+// status) as holographic tiles that fill the screen. Everything it opens is the
+// same app underneath: chats, Interact, Library, Settings tabs.
 const svg = (paths) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`;
 const ICONS = {
   chat: svg('<path d="M4 5h16v11H9l-5 4z"/>'),
@@ -17,24 +17,11 @@ const ICONS = {
   settings: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>'),
   apps: svg('<rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/>'),
   files: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
-  folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
-  action: svg('<path d="M13 3L4 14h7l-1 7 9-11h-7z"/>'),
-  phone: svg('<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>'),
-  checkin: svg('<path d="M4 12l5 5L20 6"/>'),
 };
-const KIND_ICON = { chat: 'chat', phone: 'phone', action: 'action', schedule: 'schedules', checkin: 'checkin', memory: 'memory', library: 'library' };
 
 export function initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi }) {
-  const H = { workspaces: [], activity: [], renaming: null };
+  const H = { workspaces: [] }; // for "working in …" under the greeting
 
-  const ago = (t) => {
-    const s = Math.max(0, (Date.now() - t) / 1000);
-    if (s < 60) return 'just now';
-    if (s < 3600) return `${Math.round(s / 60)} min ago`;
-    if (s < 86400) return `${Math.round(s / 3600)} h ago`;
-    if (s < 7 * 86400) return `${Math.round(s / 86400)} d ago`;
-    return new Date(t).toLocaleDateString();
-  };
   const greeting = () => { const h = new Date().getHours(); return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
   const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -81,54 +68,21 @@ export function initHome({ api, $, esc, toast, errText, S, setView, newThread, s
           <button class="btn primary" type="submit">Ask</button>
         </form>
       </section>
-      <section>
+      <section class="home-tools-wrap">
         <h2>Tools</h2>
         <div class="home-tools">${tools().map((t) => `<button type="button" class="home-tool" data-tool="${t.key}">${ICONS[t.key] || ''}<span class="name">${esc(t.name)}</span><span class="note">${esc(t.note)}</span></button>`).join('')}</div>
-      </section>
-      <div class="home-cols">
-        <section>
-          <div class="row space"><h2>Workspaces</h2><button class="btn small" data-ws="add">Add a folder…</button></div>
-          <p class="muted small">Folders Scorpion works in. New chats start in the active one; each chat keeps the workspace it started in.</p>
-          <div class="home-list">${ws.map((w) => `<div class="home-ws${w.active ? ' active' : ''}${w.exists ? '' : ' missing'}">
-            ${ICONS.folder}
-            <div class="what">${H.renaming === w.id ? `<form class="home-rename" data-ws-rename-form="${esc(w.id)}"><input class="text-input" name="name" value="${esc(w.name)}" maxlength="60"><button class="btn small primary" type="submit">Save</button></form>` : `<b>${esc(w.name)}</b>`}${w.active ? ' <span class="tag on">active</span>' : ''}${w.exists ? '' : ' <span class="tag">folder missing</span>'}
-              <div class="muted small" title="${esc(w.path)}">${esc(w.path)}</div>
-              <div class="muted small">${plural(w.chats, 'chat')}${w.lastActivity ? ` · ${ago(w.lastActivity)}` : ''}</div></div>
-            <div class="acts">
-              ${w.active || !w.exists ? '' : `<button class="btn small" data-ws-use="${esc(w.id)}">Use</button>`}
-              ${w.exists ? `<button class="btn small" data-ws-chat="${esc(w.id)}">New chat here</button><button class="btn small" data-ws-open="${esc(w.id)}">Open</button>` : ''}
-              <button class="btn small" data-ws-rename="${esc(w.id)}">Rename</button>
-              <button class="btn small" data-ws-remove="${esc(w.id)}">Remove</button>
-            </div></div>`).join('') || '<p class="muted">No workspaces yet. Add a folder for Scorpion to work in.</p>'}</div>
-        </section>
-        <section>
-          <h2>Recent activity</h2>
-          <div class="home-list">${H.activity.map((a) => `<${a.threadId ? `button type="button" data-open-thread="${esc(a.threadId)}"` : 'div'} class="home-act${a.error ? ' error' : ''}">
-            ${ICONS[KIND_ICON[a.kind]] || ICONS.action}
-            <div class="what"><b>${esc(a.title)}</b>${a.detail ? `<div class="muted small">${esc(a.detail)}</div>` : ''}</div>
-            <span class="when muted small">${ago(a.at)}</span></${a.threadId ? 'button' : 'div'}>`).join('') || '<p class="muted">Nothing yet. Start a chat, or say hello in Interact.</p>'}</div>
-        </section>
-      </div>`;
+      </section>`;
   }
 
   async function load() {
     try {
       const d = await api.homeGet();
       H.workspaces = d.workspaces;
-      H.activity = d.activity;
     } catch (err) { toast(errText(err)); }
     if (S.view === 'home') render();
   }
 
   $('#home-page').addEventListener('submit', async (e) => {
-    const rename = e.target.dataset.wsRenameForm;
-    if (rename) {
-      e.preventDefault();
-      try { H.workspaces = await api.workspaceRename({ id: rename, name: e.target.elements.name.value }); } catch (err) { toast(errText(err)); }
-      H.renaming = null;
-      render();
-      return;
-    }
     if (e.target.id !== 'home-ask') return;
     e.preventDefault();
     const text = $('#home-input').value.trim();
@@ -137,30 +91,10 @@ export function initHome({ api, $, esc, toast, errText, S, setView, newThread, s
     await sendMessage(text);
   });
 
-  $('#home-page').addEventListener('click', async (e) => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    const d = b.dataset;
-    if (d.tool) {
-      const t = tools().find((x) => x.key === d.tool);
-      if (t?.run) t.run(); else if (t?.view) setView(t.view);
-      return;
-    }
-    if (d.openThread) { openThread(d.openThread); return; }
-    try {
-      if (d.ws === 'add') { H.workspaces = await api.workspaceAdd(); render(); return; }
-      if (d.wsUse) { H.workspaces = await api.workspaceUse(d.wsUse); S.settings = await api.state().then((s) => s.settings); render(); toast('New chats now start in this workspace.'); return; }
-      if (d.wsChat) { await newThread(undefined, d.wsChat); return; }
-      if (d.wsOpen) { api.workspaceOpen(d.wsOpen); return; }
-      if (d.wsRename) { H.renaming = d.wsRename; render(); $('.home-rename input')?.select(); return; }
-      if (d.wsRemove) {
-        const w = H.workspaces.find((x) => x.id === d.wsRemove);
-        if (!confirm(`Remove "${w?.name}" from Scorpion's workspaces? The folder and its files stay where they are.`)) return;
-        H.workspaces = await api.workspaceRemove(d.wsRemove);
-        S.settings = (await api.state()).settings;
-        render();
-      }
-    } catch (err) { toast(errText(err), 6000); }
+  $('#home-page').addEventListener('click', (e) => {
+    const tool = e.target.closest('[data-tool]')?.dataset.tool;
+    const t = tool && tools().find((x) => x.key === tool);
+    if (t?.run) t.run(); else if (t?.view) setView(t.view);
   });
 
   return {
