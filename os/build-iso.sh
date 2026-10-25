@@ -135,7 +135,7 @@ chmod 755 "$CHROOT/usr/bin/scorpion-session" "$CHROOT/usr/bin/scorpion-install" 
 # The system's name (Ubuntu's name and logo are Canonical's trademarks, so a
 # system built from it carries its own). The Ubuntu files stay for the tools
 # that read them (lsb-release).
-in_chroot dpkg-divert --local --rename --add /usr/lib/os-release
+in_chroot dpkg-divert --local --no-rename --add /usr/lib/os-release
 cat > "$CHROOT/usr/lib/os-release" <<EOF
 PRETTY_NAME="Scorpion OS $VERSION"
 NAME="Scorpion OS"
@@ -262,7 +262,7 @@ fi
 EFI_IMG="$WORK/efiboot.img"
 EFI_KB=$(( $(du -sk "$IMAGE/EFI" | cut -f1) + 2048 ))
 dd if=/dev/zero of="$EFI_IMG" bs=1k count="$EFI_KB" status=none
-mkfs.vfat -n SCORPION_EFI "$EFI_IMG" >/dev/null
+mkfs.vfat -n SCORPIONEFI "$EFI_IMG" >/dev/null
 mmd -i "$EFI_IMG" ::/EFI ::/EFI/boot
 mcopy -i "$EFI_IMG" "$IMAGE"/EFI/boot/* ::/EFI/boot/
 
