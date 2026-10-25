@@ -32,8 +32,7 @@
 
   <windowSwitcher show="yes" preview="yes" outlines="yes" allWorkspaces="no">
     <fields>
-      <field content="icon" width="5%" />
-      <field content="title" width="95%" />
+      <field content="title" width="100%" />
     </fields>
   </windowSwitcher>
 
@@ -58,7 +57,6 @@
     <keybind key="W-Down"><action name="Iconify" /></keybind>
     <keybind key="W-Left"><action name="SnapToEdge" direction="left" /></keybind>
     <keybind key="W-Right"><action name="SnapToEdge" direction="right" /></keybind>
-    <keybind key="W-d"><action name="ToggleShowDesktop" /></keybind>
     <!-- The system -->
     <keybind key="W-Return"><action name="Execute" command="x-terminal-emulator" /></keybind>
     <keybind key="W-e"><action name="Execute" command="nautilus" /></keybind>

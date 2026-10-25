@@ -91,8 +91,10 @@ for (const [name, firmware] of [['menu-uefi', ['-bios', '/usr/share/ovmf/OVMF.fd
   if (firmware.length && !fs.existsSync(firmware[1])) { console.log(`2. ${name}: no OVMF firmware, skipped`); continue; }
   console.log(`2. ${name}: boot menu…`);
   const vm = qemu([...firmware, '-cdrom', iso, '-boot', 'd'], path.join(shots, `serial-${name}.log`));
-  await sleep(kvm ? 15000 : 40000);
+  await sleep(kvm ? 7000 : 25000);
   await screenshot(vm.sock, name).catch((e) => console.log(`  no picture: ${e.message}`));
+  await sleep(kvm ? 8000 : 20000);
+  await screenshot(vm.sock, `${name}-later`).catch((e) => console.log(`  no picture: ${e.message}`));
   vm.stop();
 }
 

@@ -98,6 +98,9 @@ else if (app.isPackaged && portableDir) {
 // Scorpion OS's session: Scorpion's windows go through XWayland (X11), where
 // they can be placed and kept on top (the rail, the dot, the wheel).
 if (process.platform === 'linux' && process.env.XDG_SESSION_DESKTOP === 'scorpion') app.commandLine.appendSwitch('ozone-platform', 'x11');
+// Without a graphics card (a virtual machine), WebGL falls back to Chromium's
+// software renderer, so the orb still draws (slower).
+if (process.platform === 'linux') app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 
 if (!app.requestSingleInstanceLock()) app.quit();
 // Covered by other windows, Scorpion still counts as on screen, so hand

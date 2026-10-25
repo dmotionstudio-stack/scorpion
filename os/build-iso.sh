@@ -131,6 +131,7 @@ in_chroot "${APT_INSTALL[@]}" /tmp/scorpion.deb
 rm -f "$CHROOT/tmp/scorpion.deb"
 cp -a "$OS_DIR/rootfs/." "$CHROOT/"
 chmod 755 "$CHROOT/usr/bin/scorpion-session" "$CHROOT/usr/bin/scorpion-install" "$CHROOT"/usr/lib/scorpion-os/*
+chmod 600 "$CHROOT/etc/netplan/01-network-manager-all.yaml"
 
 # The system's name (Ubuntu's name and logo are Canonical's trademarks, so a
 # system built from it carries its own). The Ubuntu files stay for the tools
@@ -265,6 +266,9 @@ dd if=/dev/zero of="$EFI_IMG" bs=1k count="$EFI_KB" status=none
 mkfs.vfat -n SCORPIONEFI "$EFI_IMG" >/dev/null
 mmd -i "$EFI_IMG" ::/EFI ::/EFI/boot
 mcopy -i "$EFI_IMG" "$IMAGE"/EFI/boot/* ::/EFI/boot/
+
+# Checksums of the disc's files, for casper's "check disc for defects".
+(cd "$IMAGE" && find . -type f ! -name md5sum.txt ! -path './boot/grub/bios.img' -print0 | sort -z | xargs -0 md5sum > md5sum.txt)
 
 log "7/7 The ISO"
 rm -f "$ISO"

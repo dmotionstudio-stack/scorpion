@@ -1,0 +1,4 @@
+# Scorpion OS: NetworkManager runs every network connection (Wi-Fi, Ethernet, mobile).
+network:
+  version: 2
+  renderer: NetworkManager

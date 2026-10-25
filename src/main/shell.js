@@ -67,6 +67,14 @@ function placeSummon() {
     : { x: r.x + 8, y: r.y + r.height - DOT - 8, width: DOT, height: DOT });
 }
 
+// On Linux the window manager places a new window itself (labwc centres it);
+// a move asked for once it's on screen is honoured, so the rail and the dot
+// ask again.
+function placeAgain() {
+  if (WIN) return;
+  for (const ms of [150, 600, 1500]) setTimeout(placeTaskbar, ms);
+}
+
 const windowOptions = (title) => ({
   frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
   // See-through, for the glass look (edge.css, summon.css, taskbar.css).
@@ -78,13 +86,13 @@ function createWindows() {
   taskbar = new deps.BrowserWindow(windowOptions('Scorpion taskbar'));
   taskbar.setAlwaysOnTop(true, 'pop-up-menu');
   taskbar.loadURL(`scorpion://app/${layout === 'bar' ? 'taskbar' : 'edge'}.html`);
-  taskbar.once('ready-to-show', () => { placeTaskbar(); taskbar.showInactive(); });
+  taskbar.once('ready-to-show', () => { placeTaskbar(); taskbar.showInactive(); placeAgain(); });
   taskbar.on('closed', () => { taskbar = null; });
   if (layout === 'orbit') {
     summon = new deps.BrowserWindow(windowOptions('Scorpion summon'));
     summon.setAlwaysOnTop(true, 'pop-up-menu');
     summon.loadURL('scorpion://app/summon.html');
-    summon.once('ready-to-show', () => { placeSummon(); summon.showInactive(); });
+    summon.once('ready-to-show', () => { placeSummon(); summon.showInactive(); placeAgain(); });
     summon.on('blur', () => { if (wheelOpen && !held) summon.webContents.send('wheel:close'); });
     summon.on('closed', () => { summon = null; wheelOpen = false; });
   }

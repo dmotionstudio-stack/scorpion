@@ -51,6 +51,7 @@ btrfs-progs
 
 # --- network: Ethernet, Wi-Fi, mobile broadband, VPN ---
 network-manager
+systemd-resolved
 network-manager-gnome
 wpasupplicant
 iw
@@ -125,3 +126,6 @@ unattended-upgrades
 
 # --- the installer (removed from the installed system) ---
 calamares
+# Qt apps (the installer is Qt 5) on Wayland
+qtwayland5
+qt6-wayland

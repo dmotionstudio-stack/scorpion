@@ -25,4 +25,15 @@ fi
 # A copy of the session's settings in ~/.config/labwc wins, so it can be customized.
 CONFIG=/usr/share/scorpion/labwc
 [ -f "$HOME/.config/labwc/rc.xml" ] && CONFIG="$HOME/.config/labwc"
-exec labwc --config-dir "$CONFIG"
+
+# Graphics with no 3D (virtual machines like VirtualBox, very old cards): if
+# labwc can't start its GPU renderer it stops at once, and starts again
+# drawing in software (pixman), so the session still comes up.
+started=$(date +%s)
+labwc --config-dir "$CONFIG"
+code=$?
+if [ "$code" -ne 0 ] && [ -z "$WLR_RENDERER" ] && [ $(($(date +%s) - started)) -lt 15 ]; then
+  export WLR_RENDERER=pixman
+  exec labwc --config-dir "$CONFIG"
+fi
+exit "$code"

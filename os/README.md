@@ -53,6 +53,14 @@ Secure Boot can stay on (the stick boots through Ubuntu's signed shim). If a
 computer refuses, turn Secure Boot off in its firmware settings, or try **Safe
 graphics** in the menu for a black screen.
 
+## Try it in a virtual machine
+
+VirtualBox (7.x): a new VM of type **Ubuntu (64-bit)**, 4 processors, 6 GB of
+memory or more, 40 GB disk, **Enable EFI**, the ISO in the optical drive. Keep
+**3D acceleration off**: the session then draws in software (it detects that
+there is no usable GPU), and the orb uses the software 3D renderer, slower but
+complete. QEMU/KVM with virtio graphics works the same way.
+
 ## Install alongside Windows
 
 Before you start, in Windows:
