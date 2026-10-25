@@ -122,6 +122,8 @@ try {
     // Each screen starts from a fresh page on the home screen.
     await send('Page.navigate', { url: 'scorpion://app/index.html' });
     await sleep(4000);
+    // The pointer off anything it could light up.
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: w - 1, y: h - 1 });
     if (screen.go) await ev(screen.go);
     await sleep(screen.settle || 1500);
     const shot = (await send('Page.captureScreenshot', { format: 'png' })).data;
