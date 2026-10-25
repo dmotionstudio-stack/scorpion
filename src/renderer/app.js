@@ -11,6 +11,7 @@ import { initOrbSystem } from './orb-system.js';
 import { initHandControl } from './hand-control.js';
 import { HandTracker, cameraError } from './gestures.js';
 import { initWelcome } from './welcome.js';
+import { initLookSettings } from './settings-look.js';
 
 const api = window.scorpion;
 const $ = (sel) => document.querySelector(sel);
@@ -87,6 +88,7 @@ let desktopUi = null; // Apps, Files and Settings → Windows desktop (desktop-u
 let orbSys = null; // the orb as the whole system (orb-system.js)
 let hands = null; // hand gestures on Scorpion's own screens (hand-control.js)
 let welcome = null; // the spoken first start (welcome.js)
+let lookSettings = null; // Settings → General: Performance, the orb's look (settings-look.js)
 
 // ---------- top bar ----------
 function renderTopbar() {
@@ -1539,10 +1541,7 @@ function renderOnlineBadge() {
 
 // ---------- settings page ----------
 function renderSettings() {
-  $('#perf-level').value = PERF_FPS[S.settings.performance] ? S.settings.performance : 'full';
-  $('#perf-battery').checked = Boolean(S.settings.performanceOnBattery);
-  const chosen = $('#perf-level').value;
-  $('#perf-now').textContent = S.perf && S.perf !== chosen ? `Now: ${S.perf[0].toUpperCase()}${S.perf.slice(1)} (on battery)` : '';
+  lookSettings?.render();
   renderVoiceSettings();
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
   $('#online-mode').checked = Boolean(S.settings.online);
@@ -1551,9 +1550,6 @@ function renderSettings() {
   $('#file-access').value = full ? 'full' : 'ask';
   $('#login-start').value = S.loginStart || 'off';
   $('#full-at-start').checked = S.settings.fullModeAtStart !== false;
-  $('#orb-look').value = S.settings.orbLook === 'constellation' ? 'constellation' : 'classic';
-  if (document.activeElement !== $('#const-shortcut')) $('#const-shortcut').value = S.settings.constellationShortcut ?? 'Super+Space';
-  for (const box of document.querySelectorAll('[data-const]')) box.checked = { recommend: true, motion: true, large: false, contrast: false, ...(S.settings.constellation || {}) }[box.dataset.const];
   $('#hands-always').checked = S.settings.handsAlwaysOn !== false;
   $('#file-access-hint').textContent = full
     ? 'Scorpion can read, create, edit and move files anywhere on this computer. Changes and commands still ask first unless Auto-approve is on. System folders (Windows, Program Files) stay read-only.'
@@ -1757,7 +1753,7 @@ function wire() {
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice, startHands: () => toggleHands(true), setView });
-  $('#welcome-again').onclick = () => welcome.start({ force: true });
+  lookSettings = initLookSettings({ $, api, S, setSetting, toast, IX, startWelcome: () => welcome.start({ force: true }) });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
   const onNav = ({ view, dir, select, signin, search, talk }) => {
     // The intent wheel's Talk: the orb, listening.
@@ -2009,17 +2005,7 @@ function wire() {
   });
   // Scheduled agents need Scorpion running: this starts it in the tray (or keeps "Open the orb").
   $('#open-at-login').onchange = async (e) => { S.loginStart = await api.setLoginStart(e.target.checked ? (S.loginStart === 'orb' ? 'orb' : 'tray') : 'off'); $('#login-start').value = S.loginStart; };
-  $('#perf-level').onchange = (e) => setSetting({ performance: e.target.value });
-  $('#perf-battery').onchange = (e) => setSetting({ performanceOnBattery: e.target.checked });
   api.onPerfChanged?.(applyPerf);
-  $('#orb-look').onchange = async (e) => { S.settings = await api.updateSettings({ orbLook: e.target.value }); if (IX.open) toast('The new look shows the next time the orb opens.'); };
-  $('#const-shortcut-save').onclick = async () => {
-    const got = await api.constShortcut($('#const-shortcut').value.trim());
-    $('#const-shortcut-now').textContent = got ? `In use: ${got}` : 'That combination is taken by Windows or another app.';
-  };
-  for (const box of document.querySelectorAll('[data-const]')) {
-    box.onchange = async () => { S.settings = await api.updateSettings({ constellation: { recommend: true, motion: true, large: false, contrast: false, ...(S.settings.constellation || {}), [box.dataset.const]: box.checked } }); IX.orb?.refreshSettings?.(); };
-  }
   $('#full-at-start').onchange = async (e) => { S.settings = await api.updateSettings({ fullModeAtStart: e.target.checked }); };
   $('#full-now').onclick = () => api.setFullMode(true);
   api.onFullMode?.((on) => {
