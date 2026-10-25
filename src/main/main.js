@@ -1255,7 +1255,7 @@ function setTaskbarLook(t) {
 const INTENT_APPS = process.platform === 'linux' ? {
   // Scorpion OS's own apps (os/config/packages.list).
   write: { id: 'org.gnome.TextEditor.desktop', name: 'Text Editor', fallback: 'gnome-text-editor' },
-  create: { id: 'com.github.PintaProject.Pinta.desktop', name: 'Pinta', fallback: 'pinta' },
+  create: { id: 'com.github.maoschanz.drawing.desktop', name: 'Drawing', fallback: 'drawing' },
   focus: { id: 'org.gnome.clocks.desktop', name: 'Clocks (timers)', fallback: 'gnome-clocks' },
 } : {
   write: { id: 'Microsoft.WindowsNotepad_8wekyb3d8bbwe!App', name: 'Notepad', fallback: 'notepad.exe' },
