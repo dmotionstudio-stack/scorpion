@@ -94,8 +94,12 @@ export function isEmbeddingFile(file) {
 
 // Models shipped inside the installer (extraResources → <resources>/models), and
 // a dev-time folder, so a fully offline build can come with a model preinstalled.
+// Models that come with Scorpion: inside the app, and on Scorpion OS the
+// built-in model in /usr/share/scorpion/models.
 function bundledDirs(resourcesPath, appRoot) {
-  return [path.join(resourcesPath || '', 'models'), path.join(appRoot, 'resources', 'models')];
+  const dirs = [path.join(resourcesPath || '', 'models'), path.join(appRoot, 'resources', 'models')];
+  if (process.platform === 'linux') dirs.push('/usr/share/scorpion/models');
+  return dirs;
 }
 
 function scan(dir, source) {

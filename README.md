@@ -330,7 +330,11 @@ Scorpion as a whole operating system: Ubuntu 24.04 LTS underneath (its kernel,
 drivers and firmware for Wi-Fi, Ethernet, sound, Bluetooth, graphics and printers),
 the labwc window manager, and Scorpion as the desktop, taskbar and launcher.
 It runs live from a USB stick without installing, and its installer puts it on a
-computer alone or alongside Windows, with a boot menu to choose. How to build it,
+computer alone or alongside Windows, with a boot menu to choose. It comes with a model
+and the voice built in, so Scorpion works from the first minute offline; a USB
+stick can keep your changes (chats, models, settings) from boot to boot; and new
+versions of Scorpion arrive through Software Updater from Scorpion's own signed
+apt repository, which works on any Debian or Ubuntu system too. How to build it,
 make the stick and install: [os/README.md](os/README.md). How it fits together:
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

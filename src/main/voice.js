@@ -72,8 +72,21 @@ let installing = null;
 const mms = new Map(); // MMS voice code -> loaded pipeline
 const mmsInstalling = new Map();
 
+// Scorpion OS ships the voice ready in a read-only system folder. The user's
+// own folder wins once a voice is installed there, and every download goes
+// there (a language voice first copies the system one over).
+let userDir = null;
+const SYSTEM_VOICE = process.platform === 'linux' ? '/usr/share/scorpion/voice' : null;
+const complete = (d) => Boolean(d) && fs.existsSync(path.join(d, 'installed.json'));
 export function initVoice(modelsDir) {
-  dir = path.join(modelsDir, 'voice');
+  userDir = path.join(modelsDir, 'voice');
+  dir = !complete(userDir) && complete(SYSTEM_VOICE) ? SYSTEM_VOICE : userDir;
+}
+// Before writing: the user's folder, with the system voice copied in.
+function writableDir({ copySystem = false } = {}) {
+  if (dir === userDir) return;
+  if (copySystem) fs.cpSync(dir, userDir, { recursive: true });
+  dir = userDir;
 }
 
 async function lib(allowDownload = false) {
@@ -117,6 +130,7 @@ export function installLanguageVoice(languageId, onProgress) {
   if (code === 'kokoro' || code === 'system' || mmsReady(code)) return Promise.resolve();
   if (!mmsInstalling.has(code)) {
     mmsInstalling.set(code, (async () => {
+      writableDir({ copySystem: true });
       const report = (p) => { if (p.status === 'progress') onProgress?.({ loaded: p.loaded ?? 0, total: Math.max(p.total ?? 0, MMS_VOICE_BYTES), done: false }); };
       try {
         fs.rmSync(path.join(dir, mmsId(code)), { recursive: true, force: true });
@@ -149,6 +163,7 @@ export function installVoice(onProgress) {
     try {
       // Start clean: leftovers of an interrupted download would be reused.
       await unloadVoice();
+      writableDir();
       fs.rmSync(dir, { recursive: true, force: true });
       fs.mkdirSync(dir, { recursive: true });
       await lib(true);
@@ -170,7 +185,8 @@ export function installVoice(onProgress) {
 
 export async function uninstallVoice() {
   await unloadVoice();
-  if (dir) fs.rmSync(dir, { recursive: true, force: true });
+  // The system's own voice (Scorpion OS) stays; only the user's is removed.
+  if (dir && dir === userDir) fs.rmSync(dir, { recursive: true, force: true });
 }
 
 export async function unloadVoice() {

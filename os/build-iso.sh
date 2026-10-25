@@ -19,7 +19,8 @@
 #   7. writes out/scorpion-os-VERSION-amd64.iso and its SHA-256
 #
 # Environment: WORK (scratch folder, needs ~25 GB), OUT, MIRROR,
-# SCORPION_OS_VERSION.
+# SCORPION_OS_VERSION, BUNDLE (a folder with models/*.gguf and voice/: the
+# built-in model and voice, in /usr/share/scorpion).
 set -euo pipefail
 
 OS_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -133,6 +134,16 @@ cp -a "$OS_DIR/rootfs/." "$CHROOT/"
 chmod 755 "$CHROOT/usr/bin/scorpion-session" "$CHROOT/usr/bin/scorpion-install" "$CHROOT"/usr/lib/scorpion-os/*
 chmod 600 "$CHROOT/etc/netplan/01-network-manager-all.yaml"
 
+# The built-in model and voice: Scorpion talks and answers from the first
+# minute, with no download (read from here; nothing is copied to the user).
+if [ -n "${BUNDLE:-}" ] && [ -d "$BUNDLE" ]; then
+  install -d -m 755 "$CHROOT/usr/share/scorpion/models" "$CHROOT/usr/share/scorpion/voice"
+  find "$BUNDLE/models" -maxdepth 1 -name "*.gguf" -exec cp {} "$CHROOT/usr/share/scorpion/models/" \;
+  [ -f "$BUNDLE/voice/installed.json" ] && cp -a "$BUNDLE/voice/." "$CHROOT/usr/share/scorpion/voice/"
+  chmod -R a+rX "$CHROOT/usr/share/scorpion"
+  du -sh "$CHROOT/usr/share/scorpion"/*
+fi
+
 # The system's name (Ubuntu's name and logo are Canonical's trademarks, so a
 # system built from it carries its own). The Ubuntu files stay for the tools
 # that read them (lsb-release).
@@ -215,6 +226,13 @@ set menu_color_highlight=black/yellow
 menuentry "Try or install Scorpion OS" {
   set gfxpayload=keep
   linux /casper/vmlinuz boot=casper ignore_uuid quiet splash ---
+  initrd /casper/initrd
+}
+# Persistent: changes (chats, models, settings, apps) are kept on the USB stick.
+# The first time, casper makes a "writable" partition in the stick's free space.
+menuentry "Scorpion OS, keeping my changes on this USB stick" {
+  set gfxpayload=keep
+  linux /casper/vmlinuz boot=casper ignore_uuid persistent quiet splash ---
   initrd /casper/initrd
 }
 menuentry "Scorpion OS (safe graphics)" {

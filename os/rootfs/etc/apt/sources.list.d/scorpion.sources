@@ -1,0 +1,9 @@
+## Scorpion's own repository: new versions of Scorpion arrive through
+## Software Updater like any other update. Signed with the key in
+## /etc/apt/keyrings/scorpion.asc (fingerprint B8773FEFA9EAF3C17AD170EA466EE54B849CDE26).
+Types: deb
+URIs: https://dmotionstudio-stack.github.io/scorpion/apt
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/scorpion.asc
