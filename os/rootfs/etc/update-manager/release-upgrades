@@ -1,0 +1,5 @@
+# Scorpion OS: security and package updates install as usual, but no
+# upgrade to a newer Ubuntu release is offered (it would replace Scorpion OS's
+# setup). A new Scorpion OS version comes as a new ISO.
+[DEFAULT]
+Prompt=never
