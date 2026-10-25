@@ -3,3 +3,7 @@ release/
 _reference/
 resources/models/*.gguf
 *.ipull
+
+# Scorpion OS build folders (os/build-iso.sh)
+os/work/
+os/out/

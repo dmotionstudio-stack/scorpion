@@ -305,19 +305,24 @@ export class HandTracker {
   }
 
   // Always-on tracking stays light: with no hand in view for a couple of
-  // seconds, only every third camera frame is looked at, until one appears.
+  // seconds, only every third camera frame is looked at (stride.idle), until
+  // one appears; then every frame, or every other one (stride.active, set by
+  // Performance in Settings).
   empty = 0;
   tick = 0;
+  stride = { active: 1, idle: 3 };
+  preview = true; // draw the hand on the preview canvas
   frame = () => {
     if (!this.running) return;
     try {
-      this.tick = (this.tick + 1) % 3;
-      if (this.empty > 60 && this.tick) return;
+      this.tick += 1;
+      const every = this.empty > 60 ? this.stride.idle : this.stride.active;
+      if (this.tick % every) return;
       const result = this.landmarker.detectForVideo(this.video, performance.now());
       this.empty = result.landmarks.length ? 0 : this.empty + 1;
       const labels = result.handedness.map((h) => h[0]?.categoryName ?? '?');
       this.onFrame(stepGestures(this.gestures, result.landmarks, labels), result.landmarks);
-      this.draw(result.landmarks);
+      if (this.preview) this.draw(result.landmarks);
     } finally {
       if (this.running) this.video.requestVideoFrameCallback(this.frame);
     }

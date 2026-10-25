@@ -1,0 +1,11 @@
+#!/bin/sh
+# Runs inside the installed system at the end of installing (Calamares'
+# shellprocess step): drops what only the live system needs.
+set -e
+rm -f /usr/share/applications/install-scorpion-os.desktop
+rm -f /etc/systemd/system/graphical.target.wants/scorpion-boot-report.service
+# The boot menu shows Windows (os-prober) from the first update-grub on.
+if ! grep -q '^GRUB_DISABLE_OS_PROBER=false' /etc/default/grub 2>/dev/null; then
+  echo 'GRUB_DISABLE_OS_PROBER=false' >> /etc/default/grub
+fi
+exit 0

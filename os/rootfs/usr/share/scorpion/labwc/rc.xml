@@ -1,0 +1,104 @@
+<?xml version="1.0"?>
+<!--
+  Scorpion OS session: labwc's settings. Scorpion's own windows are the
+  desktop (the window titled "Scorpion", kept at the bottom), the edge rail
+  ("Scorpion taskbar", kept on top) and the summon dot / intent wheel
+  ("Scorpion summon"). The rail's 76 pixels on the right are kept free, so
+  maximized windows stop at it. Copy this folder to ~/.config/labwc to change it.
+-->
+<labwc_config>
+  <core>
+    <decoration>server</decoration>
+    <gap>0</gap>
+    <adaptiveSync>no</adaptiveSync>
+    <reuseOutputMode>yes</reuseOutputMode>
+  </core>
+
+  <margin top="0" bottom="0" left="0" right="76" />
+
+  <placement>
+    <policy>cascade</policy>
+  </placement>
+
+  <theme>
+    <name>Scorpion</name>
+    <cornerRadius>8</cornerRadius>
+    <keepBorder>yes</keepBorder>
+    <font place="ActiveWindow"><name>Ubuntu</name><size>10</size><weight>bold</weight></font>
+    <font place="InactiveWindow"><name>Ubuntu</name><size>10</size></font>
+    <font place="MenuItem"><name>Ubuntu</name><size>10</size></font>
+    <font place="OnScreenDisplay"><name>Ubuntu</name><size>11</size></font>
+  </theme>
+
+  <windowSwitcher show="yes" preview="yes" outlines="yes" allWorkspaces="no">
+    <fields>
+      <field content="icon" width="5%" />
+      <field content="title" width="95%" />
+    </fields>
+  </windowSwitcher>
+
+  <focus>
+    <followMouse>no</followMouse>
+    <raiseOnFocus>no</raiseOnFocus>
+  </focus>
+
+  <keyboard>
+    <repeatRate>30</repeatRate>
+    <repeatDelay>400</repeatDelay>
+    <!-- Scorpion -->
+    <keybind key="W-space"><action name="Execute" command="scorpion --wheel" /></keybind>
+    <keybind key="W-S-space"><action name="Execute" command="scorpion --wheel" /></keybind>
+    <keybind key="W-A-space"><action name="Execute" command="scorpion --orb" /></keybind>
+    <keybind key="C-Escape"><action name="Execute" command="scorpion --exit-full" /></keybind>
+    <!-- Windows -->
+    <keybind key="A-Tab"><action name="NextWindow" /></keybind>
+    <keybind key="A-S-Tab"><action name="PreviousWindow" /></keybind>
+    <keybind key="A-F4"><action name="Close" /></keybind>
+    <keybind key="W-Up"><action name="ToggleMaximize" /></keybind>
+    <keybind key="W-Down"><action name="Iconify" /></keybind>
+    <keybind key="W-Left"><action name="SnapToEdge" direction="left" /></keybind>
+    <keybind key="W-Right"><action name="SnapToEdge" direction="right" /></keybind>
+    <keybind key="W-d"><action name="ToggleShowDesktop" /></keybind>
+    <!-- The system -->
+    <keybind key="W-Return"><action name="Execute" command="x-terminal-emulator" /></keybind>
+    <keybind key="W-e"><action name="Execute" command="nautilus" /></keybind>
+    <keybind key="W-l"><action name="Execute" command="swaylock -f -c 000000" /></keybind>
+    <keybind key="Print"><action name="Execute" command="sh -c 'mkdir -p ~/Pictures/Screenshots &amp;&amp; grim ~/Pictures/Screenshots/Screenshot-$(date +%Y%m%d-%H%M%S).png'" /></keybind>
+    <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+" /></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="Execute" command="wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-" /></keybind>
+    <keybind key="XF86AudioMute"><action name="Execute" command="wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle" /></keybind>
+    <keybind key="XF86AudioMicMute"><action name="Execute" command="wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle" /></keybind>
+    <keybind key="XF86AudioPlay"><action name="Execute" command="playerctl play-pause" /></keybind>
+    <keybind key="XF86AudioNext"><action name="Execute" command="playerctl next" /></keybind>
+    <keybind key="XF86AudioPrev"><action name="Execute" command="playerctl previous" /></keybind>
+    <keybind key="XF86MonBrightnessUp"><action name="Execute" command="brightnessctl set 5%+" /></keybind>
+    <keybind key="XF86MonBrightnessDown"><action name="Execute" command="brightnessctl set 5%-" /></keybind>
+  </keyboard>
+
+  <mouse>
+    <default />
+  </mouse>
+
+  <libinput>
+    <device category="touchpad">
+      <tap>yes</tap>
+      <naturalScroll>yes</naturalScroll>
+      <disableWhileTyping>yes</disableWhileTyping>
+    </device>
+  </libinput>
+
+  <windowRules>
+    <!-- Scorpion's desktop: under every other window, no frame. -->
+    <windowRule title="Scorpion" matchOnce="true" serverDecoration="no" skipWindowSwitcher="yes">
+      <action name="ToggleAlwaysOnBottom" />
+      <action name="Maximize" />
+    </windowRule>
+    <!-- The edge rail and the summon dot / intent wheel: on top, no frame, never in the switcher. -->
+    <windowRule title="Scorpion taskbar" serverDecoration="no" skipTaskbar="yes" skipWindowSwitcher="yes" ignoreFocusRequest="yes">
+      <action name="ToggleAlwaysOnTop" />
+    </windowRule>
+    <windowRule title="Scorpion summon" serverDecoration="no" skipTaskbar="yes" skipWindowSwitcher="yes">
+      <action name="ToggleAlwaysOnTop" />
+    </windowRule>
+  </windowRules>
+</labwc_config>

@@ -225,7 +225,6 @@ export function initOrbSystem(ctx) {
   // With the hand as the mouse it is 1.7, as for the real pointer (main.js).
   const reach = () => (ctx.handIsMouse?.() ? 1.7 : 1.9);
   const toView = (p) => [Math.max(-1, Math.min(1, (p.x - 0.5) * reach())), Math.max(-1, Math.min(1, -(p.y - 0.5) * reach()))];
-  const toScreen = (p) => { const [x, y] = toView(p); return { x: ((x + 1) / 2) * innerWidth, y: ((1 - y) / 2) * innerHeight }; };
   const DWELL_MS = 1200;
 
   // Returns which of the orb's own motions it used (an app, a place, or a
@@ -301,66 +300,6 @@ export function initOrbSystem(ctx) {
     }
     if (O.zoomIn) { if (O.zoomIn.target) IX.orb.zoomToward(null); O.zoomIn = null; }
     return {};
-  }
-
-  // The hand-tracking display: each hand drawn over the orb as a glowing
-  // skeleton that follows it, with what it is doing written beside it, the
-  // fingertip ring that points, and the hold-to-open progress around it.
-  const POSE_NAME = { point: 'POINT', two: 'SCROLL', three: 'THREE', open: 'OPEN', fist: 'FIST', thumbUp: 'THUMB UP', thumbDown: 'THUMB DOWN', shaka: 'TALK SIGN', other: 'HAND' };
-  const BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
-  function drawHands(landmarks = [], r = {}) {
-    const c = $('#ix-hands');
-    if (!c) return;
-    const dpr = devicePixelRatio || 1;
-    if (c.width !== Math.round(innerWidth * dpr) || c.height !== Math.round(innerHeight * dpr)) { c.width = Math.round(innerWidth * dpr); c.height = Math.round(innerHeight * dpr); }
-    const ctx2 = c.getContext('2d');
-    ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx2.clearRect(0, 0, innerWidth, innerHeight);
-    if (!landmarks.length || O.away) return;
-    const color = getComputedStyle($('#interact')).color || '#f0a830';
-    const scale = innerHeight * 1.15; // camera units to pixels for the hand's shape
-    for (const lm of landmarks) {
-      // Anchored at the index fingertip's place on screen, shaped by the hand.
-      const tipAt = toScreen({ x: 1 - lm[8].x, y: lm[8].y });
-      const at = (j) => ({ x: tipAt.x + ((1 - lm[j].x) - (1 - lm[8].x)) * scale, y: tipAt.y + (lm[j].y - lm[8].y) * scale });
-      const pts = lm.map((_, j) => at(j));
-      ctx2.globalAlpha = O.handsPaused ? 0.3 : 0.9;
-      ctx2.strokeStyle = color;
-      ctx2.fillStyle = color;
-      ctx2.shadowColor = color;
-      ctx2.shadowBlur = 14;
-      ctx2.lineWidth = 2;
-      ctx2.beginPath();
-      for (const [a, b] of BONES) { ctx2.moveTo(pts[a].x, pts[a].y); ctx2.lineTo(pts[b].x, pts[b].y); }
-      ctx2.stroke();
-      for (let j = 0; j < pts.length; j++) {
-        ctx2.beginPath();
-        ctx2.arc(pts[j].x, pts[j].y, [4, 8, 12, 16, 20].includes(j) ? 5 : 3, 0, Math.PI * 2);
-        ctx2.fill();
-      }
-      // Thumb to index: bright while pinched.
-      const size = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y) || 1;
-      const pinched = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / size < 0.32;
-      if (pinched) {
-        ctx2.lineWidth = 5;
-        ctx2.beginPath(); ctx2.moveTo(pts[4].x, pts[4].y); ctx2.lineTo(pts[8].x, pts[8].y); ctx2.stroke();
-      }
-      // The pointing ring at the fingertip, with the hold-to-open progress.
-      ctx2.lineWidth = 2;
-      ctx2.beginPath(); ctx2.arc(pts[8].x, pts[8].y, 16, 0, Math.PI * 2); ctx2.stroke();
-      if (landmarks.length === 1 && O.dwellProgress > 0 && !O.framed) {
-        ctx2.lineWidth = 4;
-        ctx2.beginPath(); ctx2.arc(pts[8].x, pts[8].y, 22, -Math.PI / 2, -Math.PI / 2 + O.dwellProgress * Math.PI * 2); ctx2.stroke();
-      }
-      // What the hand is doing, by the wrist.
-      ctx2.shadowBlur = 8;
-      ctx2.font = '600 13px Consolas, "Courier New", monospace';
-      ctx2.textAlign = 'center';
-      const label = O.handsPaused ? 'PAUSED: HOLD A FIST' : r.mode === 'zoom' ? (O.zoomIn?.target ? 'ZOOM INTO' : 'ZOOM') : pinched ? 'PINCH' : POSE_NAME[landmarks.length === 1 ? r.pose : ''] || 'HAND';
-      ctx2.fillText(label, pts[0].x, pts[0].y + 28);
-    }
-    ctx2.globalAlpha = 1;
-    ctx2.shadowBlur = 0;
   }
 
   // Inside an app: the air mouse. Point to move the pointer, tap to click,
@@ -642,12 +581,12 @@ export function initOrbSystem(ctx) {
   wireMouse();
   api.onPcEvent?.(onPcEvent);
   // The orb looks calmer while another window is in front (less graphics work).
-  window.addEventListener('blur', () => { if (O.desktop) IX.orb?.setFrameCap(12); });
-  window.addEventListener('focus', () => IX.orb?.setFrameCap(60));
+  window.addEventListener('blur', () => { if (O.desktop) IX.orb?.setFrameCap(ctx.orbFps?.('away') ?? 12); });
+  window.addEventListener('focus', () => IX.orb?.setFrameCap(ctx.orbFps?.('on') ?? 60));
 
   return {
     onOpen, onClose, state, handleSpoken, handleGesture, onApproval, clearApproval, returnToOrb, greeted, scheduleWake, stopWake: stopWakeListening, leave: leaveOrb,
-    toggleGuide, goHome, drawHands, handleGlobals, togglePause,
+    toggleGuide, goHome, handleGlobals, togglePause,
     get paused() { return Boolean(O.handsPaused); },
     get wakeListening() { return O.wakeListening; },
     get desktop() { return O.desktop; },

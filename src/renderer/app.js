@@ -48,6 +48,7 @@ function toast(text, ms = 4000) {
 
 async function refresh() {
   Object.assign(S, await api.state());
+  document.documentElement.dataset.perf = S.perf || 'full';
   renderAll();
 }
 
@@ -844,15 +845,18 @@ async function openInteract(opts = {}) {
     // The orb's screen: the 3D orb sphere, or the constellation launcher (a map
     // of your projects), chosen in Settings → General → Orb look.
     const look = S.settings.orbLook === 'constellation' ? 'constellation' : 'classic';
-    if (IX.orb && IX.look !== look) { IX.orb.dispose(); IX.orb = null; IX.loading = null; }
+    // Full detail needs a graphics card with its own memory (or a Mac), and
+    // not Performance → Light.
+    const strong = (IS_MAC || (S.hardware?.dedicatedVram || 0) >= 2 * 1024 ** 3) && S.perf !== 'light';
+    const kind = look === 'classic' ? `classic:${strong ? 'high' : 'low'}` : look;
+    if (IX.orb && IX.look !== kind) { IX.orb.dispose(); IX.orb = null; IX.loading = null; }
     if (!IX.orb) {
-      IX.look = look;
-      // Full detail needs a graphics card with its own memory (or a Mac).
-      const strong = IS_MAC || (S.hardware?.dedicatedVram || 0) >= 2 * 1024 ** 3;
+      IX.look = kind;
       IX.loading ??= look === 'classic'
         ? import('./orb.js').then(({ createOrb }) => createOrb($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low' }))
         : import('./constellation.js').then(({ createConstellation }) => createConstellation($('#ix-stage'), { accent: accentColor(), api, toast, errText, settings: () => S.settings }));
       IX.orb = await IX.loading;
+      IX.orb.setFrameCap?.(orbFps());
       $('#interact').classList.toggle('ix-constellation', look === 'constellation');
     } else {
       IX.orb.setAccent(accentColor());
@@ -894,6 +898,20 @@ function interactState() {
   return 'standby';
 }
 
+// Performance (Settings → General): the orb's frames per second, in front,
+// while the model writes, and behind other windows.
+const PERF_FPS = { full: { on: 60, thinking: 30, away: 12 }, balanced: { on: 40, thinking: 24, away: 10 }, light: { on: 24, thinking: 15, away: 8 } };
+const orbFps = (when = 'on') => (PERF_FPS[S.perf] || PERF_FPS.full)[when];
+// Hand tracking: which camera frames are looked at, with a hand in view and without.
+const PERF_STRIDE = { full: { active: 1, idle: 3 }, balanced: { active: 1, idle: 4 }, light: { active: 2, idle: 6 } };
+function applyPerf(level) {
+  S.perf = PERF_FPS[level] ? level : 'full';
+  document.documentElement.dataset.perf = S.perf;
+  IX.orb?.setFrameCap?.(orbFps(document.hasFocus() ? 'on' : 'away'));
+  if (G.tracker) G.tracker.stride = PERF_STRIDE[S.perf];
+  if (S.view === 'settings') renderSettings();
+}
+
 function tickInteract() {
   const state = interactState();
   const el = $('#interact');
@@ -901,7 +919,7 @@ function tickInteract() {
     el.dataset.state = state;
     IX.orb?.setState(state);
     // The model shares the graphics card: fewer orb frames while it writes.
-    IX.orb?.setFrameCap(state === 'thinking' ? 30 : 60);
+    IX.orb?.setFrameCap(orbFps(state === 'thinking' ? 'thinking' : 'on'));
     renderInteract();
   }
   const level = state === 'speaking' ? speaker.level() : state === 'listening' ? Math.min(1, (V.micLevel || 0) * 8) : 0;
@@ -930,11 +948,12 @@ function renderInteract() {
   $('#ix-voice').textContent = voiceOn ? 'Voice on' : 'Voice off';
 }
 
-// Hand tracking (gestures.js) in the orb: always on while the orb is open
-// (G or Settings → General turns it off, remembered), shown over the orb as a
-// live hand display. The orb, the apps inside it (orb-system.js) and the
-// places that open over it (hand-control.js) share it. It pauses while
-// Scorpion is minimized. The hand model is a one-time ~8 MB download.
+// Hand tracking (gestures.js): on Windows, gestures on means the hand is the
+// mouse everywhere, whenever Scorpion is open; on a Mac they work in the orb
+// (orb-system.js) and the places over it (hand-control.js). G or Settings →
+// General turns them off, remembered. Nothing of the hand is drawn on screen,
+// only a small status line. It pauses while Scorpion is minimized. The hand
+// model is a one-time ~8 MB download.
 const G = { on: false, phase: '', tracker: null, error: '', download: null, hands: 0, mode: 'idle' };
 const GESTURE_MODE = { spin: 'Pinch', zoom: 'Zoom' };
 const GESTURE_POSE = { point: 'Pointing', two: 'Scroll', open: 'Open hand', fist: 'Fist', thumbUp: 'Thumb up', thumbDown: 'Thumb down', other: 'Hand' };
@@ -960,6 +979,8 @@ async function startGestures() {
     G.phase = 'loading';
     renderGestures();
     G.tracker ??= new HandTracker($('#ix-cam-video'), $('#ix-cam-overlay'), { onFrame: onGestureFrame });
+    G.tracker.stride = PERF_STRIDE[S.perf] || PERF_STRIDE.full;
+    G.tracker.preview = false; // the camera's picture isn't shown
     G.tracker.color = accentColor();
     try {
       await G.tracker.load(GESTURE_MODEL_URL);
@@ -982,8 +1003,6 @@ async function startGestures() {
     G.phase = 'on';
     renderGestures();
     if (document.hidden) pauseGestures(); // started in the tray: wait until Scorpion is on screen
-    // The first time gestures come on, show what they are.
-    if (!G.guideShown) { G.guideShown = true; orbSys?.toggleGuide(true); }
   } catch (err) {
     if (G.on) stopGestures(errText(err));
   }
@@ -995,7 +1014,6 @@ function stopGestures(error = '') {
   G.tracker?.stopCamera();
   api.gesturesCamera(false);
   hands?.hideCursor();
-  orbSys?.drawHands([]); // the hand display empties
   renderGestures();
 }
 
@@ -1028,11 +1046,10 @@ async function resumeGestures() {
 }
 document.addEventListener('visibilitychange', () => (document.hidden ? pauseGestures() : resumeGestures()));
 
-// Windows, with "Hand gestures replace the mouse" on (Settings → General).
-const handIsMouse = () => !IS_MAC && navigator.userAgent.includes('Windows') && S.settings.handMouse !== false;
+// On Windows, hand gestures always drive the mouse.
+const handIsMouse = () => !IS_MAC && navigator.userAgent.includes('Windows');
 
-function onGestureFrame(r, landmarks) {
-  if (IX.open) orbSys?.drawHands(landmarks, r);
+function onGestureFrame(r) {
   if (handIsMouse()) { handAsMouse(r); return; }
   // The orb (with the apps inside it) when it is on screen, else Scorpion's
   // own screens. What the orb doesn't use turns it.
@@ -1118,11 +1135,6 @@ function wireInteract() {
   $('#ix-gestures').onclick = () => toggleHands();
   $('#hand-off').onclick = () => toggleHands(false);
   $('#hands-always').onchange = (e) => toggleHands(e.target.checked);
-  $('#hand-mouse').onchange = async (e) => {
-    S.settings = await api.updateSettings({ handMouse: e.target.checked });
-    // As the mouse, tracking runs everywhere; otherwise only in the orb.
-    if (e.target.checked && S.settings.handsAlwaysOn !== false) startGestures(); else if (!e.target.checked && !IX.open) stopGestures();
-  };
   api.onGesturesDownload((p) => {
     if (G.phase !== 'download') return;
     G.download = p.done ? null : p;
@@ -1522,6 +1534,10 @@ function renderOnlineBadge() {
 
 // ---------- settings page ----------
 function renderSettings() {
+  $('#perf-level').value = PERF_FPS[S.settings.performance] ? S.settings.performance : 'full';
+  $('#perf-battery').checked = Boolean(S.settings.performanceOnBattery);
+  const chosen = $('#perf-level').value;
+  $('#perf-now').textContent = S.perf && S.perf !== chosen ? `Now: ${S.perf[0].toUpperCase()}${S.perf.slice(1)} (on battery)` : '';
   renderVoiceSettings();
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
   $('#online-mode').checked = Boolean(S.settings.online);
@@ -1534,7 +1550,6 @@ function renderSettings() {
   if (document.activeElement !== $('#const-shortcut')) $('#const-shortcut').value = S.settings.constellationShortcut ?? 'Super+Space';
   for (const box of document.querySelectorAll('[data-const]')) box.checked = { recommend: true, motion: true, large: false, contrast: false, ...(S.settings.constellation || {}) }[box.dataset.const];
   $('#hands-always').checked = S.settings.handsAlwaysOn !== false;
-  $('#hand-mouse').checked = S.settings.handMouse !== false;
   $('#file-access-hint').textContent = full
     ? 'Scorpion can read, create, edit and move files anywhere on this computer. Changes and commands still ask first unless Auto-approve is on. System folders (Windows, Program Files) stay read-only.'
     : 'Scorpion works in the workspace folder and asks before touching files anywhere else.';
@@ -1733,11 +1748,17 @@ function wire() {
   wirePeople();
   const libraryView = initLibrary({ api, $, esc, toast, errText, gb });
   desktopUi = initDesktop({ api, $, esc, toast, errText, setView, S });
-  orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse });
+  orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps });
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
-  const onNav = ({ view, dir, select, signin, search }) => {
+  const onNav = ({ view, dir, select, signin, search, talk }) => {
+    // The intent wheel's Talk: the orb, listening.
+    if (view === 'orb' && talk) {
+      const ready = () => { if (!S.voice?.installed) $('#ix-input').focus(); else if (!V.talk) startTalk(); };
+      if (IX.open) { orbSys.returnToOrb(); ready(); } else openInteract({ desktop: true, signin }).then(ready);
+      return;
+    }
     if (view === 'orb' && search) {
       const ready = () => IX.orb?.focusSearch?.();
       if (IX.open) { orbSys.returnToOrb(); ready(); } else openInteract({ desktop: true, signin }).then(ready);
@@ -1981,6 +2002,9 @@ function wire() {
   });
   // Scheduled agents need Scorpion running: this starts it in the tray (or keeps "Open the orb").
   $('#open-at-login').onchange = async (e) => { S.loginStart = await api.setLoginStart(e.target.checked ? (S.loginStart === 'orb' ? 'orb' : 'tray') : 'off'); $('#login-start').value = S.loginStart; };
+  $('#perf-level').onchange = (e) => setSetting({ performance: e.target.value });
+  $('#perf-battery').onchange = (e) => setSetting({ performanceOnBattery: e.target.checked });
+  api.onPerfChanged?.(applyPerf);
   $('#orb-look').onchange = async (e) => { S.settings = await api.updateSettings({ orbLook: e.target.value }); if (IX.open) toast('The new look shows the next time the orb opens.'); };
   $('#const-shortcut-save').onclick = async () => {
     const got = await api.constShortcut($('#const-shortcut').value.trim());
@@ -2054,10 +2078,15 @@ await refresh();
 if (S.threads[0]) await openThread(S.threads[0].id);
 setView('home');
 if (S.settings.chatModel && !S.engine?.chatModel) api.loadModel().catch(() => {});
-// The hand as the mouse: tracking runs whenever Scorpion is open.
+// Gestures on (Windows): the hand is the mouse whenever Scorpion is open.
 if (handIsMouse() && S.settings.handsAlwaysOn !== false) startGestures();
-// Room at the bottom for Scorpion's taskbar while Scorpion is full screen.
-const setInset = (px) => document.documentElement.style.setProperty('--tb-h', `${px || 0}px`);
+// Room for Scorpion's taskbar while Scorpion is full screen: at the bottom
+// for the bar, on the right for the edge rail.
+const setInset = (inset) => {
+  const { bottom = 0, right = 0 } = typeof inset === 'number' ? { bottom: inset } : inset || {};
+  document.documentElement.style.setProperty('--tb-h', `${bottom}px`);
+  document.documentElement.style.setProperty('--tb-w', `${right}px`);
+};
 setInset(S.taskbarInset);
 api.onTaskbarInset?.(setInset);
 if (S.voice?.installed && S.settings.voiceSpeak) api.warmVoice();

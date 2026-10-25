@@ -1,0 +1,22 @@
+# Scorpion OS session: labwc runs this file with sh when the session starts.
+# Session helpers first, then Scorpion as the desktop.
+
+# Apps started through D-Bus and systemd see this session's display.
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP >/dev/null 2>&1
+
+# Password prompts for system changes (Wi-Fi, installing, drivers).
+for agent in /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1; do
+  [ -x "$agent" ] && { "$agent" & break; }
+done
+
+# Notifications (the rail's bell shows the last ones again).
+mako >/dev/null 2>&1 &
+
+# Lock after 10 idle minutes and before sleep; screen off after 15.
+swayidle -w \
+  timeout 600 'swaylock -f -c 000000' \
+  timeout 900 'wlopm --off \*' resume 'wlopm --on \*' \
+  before-sleep 'swaylock -f -c 000000' >/dev/null 2>&1 &
+
+# Scorpion: the desktop, taskbar (the edge rail) and launcher.
+/usr/lib/scorpion-os/run-scorpion >/dev/null 2>&1 &

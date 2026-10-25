@@ -1,0 +1,14 @@
+# For the automatic boot test only (the kernel option scorpion.test): writes
+# to the console once Scorpion is running in the session, so the test sees
+# the whole system came up. Does nothing on a normal boot.
+[Unit]
+Description=Report that Scorpion started (boot test)
+ConditionKernelCommandLine=scorpion.test
+After=graphical.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'for i in $(seq 1 180); do if pgrep -x scorpion >/dev/null; then echo "SCORPION-SESSION-RUNNING" > /dev/console; exit 0; fi; sleep 2; done; echo "SCORPION-SESSION-MISSING" > /dev/console; exit 1'
+
+[Install]
+WantedBy=graphical.target

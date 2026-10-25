@@ -468,6 +468,40 @@ export async function endTask(hwnd, opts) {
   return name;
 }
 
+// ---------- defaults, names, status (also in linux-control.js) ----------
+// The program Windows opens for a kind of link ("http": the browser, "mailto": mail).
+export async function defaultApp(proto) {
+  const cmd = await runPs(`$p = (Get-ItemProperty "HKCU:\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\${proto}\\UserChoice" -ErrorAction SilentlyContinue).ProgId; if ($p) { (Get-ItemProperty "Registry::HKEY_CLASSES_ROOT\\$p\\shell\\open\\command" -ErrorAction SilentlyContinue).'(default)' }`).catch(() => '');
+  const m = /^\s*"([^"]+\.exe)"/i.exec(cmd || '') || /^\s*(\S+\.exe)/i.exec(cmd || '');
+  return m && fs.existsSync(m[1]) ? { id: m[1], name: path.basename(m[1], '.exe') } : null;
+}
+// A program's own name ("Google Chrome" for chrome.exe).
+export async function programName(exe) {
+  const desc = await runPs(`(Get-Item -LiteralPath ${psQuote(exe)}).VersionInfo.FileDescription`).catch(() => '');
+  return desc.trim() || path.basename(exe, path.extname(exe));
+}
+// The power menu: right away (programs can still stop a restart to save work).
+export const powerNow = (action) => runPs(`shutdown.exe ${action === 'restart' ? '/r' : '/s'} /t 0`);
+// The taskbar's volume button and wheel: the keyboard's volume keys (2% a step).
+export const volumeStep = (action) => runPsKept(`(New-Object -ComObject WScript.Shell).SendKeys([char]${action === 'up' ? 175 : action === 'down' ? 174 : 173})`);
+// What the taskbar shows besides the windows: battery and network.
+export async function trayStatus() {
+  const out = await runPs(`$b = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1; $n = Get-NetConnectionProfile -ErrorAction SilentlyContinue | Select-Object -First 1; [pscustomobject]@{ battery = if ($b) { [int]$b.EstimatedChargeRemaining } else { $null }; charging = if ($b) { $b.BatteryStatus -eq 2 } else { $false }; network = if ($n) { $n.Name } else { $null } } | ConvertTo-Json -Compress`).catch(() => '{}');
+  try { return JSON.parse(out || '{}'); } catch { return {}; }
+}
+// Files and folders opened recently: Windows keeps a shortcut to each in its
+// Recent folder (unless that is turned off in its privacy settings).
+export async function recentOpened(limit = 30) {
+  const opened = await runPs(`$sh = New-Object -ComObject WScript.Shell
+    Get-ChildItem -Path "$env:APPDATA\\Microsoft\\Windows\\Recent" -Filter '*.lnk' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First ${limit * 2} | ForEach-Object {
+      $t = $sh.CreateShortcut($_.FullName).TargetPath
+      if ($t -and (Test-Path -LiteralPath $t)) { [pscustomobject]@{ path = $t; dir = (Test-Path -LiteralPath $t -PathType Container); at = [long]($_.LastWriteTime.ToUniversalTime() - [datetime]'1970-01-01').TotalMilliseconds } }
+    } | Select-Object -First ${limit} | ConvertTo-Json -Compress`, { timeout: 30000 }).catch(() => '');
+  try { return opened ? [].concat(JSON.parse(opened)) : []; } catch { return []; }
+}
+// Icons come from the program files (main.js) and the Start menu (app-icons.js).
+export const iconForApp = async () => null;
+
 // Sign out of Windows (the shell's power menu).
 export const signOut = () => new Promise((resolve) => execFile('shutdown.exe', ['/l'], () => resolve()));
 

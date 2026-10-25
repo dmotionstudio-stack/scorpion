@@ -14,7 +14,7 @@ import { analyzeFile, analyzeImage, decodeFile, groupPhotos, listImages, cosine,
 import { describeFaces, insightsStatus } from './face-insights.js';
 import { searchLibrary, itemInfo, tagFile } from './library.js';
 import { getSkill, listSkills, saveSkill } from './skills.js';
-import * as win from './windows-control.js';
+import win from './system.js';
 
 // Python is optional; find whichever launcher this computer has, once.
 let pythonCmd;
@@ -648,7 +648,7 @@ export const TOOLS = {
   // ---------- Windows: apps, windows, files, Settings, system ----------
   list_apps: {
     access: 'system', requires: 'windows', noWorkspace: true,
-    description: 'List the apps installed on this Windows PC (desktop programs and Store apps). Optional filter by name.',
+    description: process.platform === 'linux' ? 'List the apps installed on this computer. Optional filter by name.' : 'List the apps installed on this Windows PC (desktop programs and Store apps). Optional filter by name.',
     params: { type: 'object', properties: { filter: { type: 'string' } } },
     async run({ filter }) {
       const apps = await win.listApps();
@@ -734,12 +734,12 @@ export const TOOLS = {
   },
   windows_settings: {
     access: 'system', requires: 'windows', noWorkspace: true,
-    description: `Open a page of Windows Settings. Pages: ${Object.keys(win.SETTINGS_PAGES).join(', ')}.`,
+    description: `Open a page of ${process.platform === 'linux' ? 'the settings' : 'Windows Settings'}. Pages: ${Object.keys(win.SETTINGS_PAGES).join(', ')}.`,
     params: { type: 'object', properties: { page: { type: 'string' } } },
     describeAction: ({ page }) => `open Settings: ${page}`,
     async run({ page }) {
       const opened = await win.openSettings(page);
-      return `Opened Windows Settings${opened ? ` (${opened})` : ''}.`;
+      return `Opened ${process.platform === 'linux' ? 'settings' : 'Windows Settings'}${opened ? ` (${opened})` : ''}.`;
     },
   },
   system_control: {
@@ -753,11 +753,11 @@ export const TOOLS = {
   },
   system_info: {
     access: 'system', requires: 'windows', noWorkspace: true,
-    description: 'Facts about this PC right now: Windows version, uptime, CPU and load, memory, disk space, battery, network addresses, and the apps using the most memory.',
+    description: 'Facts about this PC right now: operating system version, uptime, CPU and load, memory, disk space, battery, network addresses, and the apps using the most memory.',
     params: { type: 'object', properties: {} },
     async run() {
       const i = await win.systemInfo();
-      return [`Windows: ${i.os}, on for ${i.uptimeHours} h`, `CPU: ${i.cpu}, ${i.cpuLoad ?? '?'}% busy`, `Memory: ${i.ramFreeGB} GB free of ${i.ramGB} GB`, `Disks: ${[].concat(i.disks).join('; ')}`, `Battery: ${i.battery}`, `Network: ${[].concat(i.network).join('; ') || 'not connected'}`, `Using the most memory: ${[].concat(i.topApps).join(', ')}`].join('\n');
+      return [`System: ${i.os}, on for ${i.uptimeHours} h`, `CPU: ${i.cpu}, ${i.cpuLoad ?? '?'}% busy`, `Memory: ${i.ramFreeGB} GB free of ${i.ramGB} GB`, `Disks: ${[].concat(i.disks).join('; ')}`, `Battery: ${i.battery}`, `Network: ${[].concat(i.network).join('; ') || 'not connected'}`, `Using the most memory: ${[].concat(i.topApps).join(', ')}`].join('\n');
     },
   },
 

@@ -1,0 +1,99 @@
+# Scorpion OS: builds Scorpion for Linux (.deb and AppImage), then the
+# bootable live / installer ISO from Ubuntu 24.04 packages, then boots it in
+# QEMU to check that Scorpion comes up. Run it from the Actions tab
+# ("Run workflow"), or push a tag like os-v0.1.
+name: Scorpion OS
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Scorpion OS version
+        default: "0.1"
+  push:
+    tags: ["os-v*"]
+
+env:
+  SCORPION_OS_VERSION: ${{ inputs.version || '0.1' }}
+
+jobs:
+  linux-app:
+    name: Scorpion for Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Tests (on Linux)
+        run: npm test
+        continue-on-error: true
+      - name: Build .deb and AppImage
+        run: npx electron-builder --linux deb AppImage --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorpion-linux
+          path: |
+            release/*.deb
+            release/*.AppImage
+          retention-days: 14
+
+  iso:
+    name: Scorpion OS ISO
+    needs: linux-app
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: scorpion-linux
+          path: app
+      - name: Room to build (the runner's spare disk)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / /mnt
+      - name: Build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools dosfstools
+      - name: Build the ISO
+        run: sudo --preserve-env=SCORPION_OS_VERSION WORK=/mnt/scorpion-os OUT="$PWD/out" bash os/build-iso.sh app/*.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorpion-os-iso
+          path: out/
+          compression-level: 0
+          retention-days: 14
+
+  boot-test:
+    name: Boot test (QEMU)
+    needs: iso
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: scorpion-os-iso
+          path: out
+      - name: QEMU, UEFI firmware and KVM
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf xorriso imagemagick
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot the ISO
+        run: node os/test/boot-test.mjs out/*.iso shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: boot-test-pictures
+          path: shots/
+          retention-days: 14

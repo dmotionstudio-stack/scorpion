@@ -27,6 +27,8 @@ body.taskbar::before {
   animation: tb-sweep 9s linear infinite; }
 @keyframes tb-sweep { from { transform: translateX(0); } to { transform: translateX(calc(100vw + 400px)); } }
 @media (prefers-reduced-motion: reduce) { .tb-sweep { display: none; } }
+html[data-perf="light"] .tb-sweep, html[data-perf="light"] .tb-scan { display: none; }
+html[data-perf="light"] .tb-home::after { animation: none; }
 
 .tb-start, .tb-tray { display: flex; align-items: center; gap: 2px; flex: none; position: relative; z-index: 1; }
 .tb-btn {

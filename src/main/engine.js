@@ -117,7 +117,20 @@ async function disposeChat(chat = slots.main) {
   Object.assign(chat, newSlot());
 }
 
-export async function loadChatModel(modelPath, { contextSize = 8192, gpuLayers: requested = 'auto', name = null, onProgress, slot = 'main' } = {}) {
+// One load or unload at a time in each slot: two that overlap (the model
+// loading at start-up, and a switch to another) would leave one model's
+// details recorded under the other's name.
+const queues = { main: Promise.resolve(), voice: Promise.resolve() };
+function inQueue(slot, job) {
+  const p = queues[slot].then(job, job);
+  queues[slot] = p.catch(() => {});
+  return p;
+}
+export function loadChatModel(modelPath, options = {}) {
+  return inQueue(options.slot || 'main', () => loadChatModelNow(modelPath, options));
+}
+
+async function loadChatModelNow(modelPath, { contextSize = 8192, gpuLayers: requested = 'auto', name = null, onProgress, slot = 'main' } = {}) {
   const chat = slots[slot];
   if (chat.path === modelPath && chat.model && chat.requestedGpuLayers === requested) return engineInfo();
   await disposeChat(chat);
@@ -180,8 +193,8 @@ export async function loadChatModel(modelPath, { contextSize = 8192, gpuLayers: 
   return engineInfo();
 }
 
-export async function unloadChatModel(slot = 'main') {
-  await disposeChat(slots[slot]);
+export function unloadChatModel(slot = 'main') {
+  return inQueue(slot, () => disposeChat(slots[slot]));
 }
 
 export function isChatReady(slot = 'main') {

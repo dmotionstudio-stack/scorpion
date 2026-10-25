@@ -610,9 +610,11 @@ button.home-act:hover { border-color: var(--accent); }
 .ix-guide th { color: color-mix(in srgb, var(--accent) 65%, #fff); width: 48%; }
 .ix-guide .ix-dim { margin: 10px 0 0; font-size: 12px; opacity: .7; }
 
-/* Hand tracking for all of Scorpion: the camera preview, the guide, the hand cursor */
+/* Hand tracking for all of Scorpion: the status line (the video is hidden), the guide, the hand cursor */
 .hand-cam { position: fixed; z-index: 950; right: 20px; bottom: 76px; top: auto; color: var(--accent); font-family: Consolas, "Courier New", monospace; background: rgba(0, 0, 0, .72); }
 body:has(#interact:not(.hidden)) .hand-cam { top: 72px; right: 24px; bottom: auto; }
+.hand-cam .ix-cam-view { position: absolute; width: 2px; height: 2px; overflow: hidden; opacity: .01; pointer-events: none; }
+.hand-cam .ix-cam-view { position: absolute; width: 2px; height: 2px; overflow: hidden; opacity: .01; pointer-events: none; }
 .hand-cam-row { display: flex; gap: 4px; padding: 0 4px 4px; }
 .hand-cam-row .ix-guide-btn { margin-top: 0; }
 .hand-cam .ix-btn { color: var(--accent); }
@@ -623,11 +625,14 @@ body:has(#interact:not(.hidden)) .hand-cam { top: 72px; right: 24px; bottom: aut
 .hand-press { filter: brightness(1.3); }
 
 /* The hand-tracking display over the orb */
-.ix-hands { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 18; pointer-events: none; }
 
-/* Full screen with Scorpion's taskbar: the screens end above it (--tb-h, from main.js). */
-.app { height: calc(100vh - var(--tb-h, 0px)); }
-.interact { bottom: var(--tb-h, 0px); }
+/* Performance → Light: no frosted-glass blur (it costs the graphics card on every frame). */
+html[data-perf="light"] * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+
+/* Full screen with Scorpion's taskbar: the screens end above the bar (--tb-h)
+   or left of the edge rail (--tb-w), from main.js. */
+.app { height: calc(100vh - var(--tb-h, 0px)); width: calc(100vw - var(--tb-w, 0px)); }
+.interact { bottom: var(--tb-h, 0px); right: var(--tb-w, 0px); }
 
 /* The sidebar toggle (Ctrl+B): in the sidebar's top corner, or on its own when hidden. */
 .sidebar-toggle { position: fixed; z-index: 40; top: 16px; left: 222px; width: 30px; height: 30px; display: grid; place-items: center; padding: 0;
@@ -642,7 +647,7 @@ body.sidebar-hidden .main .page { padding-left: 56px; }
 .ix-min { position: absolute; z-index: 20; top: 20px; right: 134px; }
 /* The floating mini orb: a small living orb (glow, turning rings, a pulsing core)
    in the accent colour, above everything; click to bring the orb back, drag to move. */
-.mini-orb { position: fixed; right: 24px; bottom: calc(24px + var(--tb-h, 0px)); z-index: 960; width: 72px; height: 72px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; touch-action: none; }
+.mini-orb { position: fixed; right: calc(24px + var(--tb-w, 0px)); bottom: calc(24px + var(--tb-h, 0px)); z-index: 960; width: 72px; height: 72px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; touch-action: none; }
 .mini-orb.hidden { display: none; }
 .mini-orb.dragging { cursor: grabbing; }
 .mini-orb > span { position: absolute; border-radius: 50%; pointer-events: none; }

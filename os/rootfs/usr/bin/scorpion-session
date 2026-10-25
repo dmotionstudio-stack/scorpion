@@ -1,0 +1,28 @@
+#!/bin/sh
+# Scorpion OS's desktop session (picked at the sign-in screen, or started by
+# the live system's automatic sign-in): the labwc window manager, with Scorpion
+# as the desktop, taskbar and launcher. labwc runs the session's helpers and
+# Scorpion itself from its autostart file (/usr/share/scorpion/labwc).
+export XDG_CURRENT_DESKTOP=Scorpion:wlroots
+export XDG_SESSION_DESKTOP=scorpion
+export XDG_SESSION_TYPE=wayland
+export DESKTOP_SESSION=scorpion
+# Apps that can run on Wayland directly do; the rest go through XWayland.
+export MOZ_ENABLE_WAYLAND=1
+export QT_QPA_PLATFORM="wayland;xcb"
+export SDL_VIDEODRIVER="wayland,x11"
+export _JAVA_AWT_WM_NONREPARENTING=1
+export GTK_THEME="${GTK_THEME:-Yaru-dark}"
+export XCURSOR_THEME="${XCURSOR_THEME:-Yaru}"
+export XCURSOR_SIZE="${XCURSOR_SIZE:-24}"
+
+# The keyboard layout chosen in the installer (or at the live system's boot).
+if [ -r /etc/default/keyboard ]; then
+  . /etc/default/keyboard
+  export XKB_DEFAULT_LAYOUT="${XKBLAYOUT:-us}" XKB_DEFAULT_VARIANT="${XKBVARIANT:-}" XKB_DEFAULT_OPTIONS="${XKBOPTIONS:-}"
+fi
+
+# A copy of the session's settings in ~/.config/labwc wins, so it can be customized.
+CONFIG=/usr/share/scorpion/labwc
+[ -f "$HOME/.config/labwc/rc.xml" ] && CONFIG="$HOME/.config/labwc"
+exec labwc --config-dir "$CONFIG"

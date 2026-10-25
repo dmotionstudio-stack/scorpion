@@ -116,5 +116,14 @@ applySettings();
 tick();
 refreshWindows();
 setInterval(tick, 1000);
-setInterval(refreshWindows, 1500);
+// How often the open windows are checked: by Performance (Settings → General).
+const POLL = { full: 1500, balanced: 2500, light: 4000 };
+let poll = setInterval(refreshWindows, POLL.full);
+const setPerf = (level) => {
+  document.documentElement.dataset.perf = level;
+  clearInterval(poll);
+  poll = setInterval(refreshWindows, POLL[level] || POLL.full);
+};
+api.state().then((st) => setPerf(st?.perf || 'full')).catch(() => {});
+api.onPerfChanged?.(setPerf);
 setInterval(refreshTray, 30_000);

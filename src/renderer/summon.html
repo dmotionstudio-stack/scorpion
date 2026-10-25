@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' scorpion:; img-src 'self' scorpion: data:; style-src 'self' scorpion: 'unsafe-inline'">
+  <title>Scorpion summon</title>
+  <link rel="stylesheet" href="themes.css">
+  <link rel="stylesheet" href="summon.css">
+  <script type="module" src="summon.js"></script>
+</head>
+<body class="summon">
+  <div class="sm-backdrop" id="sm-backdrop"></div>
+  <div class="sm-wheel" id="sm-wheel" role="dialog" aria-label="Choose an intent">
+    <svg class="sm-art" id="sm-art" viewBox="-420 -420 840 840" aria-hidden="true"></svg>
+    <div class="sm-layer" id="sm-layer"></div>
+    <button class="sm-core" id="sm-core" title="Scorpion (Home)" aria-label="Scorpion home">
+      <svg class="sm-logo" viewBox="0 0 100 100" aria-hidden="true">
+        <g transform="rotate(-45 50 53) translate(50 53) scale(1.18) translate(-50 -53)">
+          <polygon points="43.7,47 38.5,36.6 50,10 61.5,36.6 56.3,47" fill="var(--accent)"/>
+          <polygon points="43.7,47 38.5,36.6 50,10 50,47" fill="#000" opacity=".22"/>
+          <rect x="46.4" y="46" width="7.2" height="34" fill="var(--accent-2)"/>
+          <g fill="rgba(0,0,0,.45)"><rect x="46.4" y="52" width="7.2" height="3"/><rect x="46.4" y="59" width="7.2" height="3"/><rect x="46.4" y="66" width="7.2" height="3"/><rect x="46.4" y="73" width="7.2" height="3"/></g>
+          <circle cx="50" cy="86.5" r="5.9" fill="none" stroke="var(--accent)" stroke-width="3.4"/>
+        </g>
+      </svg>
+    </button>
+    <div class="sm-hint" id="sm-hint">Flick toward an intent, or click one</div>
+  </div>
+  <button class="sm-dot" id="sm-dot" title="Summon the intent wheel (Win+Shift+Space opens it where your pointer is)" aria-label="Summon the intent wheel"><span class="sm-ring r1"></span><span class="sm-ring r2"></span><span class="sm-ring r3"></span><span class="sm-dot-core"></span></button>
+  <div class="sm-sr" id="sm-sr" aria-live="polite"></div>
+</body>
+</html>

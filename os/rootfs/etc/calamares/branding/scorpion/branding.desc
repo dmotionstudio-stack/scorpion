@@ -1,0 +1,35 @@
+# Scorpion OS's look in the installer.
+---
+componentName: scorpion
+welcomeStyleCalamares: true
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 900px,600px
+windowPlacement: center
+sidebar: widget
+navigation: widget
+
+strings:
+    productName:         "Scorpion OS"
+    shortProductName:    "Scorpion OS"
+    version:             "0.1"
+    shortVersion:        "0.1"
+    versionedName:       "Scorpion OS 0.1"
+    shortVersionedName:  "Scorpion OS 0.1"
+    bootloaderEntryName: "Scorpion OS"
+    productUrl:          "https://github.com/dmotionstudio-stack/scorpion"
+    supportUrl:          "https://github.com/dmotionstudio-stack/scorpion/issues"
+
+images:
+    productLogo:         "logo.png"
+    productIcon:         "logo.png"
+    productWelcome:      "logo.png"
+
+slideshow:               "show.qml"
+slideshowAPI:            2
+
+style:
+   SidebarBackground:        "#0e0d0b"
+   SidebarText:              "#f2eee2"
+   SidebarTextCurrent:       "#141210"
+   SidebarBackgroundCurrent: "#f5c518"

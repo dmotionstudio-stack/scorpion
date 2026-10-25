@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Scorpion
+Comment=Scorpion OS: the Scorpion desktop on labwc
+Exec=scorpion-session
+TryExec=scorpion-session
+Type=Application
+DesktopNames=Scorpion;wlroots

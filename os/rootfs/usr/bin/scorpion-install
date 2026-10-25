@@ -1,0 +1,6 @@
+#!/bin/sh
+# Starts the installer (Calamares) from the live system. It needs root; the
+# live user may use sudo without a password, and the installer's window
+# opens on the session's Wayland display.
+exec sudo --preserve-env=WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DISPLAY,XAUTHORITY,XDG_CURRENT_DESKTOP \
+  QT_QPA_PLATFORM="wayland;xcb" calamares "$@"

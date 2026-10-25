@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install Scorpion OS
+Comment=Install Scorpion OS on this computer, alone or alongside Windows
+Exec=scorpion-install
+Icon=scorpion
+Terminal=false
+Categories=System;

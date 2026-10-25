@@ -1,0 +1,60 @@
+/* The edge rail (edge.html): dark glass down the right edge of the screen,
+   with clean light type, thin line icons and the theme's accent for what is
+   active. The window itself is transparent (shell.js). */
+:root { --accent: #5aa9ff; --text: #e9eef6; }
+html, body.edge { margin: 0; height: 100%; background: transparent; }
+body.edge {
+  --ink: color-mix(in srgb, var(--text) 92%, #fff);
+  --dim: color-mix(in srgb, var(--text) 60%, transparent);
+  --line: rgba(255, 255, 255, .09);
+  box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch; overflow: hidden; position: relative;
+  padding: 18px 0 14px; color: var(--ink); user-select: none;
+  font: 12px/1.25 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  background:
+    linear-gradient(to bottom, rgba(16, 20, 28, .86), rgba(10, 13, 19, .9)),
+    linear-gradient(to left, color-mix(in srgb, var(--accent) 6%, transparent), transparent);
+  border-left: 1px solid var(--line);
+}
+/* A faint glowing line along the inner edge. */
+body.edge::before {
+  content: ""; position: absolute; left: -1px; top: 8%; bottom: 8%; width: 1px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent) 55%, transparent), transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+[hidden] { display: none !important; }
+
+.eg-clock { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0 10px; }
+.eg-time { font: 600 21px/1 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; letter-spacing: .01em; }
+.eg-date { font-size: 10.5px; color: var(--dim); }
+
+.eg-glance { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 14px 0 16px; border-bottom: 1px solid var(--line); margin: 0 12px; }
+.eg-item { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; padding: 6px 0; border-radius: 12px; font-size: 10.5px; color: var(--dim); transition: background .15s, color .15s; }
+.eg-item svg { width: 24px; height: 24px; fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.eg-item .eg-fill, .eg-item .eg-dot-fill { fill: var(--ink); stroke: none; }
+.eg-item:hover { background: rgba(255, 255, 255, .07); color: var(--ink); }
+.eg-item:active { background: rgba(255, 255, 255, .12); }
+.eg-icon { padding: 9px 0; }
+#eg-net.off svg { opacity: .45; }
+#eg-battery.low .eg-fill { fill: #ff6b6b; }
+
+/* Pinned apps and open windows: a quiet column of icons; open ones get a
+   short accent bar at the inner edge, the one in front a brighter, longer one. */
+.eg-apps { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 0; scrollbar-width: none; }
+.eg-apps::-webkit-scrollbar { display: none; }
+.eg-app { position: relative; flex: none; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 12px; transition: background .15s, transform .15s; }
+.eg-app img { width: 28px; height: 28px; object-fit: contain; }
+.eg-initial { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; background: rgba(255, 255, 255, .1); font-weight: 600; font-size: 14px; }
+.eg-app:hover { background: rgba(255, 255, 255, .08); }
+.eg-app:active { transform: scale(.94); }
+.eg-app.running::before { content: ""; position: absolute; left: -9px; top: 50%; width: 3px; height: 8px; margin-top: -4px; border-radius: 2px; background: var(--dim); }
+.eg-app.active { background: rgba(255, 255, 255, .1); }
+.eg-app.active::before { height: 18px; margin-top: -9px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.eg-app.launching img, .eg-app.launching .eg-initial { animation: eg-bounce .6s ease 2; }
+@keyframes eg-bounce { 50% { transform: translateY(-4px); } }
+.eg-sep { flex: none; width: 24px; height: 1px; margin: 4px 0; background: var(--line); }
+
+.eg-foot { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 0 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+
+@media (prefers-reduced-motion: reduce) { .eg-app, .eg-item { transition: none; } .eg-app.launching img { animation: none; } }

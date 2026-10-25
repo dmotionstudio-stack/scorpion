@@ -44,6 +44,16 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellApps: invoke('shell:apps'),
   shellLaunch: invoke('shell:launch'),
   shellAppIcons: invoke('shell:appIcons'),
+  // The edge rail and the intent wheel (edge.html, summon.html).
+  shellRecent: invoke('shell:recent'),
+  shellIntent: invoke('shell:intent'),
+  shellIntents: invoke('shell:intents'),
+  shellWheel: invoke('shell:wheel'),
+  shellGlance: invoke('shell:glance'),
+  onWheelOpen: on('wheel:open'),
+  onWheelClose: on('wheel:close'),
+  // Performance level changes (Settings, or the power cable): 'full' | 'balanced' | 'light'.
+  onPerfChanged: on('perf:changed'),
   constGet: invoke('const:get'),
   constSave: invoke('const:save'),
   constOpen: invoke('const:open'),

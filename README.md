@@ -120,6 +120,30 @@ account, or an internet connection to chat.
   it is in front). Right-click an empty part of the taskbar to customize it: app names
   or icons only, centered, small, normal or large, a holographic, neon, glass or solid
   look, and which of network, battery, volume and clock show.
+- **Edge rail and intent wheel** (the taskbar's layout, by default): the taskbar is a
+  glass rail down the right edge of the screen to glance at: the clock and date,
+  battery, network, notifications, mail and chat with Scorpion, then the pinned apps and
+  open windows as icons, and volume and power. A small glowing dot in the bottom-left
+  corner (or **Win+Shift+Space**, which opens it where your pointer is) summons the
+  **intent wheel**: Write, Browse, Talk, Create, Files and Focus around Scorpion's
+  button, with the windows you used last around the outside (a live picture of each,
+  what it is and how long ago). Flick from anywhere on the wheel toward an intent, or
+  click it; arrow keys or 1 to 6 work too, and Esc closes it. Write opens Notepad,
+  Browse your default browser, Talk Scorpion listening, Create Paint, Files Scorpion's
+  Files and Focus the Clock app's focus sessions; right-click an intent to make it open
+  another app. Right-click an empty part of the rail → **Layout** to go back to the bar
+  along the bottom.
+- **Performance** (Settings → General): **Full** is everything as designed.
+  **Balanced** draws the orb at 40 frames a second (24 while Scorpion writes, 10
+  behind other windows), checks the taskbar's windows every 2.5 s instead of 1.5 s,
+  and looks at fewer camera frames for hand tracking while no hand is in view.
+  **Light**, for a slower PC or a laptop on battery, goes further: the orb in lower
+  detail at 24 frames a second, no frosted-glass blur, the taskbar's windows every
+  4 s, hand tracking on every other frame, background media work (Library, faces) on
+  fewer cores, and chats with the fastest model installed here when your chosen one
+  is slow on this computer (gpt-oss-20b on a 4 GB graphics card, say). No model is
+  removed: back on Full or Balanced, your chosen model loads again. **Light while
+  running on battery** switches to Light when you unplug and back when you plug in.
 - **Mini orb**: the orb's **Minimize** button (or opening a place over the orb) shrinks
   it to a small living orb that floats over everything; click it to bring the orb back,
   drag it anywhere (it stays where you put it).
@@ -203,7 +227,10 @@ Not sure which Mac you have? Apple menu → **About This Mac**: it says **Chip**
 1. Unzip the download and double-click **Scorpion Setup x.y.z.exe**.
 2. If Windows shows *"Windows protected your PC"*, click **More info → Run anyway**.
    This appears because the installer isn't signed with a paid certificate.
-3. Choose where to install (the default is fine) and click **Install**.
+3. Choose where to install (the default is fine). The next page asks how Scorpion
+   keeps its data: **Installed** (in your Windows profile) or **Portable** (in a
+   `scorpion-data` folder inside the install folder; pick a folder on a USB stick
+   and Scorpion runs from it on any Windows PC). Then click **Install**.
 4. Open **Scorpion** from the Start menu or the desktop shortcut.
 
 To uninstall: **Settings → Apps → Installed apps → Scorpion → Uninstall**.
@@ -248,6 +275,16 @@ if you copy the file from another computer.
 
 After that Scorpion works fully offline.
 
+## Scorpion OS
+
+Scorpion as a whole operating system: Ubuntu 24.04 LTS underneath (its kernel,
+drivers and firmware for Wi-Fi, Ethernet, sound, Bluetooth, graphics and printers),
+the labwc window manager, and Scorpion as the desktop, taskbar and launcher.
+It runs live from a USB stick without installing, and its installer puts it on a
+computer alone or alongside Windows, with a boot menu to choose. How to build it,
+make the stick and install: [os/README.md](os/README.md). How it fits together:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Run from source
 
 Requirements: Node.js 20+.
@@ -290,25 +327,23 @@ Settings → Privacy & Security → Microphone**.
 
 ## Hand gestures
 
-**Your hand replaces the mouse** (Windows, Settings → General → Hand gestures, on by
-default): hand tracking runs whenever Scorpion is open, even behind other windows, and
-rests only while Scorpion is minimized. Your index finger moves the real Windows
+**Whenever hand gestures are on, your hand is the mouse** (Windows, Settings → General
+→ Hand gestures, on by default): hand tracking runs whenever Scorpion is open, even
+behind other windows, and rests only while Scorpion is minimized. Your index finger moves the real Windows
 pointer over the whole screen; a quick pinch clicks, thumb + middle right-clicks, a
 fist then open hand double-clicks, a held pinch drags, two fingers up scroll, and both
 hands spreading or closing zoom (Ctrl + wheel). This works in every app, in Scorpion
 and on its taskbar. Sweeps, push, thumbs and signs keep their meanings below, and a
 **held fist pauses** everything until you hold a fist again. Turn the camera off with
-**G** in the orb, **Off** under the camera preview, or the switch in Settings; turn off
-"Hands replace the mouse" to go back to gestures only inside the orb.
+**G** in the orb, **Off** by the status line, or the switch in Settings. Your hand
+isn't drawn on screen; a small status line says how many hands it sees and names each
+gesture as it happens. With no hand in view the tracker checks only every third camera
+frame, to save power.
 
-In the orb your hands are also drawn over it as glowing skeletons, with what each hand
-is doing written by the wrist. With no hand in view the tracker checks only every
-third camera frame, to save power.
-
-The same gestures work on the orb, inside the apps it opens (your hand moves the
+On a Mac (no hand-as-mouse), the same gestures work on the orb, inside the apps it opens (your hand moves the
 real mouse pointer) and in the places that open over it (Files, Apps, Library,
-Settings…, with a hand cursor). Press **?** or **H** (or **Gesture guide** under
-the camera preview) for this list on screen:
+Settings…, with a hand cursor). Press **?** or **H** (or **Gesture guide** by the
+status line) for the gestures on screen:
 
 | Gesture | On the orb | Inside an app / a place |
 |---|---|---|
@@ -334,8 +369,8 @@ Inside an app the hand moves the real mouse pointer, but only within that app's
 panel: a gesture can never click anything else. On Scorpion's screens: point to move the hand cursor, quick pinch to click, fist-then-open to double-click (open a file in Files), thumb + middle for the right-click menu, two fingers to scroll; sweeping left or right brings your other apps forward. Press **G** again to turn
 gestures and the camera off.
 
-A small mirrored camera preview shows the hand points Scorpion sees and a status
-line (how many hands and what they're doing; each gesture shows its name as it happens). Hand tracking uses
+The camera's picture isn't shown; a small status line says how many hands Scorpion sees
+and what they're doing. Hand tracking uses
 Google's MediaPipe hand landmarker, which runs inside Scorpion. The first time you
 turn gestures on, Scorpion downloads its hand model once (about 8 MB); after that
 it works offline.
@@ -411,7 +446,10 @@ Scorpion needs a model file once. You can get one in any of three ways:
 
 | Platform | Command | Output |
 |---|---|---|
-| Windows | `npm run dist:win` | `release/Scorpion Setup x.y.z.exe` |
+| Windows | `npm run dist:win` | `release/Scorpion Setup x.y.z.exe` (asks: installed or portable) |
+| Windows, portable | `npm run dist:portable` | `release/Scorpion-x.y.z-portable.zip`: unzip anywhere, even a USB stick, and run Scorpion.exe; nothing is installed |
+| Linux | `npm run dist:linux` (on Linux) | `release/scorpion_x.y.z_amd64.deb` and an AppImage |
+| Scorpion OS | GitHub **Actions → Scorpion OS → Run workflow** | `scorpion-os-x.y-amd64.iso`: boots from a USB stick, installs alone or alongside Windows ([os/README.md](os/README.md)) |
 | macOS | `npm run dist:mac` (on a Mac) | `release/Scorpion-x.y.z-arm64.dmg` (Apple Silicon) or `release/Scorpion-x.y.z.dmg` (Intel) |
 
 You can only build a macOS installer on a Mac. The included GitHub Actions workflow

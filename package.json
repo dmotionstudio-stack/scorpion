@@ -14,7 +14,9 @@
     "icon": "node scripts/make-icon.mjs",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "dist:portable": "electron-builder --win dir && node scripts/make-portable.mjs",
+    "dist:linux": "electron-builder --linux"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
@@ -47,11 +49,9 @@
       "!node_modules/@node-llama-cpp/win-x64-cuda/**",
       "!node_modules/@node-llama-cpp/win-x64-cuda-ext/**",
       "!node_modules/@node-llama-cpp/win-arm64/**",
-      "!node_modules/@node-llama-cpp/linux-*/**",
       "!node_modules/node-llama-cpp/llama/gitRelease.bundle",
       "!node_modules/**/*.md",
       "!node_modules/onnxruntime-web/**",
-      "!node_modules/onnxruntime-node/bin/napi-v3/linux/**",
       "!node_modules/@huggingface/transformers/dist/ort-wasm*",
       "!node_modules/@huggingface/transformers/dist/transformers.js",
       "!node_modules/@huggingface/transformers/dist/transformers.min.js",
@@ -98,13 +98,16 @@
       "icon": "resources/icon.png",
       "files": [
         "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**",
-        "!node_modules/onnxruntime-node/bin/napi-v3/win32/arm64/**"
+        "!node_modules/onnxruntime-node/bin/napi-v3/win32/arm64/**",
+        "!node_modules/@node-llama-cpp/linux-*/**",
+        "!node_modules/onnxruntime-node/bin/napi-v3/linux/**"
       ]
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "perMachine": false
+      "perMachine": false,
+      "include": "resources/installer.nsh"
     },
     "mac": {
       "target": [
@@ -117,7 +120,9 @@
       "entitlements": "resources/entitlements.mac.plist",
       "entitlementsInherit": "resources/entitlements.mac.plist",
       "files": [
-        "!node_modules/onnxruntime-node/bin/napi-v3/win32/**"
+        "!node_modules/onnxruntime-node/bin/napi-v3/win32/**",
+        "!node_modules/@node-llama-cpp/linux-*/**",
+        "!node_modules/onnxruntime-node/bin/napi-v3/linux/**"
       ],
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Scorpion listens to your voice so you can talk to it. Speech is processed on this Mac and never sent anywhere.",
@@ -126,9 +131,63 @@
     },
     "linux": {
       "target": [
-        "AppImage"
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
-      "icon": "resources/icon.png"
+      "icon": "resources/icon.png",
+      "executableName": "scorpion",
+      "category": "Utility",
+      "synopsis": "Offline AI assistant and desktop",
+      "maintainer": "Scorpion <274588930+dmotionstudio-stack@users.noreply.github.com>",
+      "desktop": {
+        "entry": {
+          "Name": "Scorpion",
+          "StartupWMClass": "scorpion"
+        }
+      },
+      "files": [
+        "!node_modules/onnxruntime-node/bin/napi-v3/win32/**",
+        "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**",
+        "!node_modules/onnxruntime-node/bin/napi-v3/linux/arm64/**",
+        "!node_modules/@node-llama-cpp/win-*/**",
+        "!node_modules/@node-llama-cpp/mac-*/**",
+        "!node_modules/@node-llama-cpp/linux-arm*/**",
+        "!node_modules/@node-llama-cpp/linux-x64-cuda*/**"
+      ]
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libvulkan1"
+      ],
+      "recommends": [
+        "wlrctl",
+        "pipewire",
+        "wireplumber",
+        "network-manager",
+        "playerctl",
+        "brightnessctl",
+        "grim",
+        "libnotify-bin"
+      ]
     }
   }
 }

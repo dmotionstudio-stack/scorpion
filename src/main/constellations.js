@@ -4,7 +4,7 @@
 // import/export of the shared format.
 import fs from 'node:fs';
 import path from 'node:path';
-import * as win from './windows-control.js';
+import win from './system.js';
 import { FORMAT, exportData, importData, newProject, newNode, markUsed } from '../renderer/constellation-core.js';
 
 let deps = null; // { app, shell, nativeImage, desktopCapturer, dialog, dataDir, launchApp, getWindow }
@@ -60,14 +60,8 @@ export async function pick(kind) {
 // its privacy settings), and the files changed most recently in Desktop,
 // Documents, Downloads and Pictures (and one level of folders inside them).
 export async function recent(limit = 30) {
-  if (process.platform !== 'win32') return [];
-  const opened = await win.runPs(`$sh = New-Object -ComObject WScript.Shell
-    Get-ChildItem -Path "$env:APPDATA\\Microsoft\\Windows\\Recent" -Filter '*.lnk' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First ${limit * 2} | ForEach-Object {
-      $t = $sh.CreateShortcut($_.FullName).TargetPath
-      if ($t -and (Test-Path -LiteralPath $t)) { [pscustomobject]@{ path = $t; dir = (Test-Path -LiteralPath $t -PathType Container); at = [long]($_.LastWriteTime.ToUniversalTime() - [datetime]'1970-01-01').TotalMilliseconds } }
-    } | Select-Object -First ${limit} | ConvertTo-Json -Compress`, { timeout: 30000 }).catch(() => '');
-  let list = [];
-  try { list = opened ? [].concat(JSON.parse(opened)) : []; } catch { /* none */ }
+  if (process.platform !== 'win32' && process.platform !== 'linux') return [];
+  const list = await win.recentOpened(limit).catch(() => []);
   const home = deps?.app?.getPath('home') || process.env.USERPROFILE || '';
   const changed = [];
   const look = (dir, depth) => {
