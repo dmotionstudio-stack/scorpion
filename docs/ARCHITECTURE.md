@@ -41,6 +41,8 @@ The same code is the desktop in all three. Only a thin system layer differs per 
 | Scorpion OS base | Ubuntu 24.04 LTS (noble) packages, built with `debootstrap` |
 | Scorpion OS session | labwc 0.7 (stacking Wayland compositor, Openbox-style), XWayland for Scorpion's own windows, LightDM sign-in, mako notifications, swaylock/swayidle |
 | Live system and installer | casper (Ubuntu's live boot), Calamares 3.3 (installs alone, alongside Windows, or on a chosen partition; LUKS encryption optional) |
+| Snapshots | Btrfs (`@` system, `@home`, `@cache`, `@log`, `@swap`); `scorpion-snapshot` takes read-only snapshots (after installing, before apt changes, before the agent changes the system) and undoes to one at the next restart; `@home` is never rolled back |
+| Apps | apt (Ubuntu), Flatpak with Flathub, and Scorpion's own signed apt repository on GitHub Pages for Scorpion updates |
 | Boot | GRUB 2: BIOS, and UEFI through Ubuntu's Microsoft-signed shim and Canonical-signed GRUB (Secure Boot stays on); `os-prober` adds Windows to the installed system's menu |
 | Packaging | electron-builder: NSIS installer (with an install-or-portable page), portable `.zip`, `.deb`, AppImage, macOS `.dmg`; `xorriso` hybrid ISO (DVD and USB) |
 | Build and test | GitHub Actions on Ubuntu 24.04: Linux app, ISO, then a QEMU boot test (KVM, OVMF for UEFI) with screenshots |

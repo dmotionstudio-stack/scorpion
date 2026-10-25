@@ -1,0 +1,4 @@
+# Scorpion OS: administrators (the sudo group) may take, list and undo system
+# snapshots without a password, so Scorpion's agent can take one before it
+# changes the system. Only this command; everything else still asks.
+%sudo ALL=(root) NOPASSWD: /usr/bin/scorpion-snapshot create *, /usr/bin/scorpion-snapshot list, /usr/bin/scorpion-snapshot list --json, /usr/bin/scorpion-snapshot undo *

@@ -119,6 +119,24 @@ Manager**. To make Windows the default, in Scorpion OS edit `/etc/default/grub`
   `B877 3FEF A9EA F3C1 7AD1 70EA 466E E54B 849C DE26`). Security updates also
   install by themselves (`unattended-upgrades`). Upgrades to a newer Ubuntu
   release aren't offered: a new Scorpion OS version comes as a new ISO.
+- **Snapshots and undo**: Scorpion OS installs on Btrfs (the system in `@`,
+  your files in `@home`). It takes a snapshot of the system right after
+  installing, before every package install or removal, and Scorpion's agent takes
+  one before it changes the system. To go back:
+
+  ```bash
+  scorpion-snapshot list
+  ```
+
+  ```bash
+  sudo scorpion-snapshot undo 20261025-143000
+  ```
+
+  The system is as it was then from the next restart; your files in `/home` stay
+  as they are. The newest 10 snapshots are kept (`/etc/scorpion/snapshots.conf`).
+  Choosing ext4 in the installer turns this off.
+- **Apps from Flathub**: Flatpak is set up with Flathub, so `flatpak install flathub
+  <app>` (or asking Scorpion) installs apps like Spotify or GIMP.
 - **The built-in model and voice** are in `/usr/share/scorpion`. Models you
   download in **Settings → Models** go to your own folder, as usual.
 - **Wi-Fi**: the rail's network icon, or `nm-connection-editor`.

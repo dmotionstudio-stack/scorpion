@@ -1,0 +1,108 @@
+#!/bin/bash
+# Scorpion OS: snapshots of the system, and undo.
+#
+#   scorpion-snapshot create "<reason>"   a read-only snapshot of the system now
+#   scorpion-snapshot list [--json]       the snapshots, newest first
+#   scorpion-snapshot undo <id>           put the system back as it was in that
+#                                         snapshot, from the next restart
+#
+# The system is the Btrfs subvolume @ (mounted as /); your files are in @home
+# and are never touched: undo rolls back programs and settings only.
+# Snapshots live in @snapshots at the top of the Btrfs volume. The newest 10
+# are kept (KEEP in /etc/scorpion/snapshots.conf). apt takes one before it
+# installs or removes packages, and Scorpion's agent before any system change
+# (sudo -n, allowed without a password for administrators by
+# /etc/sudoers.d/scorpion-snapshot).
+#
+# Exit codes: 0 done, 1 error, 2 no snapshots here (the system isn't on Btrfs
+# with @, e.g. the live system), 3 usage.
+set -euo pipefail
+
+KEEP=10
+[ -r /etc/scorpion/snapshots.conf ] && . /etc/scorpion/snapshots.conf
+TOP=/run/scorpion-snapshot
+SNAPS="$TOP/@snapshots"
+
+usage() { echo "usage: scorpion-snapshot create \"<reason>\" | list [--json] | undo <id>" >&2; exit 3; }
+die() { echo "scorpion-snapshot: $*" >&2; exit 1; }
+
+# The Btrfs volume holding /, with the system in @.
+supported() {
+  [ "$(findmnt -no FSTYPE /)" = "btrfs" ] && [ "$(findmnt -no FSROOT / | sed 's#^/##')" = "@" ]
+}
+need_root() { [ "$(id -u)" -eq 0 ] || die "run it with sudo"; }
+
+# The top of the volume (subvolid 5), mounted privately while working.
+mount_top() {
+  mkdir -p "$TOP"
+  mountpoint -q "$TOP" || mount -o subvolid=5 "$(findmnt -no SOURCE / | sed 's/\[.*\]$//')" "$TOP"
+  [ -d "$SNAPS" ] || btrfs subvolume create "$SNAPS" >/dev/null
+}
+unmount_top() { mountpoint -q "$TOP" && umount "$TOP" || true; }
+
+json_escape() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\t'/ }; s=${s//$'\n'/ }; printf '%s' "$s"; }
+
+create() {
+  local reason="${1:-Snapshot}"
+  local id
+  id="$(date +%Y%m%d-%H%M%S)"
+  # Two in the same second (apt runs dpkg several times): one is enough.
+  [ -e "$SNAPS/$id" ] && { echo "$id"; return 0; }
+  btrfs subvolume snapshot -r "$TOP/@" "$SNAPS/$id" >/dev/null
+  printf '%s\t%s\n' "$(date -Iseconds)" "${reason//$'\n'/ }" > "$SNAPS/$id.info"
+  # Only the newest KEEP.
+  local old
+  for old in $(ls -1 "$SNAPS" | grep -E '^[0-9]{8}-[0-9]{6}$' | sort -r | tail -n +"$((KEEP + 1))"); do
+    btrfs subvolume delete "$SNAPS/$old" >/dev/null 2>&1 || true
+    rm -f "$SNAPS/$old.info"
+  done
+  echo "$id"
+}
+
+list() {
+  local json=${1:-} first=1 id date reason
+  [ "$json" = "--json" ] && printf '['
+  for id in $(ls -1 "$SNAPS" 2>/dev/null | grep -E '^[0-9]{8}-[0-9]{6}$' | sort -r); do
+    IFS=$'\t' read -r date reason < "$SNAPS/$id.info" 2>/dev/null || { date=""; reason=""; }
+    if [ "$json" = "--json" ]; then
+      [ $first -eq 1 ] || printf ','
+      printf '{"id":"%s","date":"%s","reason":"%s"}' "$id" "$(json_escape "$date")" "$(json_escape "$reason")"
+      first=0
+    else
+      printf '%s\t%s\t%s\n' "$id" "$date" "$reason"
+    fi
+  done
+  [ "$json" = "--json" ] && printf ']\n'
+  return 0
+}
+
+# The running system keeps going as it is; from the next restart the
+# snapshot (as a new, writable @) is the system. What was @ is kept as
+# @undone-<time> in case the undo itself needs undoing (the newest two).
+undo() {
+  local id="${1:-}"
+  [[ "$id" =~ ^[0-9]{8}-[0-9]{6}$ ]] || usage
+  [ -d "$SNAPS/$id" ] || die "no snapshot $id (see: scorpion-snapshot list)"
+  # A snapshot of now first, so this undo can be undone too.
+  create "Before undoing to $id" >/dev/null
+  local stamp
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  mv "$TOP/@" "$TOP/@undone-$stamp"
+  btrfs subvolume snapshot "$SNAPS/$id" "$TOP/@" >/dev/null
+  local old
+  for old in $(ls -1 "$TOP" | grep -E '^@undone-' | sort -r | tail -n +3); do
+    btrfs subvolume delete "$TOP/$old" >/dev/null 2>&1 || true
+  done
+  echo "The system goes back to $id at the next restart. Your files in /home stay as they are."
+}
+
+cmd="${1:-}"
+[ -n "$cmd" ] || usage
+shift || true
+supported || { echo "scorpion-snapshot: no snapshots here (the system isn't on Btrfs with an @ subvolume)." >&2; exit 2; }
+case "$cmd" in
+  create) need_root; trap unmount_top EXIT; mount_top; create "${1:-}" ;;
+  list) if [ "$(id -u)" -eq 0 ]; then trap unmount_top EXIT; mount_top; list "${1:-}"; else exec sudo -n "$0" list "$@"; fi ;;
+  undo) need_root; trap unmount_top EXIT; mount_top; undo "${1:-}" ;;
+  *) usage ;;
+esac

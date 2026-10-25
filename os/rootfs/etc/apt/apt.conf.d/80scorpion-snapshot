@@ -1,0 +1,5 @@
+// Scorpion OS: a system snapshot before apt installs, removes or upgrades
+// packages (at most one every 5 minutes, as apt runs dpkg several times;
+// skipped quietly where the system isn't on Btrfs). No double quotes inside:
+// apt.conf strings can't hold them.
+DPkg::Pre-Invoke { "if [ -x /usr/bin/scorpion-snapshot ] && [ -z $(find /run/scorpion-snapshot.apt -mmin -5 2>/dev/null) ]; then touch /run/scorpion-snapshot.apt; /usr/bin/scorpion-snapshot create 'Before installing or removing packages' >/dev/null 2>&1 || true; fi"; };

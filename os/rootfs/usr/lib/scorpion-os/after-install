@@ -8,4 +8,6 @@ rm -f /etc/systemd/system/graphical.target.wants/scorpion-boot-report.service
 if ! grep -q '^GRUB_DISABLE_OS_PROBER=false' /etc/default/grub 2>/dev/null; then
   echo 'GRUB_DISABLE_OS_PROBER=false' >> /etc/default/grub
 fi
+# The first system snapshot: the freshly installed system (Btrfs only).
+/usr/bin/scorpion-snapshot create "Freshly installed" >/dev/null 2>&1 || true
 exit 0

@@ -126,6 +126,17 @@ mpv
 update-manager
 unattended-upgrades
 
+# --- the native shell host (os/rootfs/usr/lib/scorpion-os/scorpion-shell):
+# Scorpion's rail, wheel, notifications and on-screen display as Wayland
+# layer-shell panels, in WebKitGTK ---
+python3-gi
+gir1.2-gtk-3.0
+gir1.2-gtklayershell-0.1
+gir1.2-webkit2-4.1
+
+# --- apps from Flathub (Scorpion's agent installs apps with it) ---
+flatpak
+
 # --- the installer (removed from the installed system) ---
 calamares
 squashfs-tools

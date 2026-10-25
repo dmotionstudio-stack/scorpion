@@ -118,6 +118,8 @@ Pin-Priority: 1000
 EOF
 in_chroot apt-get update
 in_chroot "${APT_INSTALL[@]}" firefox
+# Flathub for apps (system-wide; Scorpion's agent installs apps from it).
+in_chroot flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
 log "3/7 lswt (the window list for Scorpion's taskbar)"
 in_chroot "${APT_INSTALL[@]}" gcc make libc6-dev libwayland-dev libwayland-bin git
@@ -133,6 +135,12 @@ rm -f "$CHROOT/tmp/scorpion.deb"
 cp -a "$OS_DIR/rootfs/." "$CHROOT/"
 chmod 755 "$CHROOT/usr/bin/scorpion-session" "$CHROOT/usr/bin/scorpion-install" "$CHROOT"/usr/lib/scorpion-os/*
 chmod 600 "$CHROOT/etc/netplan/01-network-manager-all.yaml"
+# System snapshots: the command, its sudo rule (checked: a broken sudoers file
+# would lock sudo out) and apt's hook (checked: a broken one stops apt).
+chmod 755 "$CHROOT/usr/bin/scorpion-snapshot"
+chmod 440 "$CHROOT/etc/sudoers.d/scorpion-snapshot"
+in_chroot visudo -cf /etc/sudoers.d/scorpion-snapshot
+in_chroot apt-config dump >/dev/null
 
 # The built-in model and voice: Scorpion talks and answers from the first
 # minute, with no download (read from here; nothing is copied to the user).
