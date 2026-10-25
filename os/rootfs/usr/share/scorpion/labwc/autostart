@@ -16,9 +16,9 @@ done
 
 # Lock after 10 idle minutes and before sleep; screen off after 15.
 swayidle -w \
-  timeout 600 'swaylock -f -c 000000' \
+  timeout 600 'swaylock -f' \
   timeout 900 'wlopm --off \*' resume 'wlopm --on \*' \
-  before-sleep 'swaylock -f -c 000000' >/dev/null 2>&1 &
+  before-sleep 'swaylock -f' >/dev/null 2>&1 &
 
 # Scorpion: the desktop, taskbar (the edge rail) and launcher.
 /usr/lib/scorpion-os/run-scorpion >/dev/null 2>&1 &

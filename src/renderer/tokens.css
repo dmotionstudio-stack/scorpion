@@ -1,0 +1,43 @@
+/* Scorpion's design tokens for the shell surfaces (edge, summon, notify,
+   osd). Colours come from the theme (themes.css: --accent, --text, --muted,
+   --bg…); these add what every surface shares: type, glass, lines, corners,
+   shadows and motion. The parts that aren't web pages (labwc's window
+   frames, the lock screen, the sign-in screen) get theirs from the same
+   theme through scripts/make-os-theme.mjs. */
+:root {
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", Ubuntu, system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", Ubuntu, system-ui, sans-serif;
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 14px;
+  --radius-xl: 18px;
+  /* Dark glass: panels, then cards on them. */
+  --shell-glass: rgba(16, 20, 28, .9);
+  --shell-glass-2: rgba(36, 44, 60, .95);
+  --shell-glass-3: rgba(16, 20, 30, .96);
+  --shell-line: rgba(255, 255, 255, .1);
+  --shell-hover: rgba(255, 255, 255, .08);
+  --shell-press: rgba(255, 255, 255, .12);
+  --shell-ink: color-mix(in srgb, var(--text, #e9eef6) 94%, #fff);
+  --shell-dim: color-mix(in srgb, var(--text, #e9eef6) 60%, transparent);
+  --shadow-float: 0 10px 30px rgba(0, 0, 0, .5);
+  --glow: 0 0 10px var(--accent);
+  --motion-fast: .12s;
+  --motion: .2s;
+  --ease-pop: cubic-bezier(.2, .9, .3, 1.1);
+}
+/* The light theme: light glass and dark ink, so the shell reads on it. */
+html[data-theme="bone"] {
+  --shell-glass: rgba(246, 242, 233, .94);
+  --shell-glass-2: rgba(255, 252, 245, .97);
+  --shell-glass-3: rgba(240, 235, 224, .97);
+  --shell-line: rgba(0, 0, 0, .12);
+  --shell-hover: rgba(0, 0, 0, .06);
+  --shell-press: rgba(0, 0, 0, .1);
+  --shell-ink: var(--text);
+  --shell-dim: color-mix(in srgb, var(--text) 62%, transparent);
+  --shadow-float: 0 10px 30px rgba(0, 0, 0, .18);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-fast: 0s; --motion: 0s; }
+}

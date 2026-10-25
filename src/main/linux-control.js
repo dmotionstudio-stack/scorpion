@@ -406,7 +406,7 @@ export async function systemControl(action, amount) {
       await run('grim', [file]);
       return `Screenshot saved: ${file}`;
     }
-    case 'lock': detach('swaylock', ['-f', '-c', '000000']); return 'Locked.';
+    case 'lock': detach('swaylock', ['-f']); return 'Locked.'; // themed by /etc/swaylock/config
     case 'sleep': await run('systemctl', ['suspend']); return 'Going to sleep.';
     case 'restart': case 'shutdown': {
       clearTimeout(pendingPower);

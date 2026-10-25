@@ -5,13 +5,14 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
   <title>Scorpion OSD</title>
   <link rel="stylesheet" href="themes.css">
+  <link rel="stylesheet" href="tokens.css">
   <style>
     /* The on-screen volume and brightness (the native shell host shows it low in the middle). */
     :root { --accent: #5aa9ff; --text: #e9eef6; }
     html, body { margin: 0; background: transparent; overflow: hidden; height: 100%; }
-    body { display: grid; place-items: center; font: 13px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: var(--text); }
+    body { display: grid; place-items: center; font: 13px var(--font-ui); color: var(--text); }
     .osd { display: flex; align-items: center; gap: 14px; width: 300px; padding: 14px 18px; border-radius: 18px; box-sizing: border-box;
-      background: rgba(16, 20, 28, .9); border: 1px solid rgba(255, 255, 255, .1); box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+      background: var(--shell-glass); border: 1px solid var(--shell-line); box-shadow: var(--shadow-float); }
     svg { flex: none; width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
     .bar { flex: 1; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .15); overflow: hidden; }
     .fill { height: 100%; width: 0; background: var(--accent); box-shadow: 0 0 10px var(--accent); transition: width .12s; }

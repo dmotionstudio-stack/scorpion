@@ -5,10 +5,10 @@
 :root { --accent: #5aa9ff; --accent-2: #2f7fe0; --text: #e9eef6; }
 html, body.summon { margin: 0; height: 100%; background: transparent; overflow: hidden; }
 body.summon {
-  --ink: color-mix(in srgb, var(--text) 94%, #fff);
-  --dim: color-mix(in srgb, var(--text) 62%, transparent);
+  --ink: var(--shell-ink);
+  --dim: var(--shell-dim);
   color: var(--ink); user-select: none;
-  font: 13px/1.25 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 13px/1.25 var(--font-ui);
 }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -69,7 +69,7 @@ body.shown .sm-wheel { transform: scale(var(--scale, 1)); opacity: 1; }
 .sm-cards { position: absolute; inset: 0; pointer-events: none; }
 .sm-card { position: absolute; width: 226px; height: 84px; display: flex; gap: 10px; align-items: center; padding: 8px; box-sizing: border-box; text-align: left; pointer-events: auto;
   transform: translate(-50%, -50%) rotate(var(--tilt)); border-radius: 14px;
-  background: linear-gradient(160deg, rgba(36, 44, 60, .9), rgba(16, 20, 30, .92)); border: 1px solid rgba(255, 255, 255, .12);
+  background: linear-gradient(160deg, var(--shell-glass-2), var(--shell-glass-3)); border: 1px solid var(--shell-line);
   box-shadow: 0 10px 30px rgba(0, 0, 0, .45); transition: transform .14s, border-color .14s;
   animation: sm-card-in .28s cubic-bezier(.2, .9, .3, 1.1) both; animation-delay: calc(var(--i) * 30ms); }
 @keyframes sm-card-in { from { opacity: 0; transform: translate(-50%, -50%) rotate(var(--tilt)) scale(.85); } }

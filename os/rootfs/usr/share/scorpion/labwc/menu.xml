@@ -12,7 +12,7 @@
     <item label="Displays"><action name="Execute" command="wdisplays" /></item>
     <item label="Additional drivers"><action name="Execute" command="software-properties-gtk --open-tab=4" /></item>
     <separator />
-    <item label="Lock"><action name="Execute" command="swaylock -f -c 000000" /></item>
+    <item label="Lock"><action name="Execute" command="swaylock -f" /></item>
     <item label="Sign out"><action name="Exit" /></item>
     <item label="Restart"><action name="Execute" command="systemctl reboot" /></item>
     <item label="Shut down"><action name="Execute" command="systemctl poweroff" /></item>
