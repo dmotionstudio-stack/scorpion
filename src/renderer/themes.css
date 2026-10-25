@@ -145,3 +145,12 @@ html.glass-css[data-theme] body {
 @keyframes wait-slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
 @keyframes wait-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .wait-spinner, .wait-progress.indeterminate > div, .wait-overlay { animation: none; } }
+
+/* Bone (light): the home tiles' glow and scan lines are made for dark themes. */
+html[data-theme="bone"] .home-tool {
+  background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%), var(--panel);
+  box-shadow: inset 0 0 18px var(--faint), 0 1px 3px rgba(0, 0, 0, .06);
+}
+html[data-theme="bone"] .home-tool::before { opacity: .06; }
+html[data-theme="bone"] .home-tool .name { color: var(--accent-text); text-shadow: none; }
+html[data-theme="bone"] .home-tool .ico { filter: none; }
