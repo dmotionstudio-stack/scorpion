@@ -1,8 +1,17 @@
 # Scorpion
 
-An offline AI assistant and agent for Windows and macOS. Scorpion runs open-weight
-GGUF models on your own computer with llama.cpp. You don't need an API key, an
-account, or an internet connection to chat.
+An offline AI assistant and agent for Windows, macOS and Linux, and a whole
+operating system of its own: **Scorpion OS** (built on Ubuntu 24.04 LTS, boots
+from a USB stick, installs alongside Windows). Scorpion runs open-weight GGUF models
+on your own computer with llama.cpp. You don't need an API key, an account, or an
+internet connection to chat.
+
+| Run it as | For | Get it |
+|---|---|---|
+| An app (installed) | Windows 10/11, macOS, Linux | [Install](#install) |
+| Portable, from a USB stick | Windows | [Portable Windows](#portable-windows-usb-stick) |
+| The Windows desktop | Windows (Scorpion in place of the taskbar and Start) | Settings → General → Windows desktop |
+| A whole operating system | Any 64-bit PC, alone or alongside Windows | [Scorpion OS](#scorpion-os) |
 
 - **Home screen** (the Scorpion shell): Scorpion opens on a home screen with an ask box
   and all its tools as holographic tiles (each with a live status line) that fill the
@@ -218,6 +227,8 @@ written fresh for Scorpion.
 | Windows 10 or 11 (64-bit) | `scorpion-windows-latest` | `Scorpion Setup x.y.z.exe` |
 | Mac with Apple Silicon (M1, M2, M3, M4) | `scorpion-macos-latest` | `Scorpion-x.y.z-arm64.dmg` |
 | Mac with an Intel processor | `scorpion-macos-15-intel` | `Scorpion-x.y.z.dmg` |
+| Linux (64-bit) | `scorpion-linux`, from a **Scorpion OS** run | `scorpion_x.y.z_amd64.deb`, `Scorpion-x.y.z.AppImage` |
+| A USB stick to boot or install Scorpion OS | `scorpion-os-iso`, from a **Scorpion OS** run | `scorpion-os-x.y-amd64.iso` |
 
 Not sure which Mac you have? Apple menu → **About This Mac**: it says **Chip**
 (Apple Silicon) or **Processor** (Intel).
@@ -236,6 +247,43 @@ Not sure which Mac you have? Apple menu → **About This Mac**: it says **Chip**
 To uninstall: **Settings → Apps → Installed apps → Scorpion → Uninstall**.
 Your chats, memories and models stay in `%APPDATA%\Scorpion` until you delete
 that folder.
+
+### Portable Windows (USB stick)
+
+Nothing is installed and nothing is written to the computer: everything
+Scorpion saves (models, chats, settings, memory) stays in a `scorpion-data`
+folder next to Scorpion.exe.
+
+- **From the installer**: on its second page, choose **Portable** and an install
+  folder on the USB stick.
+- **As a .zip**: `npm run dist:portable` makes `release/Scorpion-x.y.z-portable.zip`.
+  Unzip it anywhere (a USB stick too) and run **Scorpion.exe**. Copy `.gguf` models
+  into `scorpion-data\models` to use them without downloading.
+- **One stick for Windows and Mac**: `node scripts/make-usb.mjs` assembles a stick
+  with both and one shared `scorpion-data` folder.
+- **One stick that also boots Scorpion OS**: put [Ventoy](https://www.ventoy.net) on
+  the stick, then copy the Scorpion OS ISO and the portable folder onto it.
+
+### Linux
+
+Debian, Ubuntu and similar:
+
+```bash
+sudo apt install ./scorpion_x.y.z_amd64.deb
+```
+
+Any other distribution: make the AppImage executable and run it:
+
+```bash
+chmod +x Scorpion-x.y.z.AppImage && ./Scorpion-x.y.z.AppImage
+```
+
+Chat, agents, voice, faces, hand gestures and the models work anywhere. Running
+the computer for you (apps, windows, volume, Wi-Fi, power) uses Wayland and
+freedesktop tools: `wlrctl` and `lswt` for windows (on wlroots desktops such as
+labwc and Sway), PipeWire (`wpctl`), `playerctl`, `brightnessctl`,
+NetworkManager (`nmcli`), `grim` and `gio`. Scorpion OS has them all. Data is
+kept in `~/.config/Scorpion`.
 
 ### Mac
 
@@ -271,7 +319,8 @@ if you copy the file from another computer.
 - **Copy from another computer**: copy a `.gguf` file onto a USB drive, then use
   **Settings → Models → Import .gguf file…**. On Windows, Scorpion keeps its
   models in `%APPDATA%\Scorpion\models`; on a Mac, in
-  `~/Library/Application Support/Scorpion/models`.
+  `~/Library/Application Support/Scorpion/models`; on Linux, in
+  `~/.config/Scorpion/models` (portable: `scorpion-data\models`).
 
 After that Scorpion works fully offline.
 
@@ -470,10 +519,17 @@ llama.cpp binaries come prebuilt, and Scorpion picks one automatically:
 
 - macOS: Metal (Apple Silicon)
 - Windows: Vulkan (NVIDIA, AMD and Intel graphics) or CPU
+- Linux and Scorpion OS: Vulkan (Mesa for Intel and AMD; NVIDIA's driver from
+  **Additional drivers**) or CPU
 
 The Windows build ships without the CUDA libraries (about 545 MB): Vulkan
 already drives NVIDIA cards, and the installer is 121 MB instead of 392 MB.
-Flash attention is on wherever the model supports it.
+The Linux build leaves CUDA out for the same reason. Models far bigger than the
+graphics card run on the CPU build, which measured faster than splitting them.
+Flash attention is on wherever the model supports it. **Settings → General →
+Performance → Light** chats with the fastest model installed when your chosen one
+is slow on this computer (and calms the orb and background work); no model is
+removed.
 
 The Models page shows the active backend, how many layers are on the GPU,
 and a tag on every model: *Fast here* (fits in graphics memory), *Slower here*
@@ -494,6 +550,11 @@ and a tag on every model: *Fast here* (fits in graphics memory), *Slower here*
 ```bash
 npm test
 ```
+
+The unit tests run on any OS, including the Linux system layer's parsers
+(`test/linux-control.test.js`). Scorpion OS is tested by its GitHub workflow,
+which boots the ISO in QEMU and checks that Scorpion starts
+(`os/test/boot-test.mjs`).
 
 ```bash
 node scripts/e2e-agent.mjs path/to/chat.gguf path/to/embed.gguf
