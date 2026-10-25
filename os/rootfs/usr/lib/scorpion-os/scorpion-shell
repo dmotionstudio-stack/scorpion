@@ -1,0 +1,358 @@
+#!/usr/bin/python3
+"""Scorpion OS's shell host.
+
+Shows Scorpion's always-on surfaces as Wayland layer-shell panels (the
+proper place for panels: the compositor places them, keeps them on top, and
+keeps the rail's strip free for other windows), each one of Scorpion's own
+pages in WebKitGTK:
+
+  edge.html    the rail down the right edge (reserves its 76 pixels)
+  summon.html  the summon dot (bottom left), opening into the intent wheel
+  notify.html  notification cards and the list, beside the rail
+  osd.html     the on-screen volume and brightness
+
+The pages talk to Scorpion over its local shell API (src/main/shell-api.js;
+the address and key are in $XDG_RUNTIME_DIR/scorpion-shell.json), and to this
+host through WebKit's "scorpionShell" message handler (placing panels,
+native menus, notification actions).
+
+It is also the session's notification server (org.freedesktop.Notifications):
+notifications go to Scorpion, which keeps them and shows them here.
+"""
+import base64
+import json
+import os
+import sys
+import threading
+import urllib.request
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GtkLayerShell", "0.1")
+gi.require_version("WebKit2", "4.1")
+from gi.repository import Gdk, Gio, GLib, Gtk, GtkLayerShell, WebKit2  # noqa: E402
+
+RAIL = 76
+DOT = 88
+NOTIFY_WIDTH = 380
+INFO = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "scorpion-shell.json")
+E = GtkLayerShell.Edge
+
+
+def log(*args):
+    print("scorpion-shell:", *args, file=sys.stderr, flush=True)
+
+
+class Api:
+    """Scorpion's local shell API."""
+
+    def __init__(self):
+        self.base = None
+
+    def load(self):
+        try:
+            with open(INFO) as f:
+                info = json.load(f)
+            os.kill(int(info["pid"]), 0)  # Scorpion is running
+            self.base = f"http://127.0.0.1:{info['port']}/{info['key']}"
+            return True
+        except Exception:
+            self.base = None
+            return False
+
+    def page(self, name):
+        return f"{self.base}/{name}"
+
+    def call(self, channel, arg=None):
+        """A call in the background (never blocks the panels)."""
+        if not self.base:
+            return
+        url = f"{self.base}/ipc/{channel}"
+        body = json.dumps(arg).encode()
+
+        def go():
+            try:
+                req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+                urllib.request.urlopen(req, timeout=15).read()
+            except Exception as err:  # Scorpion restarting
+                log(channel, err)
+
+        threading.Thread(target=go, daemon=True).start()
+
+
+api = Api()
+
+
+class Panel(Gtk.Window):
+    """One layer-shell panel showing one of Scorpion's pages."""
+
+    def __init__(self, host, page, *, layer, anchors, width, height, exclusive=0, margins=None, keyboard="none"):
+        super().__init__(title=f"Scorpion {page}")
+        self.host = host
+        self.page = page
+        screen = self.get_screen()
+        visual = screen.get_rgba_visual()
+        if visual:
+            self.set_visual(visual)
+        self.set_app_paintable(True)
+        GtkLayerShell.init_for_window(self)
+        GtkLayerShell.set_namespace(self, f"scorpion-{page.split('.')[0]}")
+        self.place(layer=layer, anchors=anchors, width=width, height=height, exclusive=exclusive, margins=margins or {}, keyboard=keyboard)
+
+        manager = WebKit2.UserContentManager()
+        manager.register_script_message_handler("scorpionShell")
+        manager.connect("script-message-received::scorpionShell", self.on_message)
+        self.view = WebKit2.WebView.new_with_user_content_manager(manager)
+        self.view.set_background_color(Gdk.RGBA(0, 0, 0, 0))
+        settings = self.view.get_settings()
+        settings.set_enable_developer_extras(False)
+        settings.set_enable_write_console_messages_to_stdout(True)
+        self.view.connect("context-menu", lambda *a: True)  # the pages have their own
+        self.add(self.view)
+        self.load()
+
+    def place(self, *, layer, anchors, width, height, exclusive=0, margins=None, keyboard="none"):
+        GtkLayerShell.set_layer(self, layer)
+        for edge in (E.LEFT, E.RIGHT, E.TOP, E.BOTTOM):
+            GtkLayerShell.set_anchor(self, edge, edge in anchors)
+        for edge in (E.LEFT, E.RIGHT, E.TOP, E.BOTTOM):
+            GtkLayerShell.set_margin(self, edge, (margins or {}).get(edge, 0))
+        GtkLayerShell.set_exclusive_zone(self, exclusive)
+        mode = {"none": GtkLayerShell.KeyboardMode.NONE, "exclusive": GtkLayerShell.KeyboardMode.EXCLUSIVE, "on-demand": GtkLayerShell.KeyboardMode.ON_DEMAND}[keyboard]
+        GtkLayerShell.set_keyboard_mode(self, mode)
+        self.set_size_request(width, height)
+        self.resize(max(1, width), max(1, height))
+
+    def load(self):
+        self.view.load_uri(api.page(self.page))
+
+    def js(self, code):
+        self.view.evaluate_javascript(code, -1, None, None, None, None, None)
+
+    def on_message(self, _manager, result):
+        try:
+            msg = json.loads(result.get_js_value().to_string())
+        except Exception:
+            return
+        self.host.handle(self, msg)
+
+
+class Notifications:
+    """The session's notification server: org.freedesktop.Notifications."""
+
+    XML = """
+    <node>
+      <interface name="org.freedesktop.Notifications">
+        <method name="GetCapabilities"><arg direction="out" type="as"/></method>
+        <method name="Notify">
+          <arg direction="in" type="s" name="app_name"/><arg direction="in" type="u" name="replaces_id"/>
+          <arg direction="in" type="s" name="app_icon"/><arg direction="in" type="s" name="summary"/>
+          <arg direction="in" type="s" name="body"/><arg direction="in" type="as" name="actions"/>
+          <arg direction="in" type="a{sv}" name="hints"/><arg direction="in" type="i" name="expire_timeout"/>
+          <arg direction="out" type="u"/>
+        </method>
+        <method name="CloseNotification"><arg direction="in" type="u" name="id"/></method>
+        <method name="GetServerInformation">
+          <arg direction="out" type="s"/><arg direction="out" type="s"/><arg direction="out" type="s"/><arg direction="out" type="s"/>
+        </method>
+        <signal name="NotificationClosed"><arg type="u"/><arg type="u"/></signal>
+        <signal name="ActionInvoked"><arg type="u"/><arg type="s"/></signal>
+      </interface>
+    </node>"""
+
+    def __init__(self):
+        self.conn = None
+        self.next_id = 1
+        self.open = set()
+        info = Gio.DBusNodeInfo.new_for_xml(self.XML)
+        self.iface = info.interfaces[0]
+        Gio.bus_own_name(Gio.BusType.SESSION, "org.freedesktop.Notifications", Gio.BusNameOwnerFlags.REPLACE | Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT,
+                         self.on_bus, None, lambda *a: log("another notification server owns the name"))
+
+    def on_bus(self, conn, _name):
+        self.conn = conn
+        conn.register_object("/org/freedesktop/Notifications", self.iface, self.on_call, None, None)
+
+    def icon(self, app_icon, hints):
+        """The notification's icon as a data URL (the pages can't read files)."""
+        path = None
+        name = (hints.get("image-path") or hints.get("image_path") or app_icon or "").replace("file://", "")
+        if name.startswith("/") and os.path.isfile(name):
+            path = name
+        elif name:
+            info = Gtk.IconTheme.get_default().lookup_icon(name, 48, 0)
+            path = info.get_filename() if info else None
+        if not path:
+            return None
+        try:
+            with open(path, "rb") as f:
+                data = f.read(512 * 1024)
+            kind = "image/svg+xml" if path.endswith(".svg") else "image/png"
+            return f"data:{kind};base64,{base64.b64encode(data).decode()}"
+        except OSError:
+            return None
+
+    def on_call(self, _conn, _sender, _path, _iface, method, params, invocation):
+        if method == "GetCapabilities":
+            invocation.return_value(GLib.Variant("(as)", (["body", "actions", "icon-static", "persistence"],)))
+        elif method == "GetServerInformation":
+            invocation.return_value(GLib.Variant("(ssss)", ("Scorpion", "Scorpion OS", "0.1", "1.2")))
+        elif method == "Notify":
+            app, replaces, app_icon, summary, body, actions, hints, _timeout = params.unpack()
+            nid = replaces or self.next_id
+            if not replaces:
+                self.next_id += 1
+            self.open.add(nid)
+            urgency = hints.get("urgency", 1)
+            api.call("shell:notifyIn", {"id": nid, "app": app, "summary": summary, "body": body, "icon": self.icon(app_icon, hints), "urgency": int(urgency), "actions": list(actions)})
+            invocation.return_value(GLib.Variant("(u)", (nid,)))
+        elif method == "CloseNotification":
+            (nid,) = params.unpack()
+            self.closed(nid, 3)
+            invocation.return_value(None)
+
+    def closed(self, nid, reason):
+        """reason: 1 expired, 2 dismissed, 3 closed by the app."""
+        if nid in self.open:
+            self.open.discard(nid)
+            api.call("shell:notifyClosed", {"id": nid})
+        if self.conn:
+            self.conn.emit_signal(None, "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "NotificationClosed", GLib.Variant("(uu)", (nid, reason)))
+
+    def action(self, nid, key):
+        if self.conn:
+            self.conn.emit_signal(None, "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "ActionInvoked", GLib.Variant("(us)", (nid, key)))
+        self.closed(nid, 2)
+
+
+class Host:
+    def __init__(self):
+        self.panels = {}
+        self.notifications = Notifications()
+        self.ready = False
+
+    def start(self):
+        """Once Scorpion's shell API is up: the panels."""
+        if not api.load():
+            GLib.timeout_add(500, self.start)
+            return False
+        top, overlay = GtkLayerShell.Layer.TOP, GtkLayerShell.Layer.OVERLAY
+        self.panels["edge"] = Panel(self, "edge.html", layer=top, anchors={E.RIGHT, E.TOP, E.BOTTOM}, width=RAIL, height=-1, exclusive=RAIL)
+        self.panels["summon"] = Panel(self, "summon.html", layer=top, anchors={E.LEFT, E.BOTTOM}, width=DOT, height=DOT, margins={E.LEFT: 8, E.BOTTOM: 8})
+        self.panels["notify"] = Panel(self, "notify.html", layer=overlay, anchors={E.TOP, E.RIGHT}, width=NOTIFY_WIDTH, height=1, margins={E.TOP: 8, E.RIGHT: RAIL + 8})
+        self.panels["osd"] = Panel(self, "osd.html", layer=overlay, anchors={E.BOTTOM}, width=340, height=90, margins={E.BOTTOM: 90})
+        self.panels["edge"].show_all()
+        self.panels["summon"].show_all()
+        for name in ("notify", "osd"):
+            self.panels[name].show_all()
+            self.panels[name].hide()
+        api.call("shell:hostReady")
+        self.ready = True
+        # Scorpion restarted: a new address and key, so the pages load again.
+        monitor = Gio.File.new_for_path(INFO).monitor_file(Gio.FileMonitorFlags.NONE, None)
+        monitor.connect("changed", self.on_info_changed)
+        self.monitor = monitor
+        return False
+
+    def on_info_changed(self, *_):
+        old = api.base
+        if api.load() and api.base != old:
+            log("Scorpion restarted; reloading the panels")
+            for p in self.panels.values():
+                p.load()
+            api.call("shell:hostReady")
+
+    def wheel(self, is_open):
+        p = self.panels["summon"]
+        if is_open:
+            p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.RIGHT, E.TOP, E.BOTTOM}, width=-1, height=-1, exclusive=-1, keyboard="exclusive")
+            p.present()
+        else:
+            p.place(layer=GtkLayerShell.Layer.TOP, anchors={E.LEFT, E.BOTTOM}, width=DOT, height=DOT, margins={E.LEFT: 8, E.BOTTOM: 8}, keyboard="none")
+
+    def menu(self, panel, msg):
+        """A native menu at the pointer, from Scorpion's description."""
+        token = msg.get("token")
+
+        def build(items):
+            menu = Gtk.Menu()
+            group = None
+            for it in items:
+                if it.get("type") == "separator":
+                    menu.append(Gtk.SeparatorMenuItem())
+                    continue
+                kind = it.get("type", "normal")
+                if kind in ("checkbox", "radio"):
+                    item = Gtk.CheckMenuItem(label=it.get("label", ""))
+                    item.set_draw_as_radio(kind == "radio")
+                    item.set_active(bool(it.get("checked")))
+                else:
+                    item = Gtk.MenuItem(label=it.get("label", ""))
+                item.set_sensitive(bool(it.get("enabled", True)))
+                if it.get("submenu"):
+                    item.set_submenu(build(it["submenu"]))
+                elif it.get("id"):
+                    item.connect("activate", lambda _w, iid=it["id"]: api.call("shell:menuPick", {"token": token, "id": iid}))
+                menu.append(item)
+            menu.show_all()
+            return menu
+
+        m = build(msg.get("items") or [])
+        panel.menu = m  # kept alive while open
+        x, y = int(msg.get("x", 0)), int(msg.get("y", 0))
+        rect = Gdk.Rectangle()
+        rect.x, rect.y, rect.width, rect.height = x, y, 1, 1
+        # From the rail, menus open to the left of the pointer.
+        anchor = Gdk.Gravity.NORTH_EAST if panel.page == "edge.html" else Gdk.Gravity.NORTH_WEST
+        m.popup_at_rect(panel.get_window(), rect, Gdk.Gravity.NORTH_WEST, anchor, None)
+
+    def handle(self, panel, msg):
+        kind = msg.get("type")
+        if kind == "wheel":
+            self.wheel(bool(msg.get("open")))
+        elif kind == "menu":
+            self.menu(panel, msg)
+        elif kind == "panel" and msg.get("name") == "notify":
+            p = self.panels["notify"]
+            p.js("window.scorpionPanel && window.scorpionPanel.toggle()")
+        elif kind == "size":
+            p = self.panels.get(msg.get("panel"))
+            if not p:
+                return
+            if msg.get("panel") == "notify":
+                h = max(1, min(int(msg.get("height") or 1), self.get_screen_height() - 16))
+                p.set_size_request(NOTIFY_WIDTH, h)
+                p.resize(NOTIFY_WIDTH, h)
+                GtkLayerShell.set_keyboard_mode(p, GtkLayerShell.KeyboardMode.ON_DEMAND if msg.get("visible") else GtkLayerShell.KeyboardMode.NONE)
+            if msg.get("visible"):
+                p.show_all()
+            else:
+                p.hide()
+        elif kind == "notifyAction":
+            self.notifications.action(int(msg.get("id", 0)), str(msg.get("key", "default")))
+        elif kind == "notifyClose":
+            self.notifications.closed(int(msg.get("id", 0)), 2)
+        elif kind == "notifyCloseAll":
+            for nid in list(self.notifications.open):
+                self.notifications.closed(nid, 2)
+
+    def get_screen_height(self):
+        display = Gdk.Display.get_default()
+        mon = display.get_primary_monitor() or display.get_monitor(0)
+        return mon.get_geometry().height if mon else 1080
+
+
+def main():
+    if not GtkLayerShell.is_supported():
+        log("this compositor has no layer-shell; Scorpion shows its own panels")
+        return 1
+    host = Host()
+    GLib.idle_add(host.start)
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

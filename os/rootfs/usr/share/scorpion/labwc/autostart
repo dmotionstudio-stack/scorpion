@@ -9,8 +9,10 @@ for agent in /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 /usr
   [ -x "$agent" ] && { "$agent" & break; }
 done
 
-# Notifications (the rail's bell shows the last ones again).
-mako >/dev/null 2>&1 &
+# Scorpion's shell: the rail, the summon dot and wheel, notifications and the
+# on-screen display as layer-shell panels; it is also the notification server.
+# Where it can't run, mako shows notifications (and Scorpion its own rail).
+( /usr/lib/scorpion-os/scorpion-shell || exec mako ) >/dev/null 2>&1 &
 
 # Lock after 10 idle minutes and before sleep; screen off after 15.
 swayidle -w \

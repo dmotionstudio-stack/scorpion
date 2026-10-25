@@ -738,3 +738,19 @@ export async function undoSnapshot(id) {
   await run('sudo', ['-n', SNAPSHOT, 'undo', String(id)], { timeout: 120000 });
   return `The computer goes back to snapshot ${id} at the next restart.`;
 }
+
+// ---------- levels for the on-screen display ----------
+// wpctl get-volume: "Volume: 0.45" or "Volume: 0.45 [MUTED]".
+export function parseVolume(out) {
+  const m = /Volume:\s*([\d.]+)/.exec(String(out));
+  return m ? { level: Math.round(Number(m[1]) * 100), muted: /\[MUTED\]/.test(out) } : null;
+}
+// brightnessctl -m: "intel_backlight,backlight,48000,50%,96000".
+export function parseBrightness(out) {
+  const m = /,(\d+)%,/.exec(String(out));
+  return m ? { level: Number(m[1]) } : null;
+}
+export async function levelOf(kind) {
+  if (kind === 'brightness') return parseBrightness(await run('brightnessctl', ['-m']).catch(() => ''));
+  return parseVolume(await run('wpctl', ['get-volume', '@DEFAULT_AUDIO_SINK@']).catch(() => ''));
+}

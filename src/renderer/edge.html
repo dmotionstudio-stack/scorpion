@@ -6,6 +6,7 @@
   <title>Scorpion taskbar</title>
   <link rel="stylesheet" href="themes.css">
   <link rel="stylesheet" href="edge.css">
+  <script src="shell-bridge.js"></script>
   <script type="module" src="edge.js"></script>
 </head>
 <body class="edge">
@@ -13,7 +14,7 @@
   <div class="eg-glance">
     <button class="eg-item" id="eg-battery" data-glance="battery" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="7" width="17" height="10" rx="2.2"/><path d="M21.5 10.5v3"/><rect id="eg-battery-fill" x="4.5" y="9" width="13" height="6" rx="1" class="eg-fill"/></svg><span id="eg-battery-pct"></span></button>
     <button class="eg-item" id="eg-net" data-glance="network"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 9a14 14 0 0 1 19 0"/><path d="M5.8 12.4a9.3 9.3 0 0 1 12.4 0"/><path d="M9.1 15.8a4.6 4.6 0 0 1 5.8 0"/><circle cx="12" cy="19" r="1.1" class="eg-dot-fill"/></svg><span id="eg-net-label">Connected</span></button>
-    <button class="eg-item eg-icon" data-glance="notifications" title="Notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg></button>
+    <button class="eg-item eg-icon eg-bell" data-glance="notifications" title="Notifications"><span class="eg-badge" id="eg-badge" hidden></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg></button>
     <button class="eg-item eg-icon" data-glance="mail" title="Mail"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.5 7 8.5 6.5L20.5 7"/></svg></button>
     <button class="eg-item eg-icon" data-glance="chat" title="Chat with Scorpion"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4c4.7 0 8.5 3.1 8.5 7s-3.8 7-8.5 7c-1 0-2-.1-2.9-.4L5 19.5l1.2-3.6C4.5 14.6 3.5 12.9 3.5 11 3.5 7.1 7.3 4 12 4z"/><circle cx="8.5" cy="11" r=".9" class="eg-dot-fill"/><circle cx="12" cy="11" r=".9" class="eg-dot-fill"/><circle cx="15.5" cy="11" r=".9" class="eg-dot-fill"/></svg></button>
   </div>

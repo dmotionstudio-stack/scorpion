@@ -70,7 +70,14 @@ async function refreshTray() {
   }
 }
 
-for (const b of document.querySelectorAll('[data-glance]')) b.addEventListener('click', () => api.shellGlance(b.dataset.glance).catch(() => {}));
+for (const b of document.querySelectorAll('[data-glance]')) b.addEventListener('click', () => {
+  // In the native shell host the bell opens Scorpion's own notification list.
+  if (b.dataset.glance === 'notifications' && window.scorpionHost) { api.host({ type: 'panel', name: 'notify', toggle: true }); api.notificationAct({ action: 'read' }).catch(() => {}); return; }
+  api.shellGlance(b.dataset.glance).catch(() => {});
+});
+// The bell's count of unread notifications (the native shell host is the notification server).
+const setBadge = (s) => { const n = s?.unread || 0; $('#eg-badge').hidden = !n; $('#eg-badge').textContent = n > 9 ? '9+' : String(n); };
+if (api.notifications) { api.notifications().then(setBadge).catch(() => {}); api.onNotificationsChanged?.(setBadge); }
 $('#eg-clock').addEventListener('click', () => api.shellMenu({ kind: 'clock' }));
 $('#eg-power').addEventListener('click', () => api.shellMenu({ kind: 'power' }));
 $('#eg-volume').addEventListener('click', () => api.shellVolume('mute'));

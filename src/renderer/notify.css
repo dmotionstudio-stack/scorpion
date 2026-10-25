@@ -1,0 +1,32 @@
+/* Notifications beside the rail (notify.html): dark glass cards in the
+   rail's style, the theme's accent for urgent ones. */
+:root { --accent: #5aa9ff; --text: #e9eef6; }
+html, body.notify { margin: 0; background: transparent; overflow: hidden; }
+body.notify { --ink: color-mix(in srgb, var(--text) 94%, #fff); --dim: color-mix(in srgb, var(--text) 60%, transparent);
+  color: var(--ink); font: 13px/1.35 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; padding: 2px; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+[hidden] { display: none !important; }
+.nt-pops, .nt-items { display: flex; flex-direction: column; gap: 8px; }
+.nt-list { margin-bottom: 8px; padding: 10px; border-radius: 16px; background: rgba(16, 20, 28, .92); border: 1px solid rgba(255, 255, 255, .1); }
+.nt-head { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px 10px; font-weight: 600; }
+.nt-clear { color: var(--accent); font-size: 12px; }
+.nt-items { max-height: 70vh; overflow-y: auto; }
+.nt-empty { color: var(--dim); text-align: center; padding: 18px 0; }
+.nt-card { position: relative; display: flex; gap: 10px; padding: 12px 34px 12px 12px; border-radius: 14px; cursor: pointer;
+  background: linear-gradient(160deg, rgba(36, 44, 60, .95), rgba(16, 20, 30, .96)); border: 1px solid rgba(255, 255, 255, .1);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .45); animation: nt-in .22s ease; }
+.nt-card.in-list { box-shadow: none; animation: none; }
+.nt-card.urgent { border-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 35%, transparent); }
+@keyframes nt-in { from { opacity: 0; transform: translateX(20px); } }
+.nt-icon { flex: none; width: 34px; height: 34px; border-radius: 9px; object-fit: contain; }
+.nt-letter { display: grid; place-items: center; background: rgba(255, 255, 255, .1); font-weight: 700; }
+.nt-text { min-width: 0; flex: 1; }
+.nt-top { display: flex; justify-content: space-between; color: var(--dim); font-size: 11.5px; }
+.nt-summary { font-weight: 600; margin-top: 1px; }
+.nt-body { color: var(--dim); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.nt-acts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.nt-acts button { padding: 5px 10px; border-radius: 8px; background: rgba(255, 255, 255, .1); }
+.nt-acts button:hover { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.nt-x { position: absolute; top: 6px; right: 8px; width: 22px; height: 22px; border-radius: 6px; color: var(--dim); font-size: 16px; line-height: 1; }
+.nt-x:hover { background: rgba(255, 255, 255, .1); color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .nt-card { animation: none; } }

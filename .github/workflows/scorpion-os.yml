@@ -39,6 +39,8 @@ jobs:
       - name: Tests (on Linux)
         run: npm test
         continue-on-error: true
+      - name: Check the shell host's Python
+        run: python3 -m py_compile os/rootfs/usr/lib/scorpion-os/scorpion-shell && bash -n os/build-iso.sh
       - name: Build .deb and AppImage
         run: npx electron-builder --linux deb AppImage --x64 --publish never
       # Each build is a newer package than the last (VERSION-RUN), so

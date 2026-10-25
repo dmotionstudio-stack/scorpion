@@ -107,6 +107,7 @@ async function open(centre) {
   W.recent = [];
   renderCards();
   place();
+  api.host?.({ type: 'wheel', open: true }); // the native shell host: the whole screen
   document.body.classList.add('open');
   requestAnimationFrame(() => document.body.classList.add('shown'));
   $('#sm-sr').textContent = 'Intent wheel open. Arrow keys choose, Enter opens, Escape closes.';
@@ -125,7 +126,7 @@ function close() {
   W.press = null;
   document.body.classList.remove('shown');
   clearTimeout(closing);
-  closing = setTimeout(() => { if (!W.open) { document.body.classList.remove('open'); api.shellWheel({ open: false }); } }, 170);
+  closing = setTimeout(() => { if (!W.open) { document.body.classList.remove('open'); api.host?.({ type: 'wheel', open: false }); api.shellWheel({ open: false }); } }, 170);
 }
 
 function act(id) {

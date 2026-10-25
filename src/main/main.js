@@ -28,6 +28,7 @@ import * as mcp from './mcp.js';
 import * as workspaces from './workspaces.js';
 import { recentActivity } from './activity.js';
 import * as desktop from './shell.js';
+import { startShellApi, shellEvent } from './shell-api.js';
 import winctl from './system.js';
 import * as appFrame from './orb-frame.js';
 import * as appIcons from './app-icons.js';
@@ -132,7 +133,19 @@ const shellLaunch = process.argv.includes('--shell') && (process.platform === 'w
 const running = new Map(); // threadId -> AbortController
 const approvals = new Map(); // approval id -> resolve(boolean)
 
+// The on-screen display (Scorpion OS's shell host shows it): a level just changed.
+async function showOsd(kind = 'volume') {
+  if (process.platform !== 'linux' || !winctl.levelOf) return;
+  const level = await winctl.levelOf(kind === 'brightness' ? 'brightness' : 'volume').catch(() => null);
+  if (level) send('shell:osd', { kind: kind === 'brightness' ? 'brightness' : 'volume', ...level });
+}
+
+// Every IPC handler by channel (registered with h): the native shell host
+// calls the shell's own ones over shell-api.js.
+const handlers = {};
+
 function send(channel, payload) {
+  shellEvent(channel, payload); // the native shell host's pages (only the shell's own events)
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   // The taskbar follows the theme too.
   if (channel === 'settings:changed') for (const w of BrowserWindow.getAllWindows()) if (w !== win && !w.isDestroyed()) w.webContents.send(channel, payload);
@@ -1294,6 +1307,9 @@ async function runIntent(id) {
 // When each open window was last in front (the taskbar asks every 1.5 s), for
 // the wheel's recent windows.
 const lastUsed = new Map();
+// Notifications the session received (shell:notifyIn), newest first.
+let notifications = [];
+const notificationSummary = () => ({ unread: notifications.filter((n) => !n.read).length, total: notifications.length });
 function noteWindows(list) {
   const now = Date.now();
   for (const w of list) if (w.active) lastUsed.set(w.hwnd, now);
@@ -1332,10 +1348,14 @@ async function setTaskbarAlwaysOn(on) {
 }
 
 function registerIpc() {
-  const h = (channel, fn) => ipcMain.handle(channel, (_e, arg) => {
-    if (lock.isLocked() && !LOCK_SCREEN_CHANNELS.has(channel)) throw new Error('Scorpion is locked');
-    return fn(arg);
-  });
+  const h = (channel, fn) => {
+    const guarded = (arg) => {
+      if (lock.isLocked() && !LOCK_SCREEN_CHANNELS.has(channel)) throw new Error('Scorpion is locked');
+      return fn(arg);
+    };
+    handlers[channel] = guarded;
+    ipcMain.handle(channel, (_e, arg) => guarded(arg));
+  };
 
   h('app:state', state);
   // ---- skills ----
@@ -1752,7 +1772,7 @@ function registerIpc() {
   h('shell:tray', () => desktop.trayStatus());
   h('shell:show', (view) => { showView(view || 'home'); return true; });
   // The keyboard's volume keys (each step is 2%).
-  h('shell:volume', (action) => winctl.volumeStep(action));
+  h('shell:volume', async (action) => { const r = await winctl.volumeStep(action); showOsd('volume'); return r; });
   // The welcome's internet step (Scorpion OS): online or not, the Wi-Fi
   // networks in range, joining one. Windows and macOS handle their own.
   h('sys:wifi', async ({ action, ssid, password } = {}) => {
@@ -1764,8 +1784,7 @@ function registerIpc() {
   });
   h('shell:power', powerAction);
   // Menus open as native menus so they can reach above the thin taskbar.
-  ipcMain.handle('shell:menu', async (e, { kind, hwnd, title, id, name, exe } = {}) => {
-    const owner = BrowserWindow.fromWebContents(e.sender);
+  async function shellMenuTemplate({ kind, hwnd, title, id, name, exe } = {}, owner = null) {
     const item = (label, click) => ({ label, click: () => Promise.resolve(click()).catch((err) => console.error(err)) });
     let template;
     if (kind === 'window') {
@@ -1830,11 +1849,59 @@ function registerIpc() {
         m === 'bar' ? item('Back to the Windows taskbar', () => setTaskbarAlwaysOn(false))
           : item('Switch to the Windows desktop', () => powerAction('explorer'))];
     }
+    return template;
+  }
+  ipcMain.handle('shell:menu', async (e, arg) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const template = await shellMenuTemplate(arg, owner);
     // The wheel stays open while its menu is up.
     desktop.holdWheel(true);
     Menu.buildFromTemplate(template).popup({ window: owner, callback: () => desktop.holdWheel(false) });
     return true;
   });
+  // The native shell host shows menus itself: the menu as data, and what
+  // each choice does kept here until it is picked (or for two minutes).
+  const hostMenus = new Map();
+  handlers['shell:menu'] = async (arg) => {
+    const clicks = new Map();
+    const describe = (items) => items.map((it, i) => {
+      if (it.type === 'separator') return { type: 'separator' };
+      const id = `${clicks.size}-${i}`;
+      if (it.click) clicks.set(id, it.click);
+      return { id, label: it.label, type: it.type || 'normal', enabled: it.enabled !== false, checked: Boolean(it.checked), ...(it.submenu ? { submenu: describe(it.submenu) } : {}) };
+    });
+    const items = describe(await shellMenuTemplate(arg));
+    const token = crypto.randomBytes(8).toString('hex');
+    hostMenus.set(token, clicks);
+    setTimeout(() => hostMenus.delete(token), 120_000);
+    return { token, items };
+  };
+  h('shell:menuPick', ({ token, id } = {}) => {
+    const fn = hostMenus.get(token)?.get(id);
+    hostMenus.delete(token);
+    return fn ? Promise.resolve(fn()).then(() => true) : false;
+  });
+
+  // Notifications (the native shell host is the session's notification
+  // server): the last 50, for the rail's bell and its list.
+  h('shell:notifyIn', (n = {}) => {
+    const note = { id: Number(n.id) || Date.now(), app: String(n.app || ''), summary: String(n.summary || '').slice(0, 300), body: String(n.body || '').slice(0, 2000), icon: n.icon || null, urgency: Number(n.urgency ?? 1), actions: Array.isArray(n.actions) ? n.actions.slice(0, 6) : [], at: Date.now(), read: false };
+    notifications = [note, ...notifications.filter((x) => x.id !== note.id)].slice(0, 50);
+    send('shell:notify', note);
+    send('shell:notifications', notificationSummary());
+    return true;
+  });
+  h('shell:notifyClosed', ({ id } = {}) => { notifications = notifications.filter((x) => x.id !== Number(id)); send('shell:notifications', notificationSummary()); return true; });
+  h('shell:notifications', () => ({ ...notificationSummary(), list: notifications }));
+  h('shell:notificationAct', ({ action, id } = {}) => {
+    if (action === 'clear') notifications = [];
+    else if (action === 'dismiss') notifications = notifications.filter((x) => x.id !== Number(id));
+    else if (action === 'read') notifications = notifications.map((x) => ({ ...x, read: true }));
+    send('shell:notifications', notificationSummary());
+    return true;
+  });
+  // The native shell host is up: its panels replace Scorpion's own rail and dot.
+  h('shell:hostReady', () => { desktop.useHost(true); sendTaskbarInset(); return true; });
   h('shell:appIcons', (fresh) => (process.platform === 'linux' ? winctl.appIcons() : appIcons.appIcons({ fresh: Boolean(fresh) })));
   // The constellation launcher (constellations.js).
   h('const:get', () => constellations.load(taskbarSettings().pinned));
@@ -1979,6 +2046,10 @@ function ensureTrayHint() {
 
 app.whenReady().then(async () => {
   store.initStore(app.getPath('userData'));
+  // Scorpion OS's session: the local connection for the native shell host.
+  if (process.platform === 'linux' && process.env.XDG_SESSION_DESKTOP === 'scorpion') {
+    startShellApi({ handlers, roots: [path.join(__dirname, '..', 'renderer'), path.join(__dirname, '..', 'shared')], gone: () => { desktop.useHost(false); sendTaskbarInset(); } }).catch((err) => console.error('shell API:', err));
+  }
   desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf });
   // Performance follows the power cable when "Light on battery" is on.
   applyPerf();
@@ -2056,6 +2127,8 @@ app.whenReady().then(async () => {
 app.on('second-instance', (e, argv) => {
   if (argv.includes('--wheel')) { desktop.openWheel(screen.getCursorScreenPoint()); return; }
   if (argv.includes('--exit-full')) { setFullMode(false); return; }
+  // --osd volume|brightness: the session's keys changed a level; show it.
+  if (argv.includes('--osd')) { showOsd(argv[argv.indexOf('--osd') + 1] || 'volume'); return; }
   showWindow();
   if (argv.includes('--orb')) { if (navReady) send('nav:view', { view: 'orb', search: true }); else pendingNav = { view: 'orb', search: true }; }
 });

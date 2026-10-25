@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import win from './system.js';
+import { shellEvent } from './shell-api.js';
 
 const WIN = process.platform === 'win32';
 const TASKBAR_HEIGHT = 48;
@@ -24,6 +25,9 @@ let summon = null; // the summon dot, which opens into the intent wheel
 let wheelOpen = false;
 let held = false; // a menu or dialog from the wheel is up: it stays open
 let layout = 'orbit'; // 'orbit' (edge rail + wheel) | 'bar'
+// Scorpion OS's native shell host shows the rail, the dot and the wheel as
+// layer-shell panels (os/.../scorpion-shell); then Scorpion makes none itself.
+let hostMode = false;
 let savedWorkArea = null;
 let mode = null; // null | 'bar' | 'shell'
 let keeper = 0; // 'bar': keeps the Windows taskbar hidden and the screen space reserved
@@ -36,7 +40,7 @@ export function raiseTaskbar() {
   if (summon && !summon.isDestroyed()) summon.moveTop();
 }
 // The room Scorpion's taskbar takes: along the bottom, or down the right edge.
-export const taskbarInsets = () => (!mode ? { bottom: 0, right: 0 } : layout === 'bar' ? { bottom: TASKBAR_HEIGHT, right: 0 } : { bottom: 0, right: RAIL_WIDTH });
+export const taskbarInsets = () => (!mode || hostMode ? { bottom: 0, right: 0 } : layout === 'bar' ? { bottom: TASKBAR_HEIGHT, right: 0 } : { bottom: 0, right: RAIL_WIDTH });
 const file = (name) => path.join(deps.dataDir, name);
 
 // Crash-loop guard: true when the last three shell starts were within 3 minutes.
@@ -83,6 +87,7 @@ const windowOptions = (title) => ({
 });
 function createWindows() {
   layout = deps.getLayout?.() === 'bar' ? 'bar' : 'orbit';
+  if (hostMode) return;
   taskbar = new deps.BrowserWindow(windowOptions('Scorpion taskbar'));
   taskbar.setAlwaysOnTop(true, 'pop-up-menu');
   taskbar.loadURL(`scorpion://app/${layout === 'bar' ? 'taskbar' : 'edge'}.html`);
@@ -108,8 +113,9 @@ function destroyWindows() {
 // The intent wheel: open (centred on a point of the screen, or its middle) or
 // back to the dot.
 export function openWheel(at) {
-  if (!summon || summon.isDestroyed()) return false;
   const r = deps.screen.getPrimaryDisplay().bounds;
+  if (hostMode) { shellEvent('wheel:open', at ? { x: at.x - r.x, y: at.y - r.y } : null); return true; }
+  if (!summon || summon.isDestroyed()) return false;
   wheelOpen = true;
   summon.setAlwaysOnTop(true, 'screen-saver');
   placeSummon();
@@ -120,6 +126,7 @@ export function openWheel(at) {
   return true;
 }
 export function closeWheel() {
+  if (hostMode) { shellEvent('wheel:close'); return true; }
   if (!summon || summon.isDestroyed() || !wheelOpen) return false;
   wheelOpen = false;
   summon.setAlwaysOnTop(true, 'pop-up-menu');
@@ -128,6 +135,14 @@ export function closeWheel() {
   return true;
 }
 export function holdWheel(on) { held = Boolean(on); }
+// The native shell host came up (or went away): its panels, or Scorpion's own windows.
+export function useHost(on) {
+  if (hostMode === Boolean(on)) return;
+  hostMode = Boolean(on);
+  if (hostMode) destroyWindows();
+  else if (mode) createWindows();
+}
+export const hostActive = () => hostMode;
 // A different layout: the windows are made again, and the reserved room follows.
 export async function relayout() {
   if (!mode || (deps.getLayout?.() === 'bar' ? 'bar' : 'orbit') === layout) return false;
