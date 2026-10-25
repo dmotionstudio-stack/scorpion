@@ -140,7 +140,7 @@ in_chroot dpkg-divert --local --no-rename --add /usr/lib/os-release
 cat > "$CHROOT/usr/lib/os-release" <<EOF
 PRETTY_NAME="Scorpion OS $VERSION"
 NAME="Scorpion OS"
-VERSION_ID="$VERSION"
+VERSION_ID="24.04"
 VERSION="$VERSION (based on Ubuntu 24.04 LTS)"
 VERSION_CODENAME=noble
 ID=scorpion

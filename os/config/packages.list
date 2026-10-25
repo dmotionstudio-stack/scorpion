@@ -85,6 +85,8 @@ labwc
 xwayland
 lightdm
 lightdm-gtk-greeter
+# the sign-in screen runs on X
+xserver-xorg
 mako-notifier
 swaylock
 swayidle
@@ -126,6 +128,9 @@ unattended-upgrades
 
 # --- the installer (removed from the installed system) ---
 calamares
+squashfs-tools
+rsync
+cryptsetup
 # Qt apps (the installer is Qt 5) on Wayland
 qtwayland5
 qt6-wayland
