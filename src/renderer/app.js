@@ -12,6 +12,7 @@ import { initHandControl } from './hand-control.js';
 import { HandTracker, cameraError } from './gestures.js';
 import { initWelcome } from './welcome.js';
 import { initLookSettings } from './settings-look.js';
+import { initPalette } from './palette.js';
 
 const api = window.scorpion;
 const $ = (sel) => document.querySelector(sel);
@@ -89,6 +90,7 @@ let orbSys = null; // the orb as the whole system (orb-system.js)
 let hands = null; // hand gestures on Scorpion's own screens (hand-control.js)
 let welcome = null; // the spoken first start (welcome.js)
 let lookSettings = null; // Settings → General: Performance, the orb's look (settings-look.js)
+let palette = null; // the command palette, Ctrl+K (palette.js)
 
 // ---------- top bar ----------
 function renderTopbar() {
@@ -1749,13 +1751,15 @@ function wire() {
   wirePeople();
   const libraryView = initLibrary({ api, $, esc, toast, errText, gb });
   desktopUi = initDesktop({ api, $, esc, toast, errText, setView, S });
-  orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps });
+  orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice, startHands: () => toggleHands(true), setView });
   lookSettings = initLookSettings({ $, api, S, setSetting, toast, IX, startWelcome: () => welcome.start({ force: true }) });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
-  const onNav = ({ view, dir, select, signin, search, talk }) => {
+  const onNav = ({ view, dir, select, signin, search, talk, query }) => {
+    // Typing on the intent wheel: the command palette, with what was typed.
+    if (view === 'palette') { palette.open(query || ''); return; }
     // The intent wheel's Talk: the orb, listening.
     if (view === 'orb' && talk) {
       const ready = () => { if (!S.voice?.installed) $('#ix-input').focus(); else if (!V.talk) startTalk(); };
@@ -1785,6 +1789,16 @@ function wire() {
     if (IX.open && !orbSys.away) orbSys.leave(open); else open();
   };
   api.onNavView?.(onNav);
+  palette = initPalette({
+    $, esc, api, toast, errText, nav: onNav,
+    ask: (text) => { if (!IX.open) setView('chat'); sendMessage(text); },
+    ui: {
+      newChat: () => { if (IX.open && !orbSys.away) orbSys.leave(() => newThread()); else newThread(); },
+      talk: () => onNav({ view: 'orb', talk: true }),
+      sidebar: () => $('#sidebar-toggle').click(),
+      welcome: () => welcome.start({ force: true }),
+    },
+  });
   // Anything asked for before this page was ready (the desktop at sign-in).
   api.navReady?.().then((pending) => pending && onNav(pending)).catch(() => {});
   extras = initExtras({ api, $, esc, toast, errText, S, setView, reloadMemories, renderAll: () => renderAll() });

@@ -11,6 +11,8 @@
 // - At sign-in the orb greets the person it recognizes.
 // - The wake word: saying "Scorpion" starts listening.
 import { parseWake, parseYesNo, matchShortcut, nextIndex } from './orb-commands.js';
+import { intentsFor, matchSpoken } from '/shared/intents.js';
+import { PLATFORM } from './palette.js';
 
 const IS_WINDOWS = navigator.userAgent.includes('Windows');
 const PLACES = [
@@ -210,7 +212,15 @@ export function initOrbSystem(ctx) {
     if (!IX.open) return false;
     if (O.approval) { answer(parseYesNo(text)); return true; }
     const m = matchShortcut(text, items());
-    if (!m) return false;
+    if (!m) {
+      // Anything else Scorpion does in one step ("open Wi-Fi settings", "lock the screen").
+      const it = ctx.runIntent && matchSpoken(text, intentsFor(PLATFORM));
+      if (!it) return false;
+      $('#ix-you').textContent = text;
+      caption(it.label);
+      ctx.runIntent(it);
+      return true;
+    }
     $('#ix-you').textContent = text;
     if (m.back) goBack(); else activate(m.item);
     return true;

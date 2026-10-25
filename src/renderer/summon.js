@@ -59,7 +59,7 @@ function setHover(id) {
   for (const el of document.querySelectorAll('[data-seg]')) el.classList.toggle('hot', el.dataset.seg === id);
   for (const el of document.querySelectorAll('[data-intent]')) el.classList.toggle('hot', el.dataset.intent === id);
   if (id) $('#sm-hint').textContent = `${INTENTS.find((i) => i.id === id).label}${W.intents[id] ? `: ${W.intents[id]}` : ''}`;
-  else $('#sm-hint').textContent = 'Flick toward an intent, or click one';
+  else $('#sm-hint').textContent = 'Flick toward an intent, click one, or type to search';
 }
 
 // The recent windows on the outer ring, with a live picture of each.
@@ -200,6 +200,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { e.preventDefault(); close(); return; }
   const n = Number(e.key);
   if (n >= 1 && n <= INTENTS.length) { act(INTENTS[n - 1].id); return; }
+  // Typing a letter searches everything Scorpion can do (the command palette).
+  if (/^\p{L}$/u.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); close(); api.shellPalette(e.key); return; }
   // Arrow keys walk round the wheel, clockwise or back.
   const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
   if (step) {

@@ -18,6 +18,7 @@ export const SHELL_CALLS = {
   shellIntent: 'shell:intent',
   shellIntents: 'shell:intents',
   shellWheel: 'shell:wheel',
+  shellPalette: 'shell:palette',
   constPreview: 'const:preview',
   notifications: 'shell:notifications',
   notificationAct: 'shell:notificationAct',

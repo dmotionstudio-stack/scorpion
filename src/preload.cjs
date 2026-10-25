@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellIntent: invoke('shell:intent'),
   shellIntents: invoke('shell:intents'),
   shellWheel: invoke('shell:wheel'),
+  // The command palette: opened from the wheel, and its system entries run (src/shared/intents.js).
+  shellPalette: invoke('shell:palette'),
+  intentRun: invoke('intent:run'),
   shellGlance: invoke('shell:glance'),
   sysWifi: invoke('sys:wifi'),
   onWheelOpen: on('wheel:open'),

@@ -38,6 +38,7 @@ import { createAgentBrowser, browserTools } from './agent-browser.js';
 import { TelegramBot, pairingCode } from './telegram.js';
 import { TOOLS, fileSystemRoots } from './tools.js';
 import { applyEvent } from '../shared/events.js';
+import { findIntent, MAIN_CONTROLS } from '../shared/intents.js';
 import { buildFunctions, buildSystemPrompt, withDocumentContext, withConversationRecall, isFactualQuestion, thinkingFor } from './agent.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1304,6 +1305,16 @@ async function runIntent(id) {
     return winctl.launchApp({ id: a.fallback, name: a.name });
   }
 }
+// An entry of the shared list (src/shared/intents.js) that the main process
+// runs: a system settings page, a safe system control, or a wheel intent.
+async function runNamedIntent(id) {
+  const it = findIntent(id, process.platform);
+  const kind = it?.run?.main;
+  if (kind === 'settings') return winctl.openSettings(it.run.arg);
+  if (kind === 'control' && MAIN_CONTROLS.includes(it.run.arg)) return winctl.systemControl(it.run.arg);
+  if (kind === 'wheel') return runIntent(it.run.arg);
+  throw new Error(`"${id}" isn't something Scorpion can do here.`);
+}
 // When each open window was last in front (the taskbar asks every 1.5 s), for
 // the wheel's recent windows.
 const lastUsed = new Map();
@@ -1750,6 +1761,10 @@ function registerIpc() {
     return list.sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 6);
   });
   h('shell:intent', (id) => runIntent(String(id)));
+  // The command palette (Ctrl+K in Scorpion's window; typing on the wheel
+  // opens it there) and the entries of src/shared/intents.js it runs here.
+  h('shell:palette', (query) => { desktop.closeWheel(); showView('palette', { query: String(query || '').slice(0, 100) }); });
+  h('intent:run', (id) => runNamedIntent(String(id)));
   h('shell:intents', () => {
     const t = taskbarSettings();
     return Object.fromEntries(Object.keys(INTENT_LABEL).map((k) => [k, t.intents[k]?.name || INTENT_APPS[k]?.name || INTENT_BUILTIN[k]]));
