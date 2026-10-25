@@ -1,0 +1,38 @@
+# Picture tests: Scorpion's main screens, compared with the pictures in
+# test/screens/baseline (test/screens/screens.mjs). The run's "screens"
+# artifact has every new picture, and a .diff.png for each one that changed.
+# To accept a change on purpose, put the new pictures from that artifact in
+# test/screens/baseline and commit them.
+name: Screens
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'test/screens/**'
+      - 'package.json'
+      - '.github/workflows/screens.yml'
+
+jobs:
+  screens:
+    name: Picture tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: A screen to draw on, and the fonts Scorpion OS has
+        run: sudo apt-get update && sudo apt-get install -y xvfb fonts-ubuntu fonts-noto-core fonts-noto-color-emoji
+      - name: Compare the screens
+        run: xvfb-run -a -s "-screen 0 1440x900x24" node test/screens/screens.mjs --out shots --compare test/screens/baseline
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screens
+          path: shots
+          retention-days: 14
