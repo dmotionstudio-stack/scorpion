@@ -309,7 +309,8 @@ function setFullMode(on) {
 }
 // In full mode Scorpion's screens stop short of its taskbar (which stays on
 // top): above the bar, or left of the edge rail.
-const taskbarInset = () => (fullMode && desktop.shellMode() ? desktop.taskbarInsets() : { bottom: 0, right: 0 });
+// On Scorpion OS Scorpion's window always stops at the rail (labwc doesn't shrink it).
+const taskbarInset = () => ((fullMode || process.platform === 'linux') && desktop.shellMode() ? desktop.taskbarInsets() : { bottom: 0, right: 0 });
 function sendTaskbarInset() { send('layout:taskbar', taskbarInset()); }
 
 // Full mode covers everything, so an app the user brings to the front (from
