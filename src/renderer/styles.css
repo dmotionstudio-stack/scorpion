@@ -812,3 +812,32 @@ body.sidebar-hidden .main .page { padding-left: 56px; }
 .cx.cx-contrast .cx-node.live .cx-label::after { content: " (open)"; }
 .cx.cx-contrast .cx-orbit { stroke: rgba(255, 255, 255, .45); }
 .cx [hidden] { display: none !important; } /* the menu, panel and preview, while closed */
+
+/* ---------- The spoken first start (welcome.js) ---------- */
+.welcome { position: fixed; inset: 0; z-index: 980; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, .55), rgba(0, 0, 0, .82)); }
+.wl-card { width: min(560px, calc(100vw - 32px)); padding: 28px 30px; border-radius: 18px; color: var(--text);
+  background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 40px color-mix(in srgb, var(--accent) 22%, transparent), 0 20px 60px rgba(0, 0, 0, .5); animation: wl-in .25s ease; }
+@keyframes wl-in { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+.wl-title { font-size: 26px; font-weight: 600; color: var(--accent-text, var(--accent)); margin-bottom: 10px; }
+.wl-body { font-size: 16px; line-height: 1.5; color: var(--text); }
+.wl-dim { color: var(--muted); padding: 8px 0; }
+.wl-choices { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; flex-wrap: wrap; }
+.wl-btn { padding: 11px 20px; border-radius: 12px; font-size: 15px; cursor: pointer; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); }
+.wl-btn.primary { background: var(--accent); color: var(--accent-ink, #000); border-color: var(--accent); font-weight: 600; }
+.wl-btn:hover, .wl-btn:focus-visible, .wl-net:hover { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+.wl-list { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; max-height: 300px; overflow-y: auto; }
+.wl-net { display: flex; justify-content: space-between; padding: 12px 14px; border-radius: 10px; cursor: pointer; text-align: left; font-size: 15px; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); }
+.wl-net span { color: var(--muted); font-size: 13px; }
+.wl-input { width: 100%; box-sizing: border-box; margin-top: 14px; padding: 12px; font-size: 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+.wl-hand { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 14px; border-radius: 12px; background: var(--panel-2); color: var(--muted); }
+.wl-pulse { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: wl-pulse 1.2s ease-in-out infinite; }
+.wl-hand.ok { color: var(--accent-text, var(--accent)); }
+.wl-hand.ok .wl-pulse { animation: none; background: #3ecf6e; box-shadow: 0 0 14px #3ecf6e; }
+@keyframes wl-pulse { 50% { transform: scale(.6); opacity: .5; } }
+.wl-steps { display: flex; gap: 8px; }
+.wl-steps span { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, .2); }
+.wl-steps span.done { background: color-mix(in srgb, var(--accent) 55%, transparent); }
+.wl-steps span.on { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+@media (prefers-reduced-motion: reduce) { .wl-card, .wl-pulse { animation: none; } }

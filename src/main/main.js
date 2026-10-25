@@ -1753,6 +1753,15 @@ function registerIpc() {
   h('shell:show', (view) => { showView(view || 'home'); return true; });
   // The keyboard's volume keys (each step is 2%).
   h('shell:volume', (action) => winctl.volumeStep(action));
+  // The welcome's internet step (Scorpion OS): online or not, the Wi-Fi
+  // networks in range, joining one. Windows and macOS handle their own.
+  h('sys:wifi', async ({ action, ssid, password } = {}) => {
+    if (process.platform !== 'linux') return action === 'status' ? { supported: false } : [];
+    if (action === 'status') return { supported: true, online: Boolean((await winctl.trayStatus().catch(() => ({}))).network) };
+    if (action === 'list') return winctl.wifiList();
+    if (action === 'connect') return winctl.wifiConnect(ssid, password);
+    throw new Error('Unknown Wi-Fi action');
+  });
   h('shell:power', powerAction);
   // Menus open as native menus so they can reach above the thin taskbar.
   ipcMain.handle('shell:menu', async (e, { kind, hwnd, title, id, name, exe } = {}) => {

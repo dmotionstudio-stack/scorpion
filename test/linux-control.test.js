@@ -74,3 +74,19 @@ test('battery, network and recent files are read from their sources', () => {
   const r = parseRecentXbel(xml);
   assert.deepEqual(r.map((x) => x.path), ['/home/me/notes.txt', '/home/me/Documents/Plan Q3.odt'], 'newest first, files only, decoded');
 });
+
+test('Wi-Fi, Bluetooth, apps and hardware lists are read from their tools', async () => {
+  const { parseWifiList, parseBtDevices, parseFlatpakSearch, parseAptSearch, onlyDevices } = await import('../src/main/linux-control.js');
+  const nets = parseWifiList(' :Home 5G:72:WPA2\n:Home 5G:40:WPA2\n*:Office\\:Guest:55:WPA2 WPA3\n:Cafe:90:--\n: :10:--\n');
+  assert.deepEqual(nets.map((n) => n.ssid), ['Office:Guest', 'Cafe', 'Home 5G'], 'the one in use first, then by signal; escaped colons kept');
+  assert.equal(nets.find((n) => n.ssid === 'Home 5G').signal, 72, 'the strongest of the same name');
+  assert.equal(nets.find((n) => n.ssid === 'Cafe').secure, false);
+  const bt = parseBtDevices('Device 00:1A:7D:DA:71:13 WH-1000XM4\n\u001b[0;93m[CHG]\u001b[0m Device 00:1A:7D:DA:71:13 RSSI: -60\n[NEW] Device aa:bb:cc:dd:ee:ff Keyboard K380\nController 11:22:33:44:55:66 scorpion\n');
+  assert.deepEqual(bt, [{ mac: '00:1A:7D:DA:71:13', name: 'WH-1000XM4' }, { mac: 'AA:BB:CC:DD:EE:FF', name: 'Keyboard K380' }]);
+  assert.deepEqual(parseFlatpakSearch('com.spotify.Client\tSpotify\tOnline music streaming service\nnot-an-app\n'), [{ source: 'flathub', id: 'com.spotify.Client', name: 'Spotify', description: 'Online music streaming service' }]);
+  assert.deepEqual(parseAptSearch('gimp - GNU Image Manipulation Program\ngimp-data - Data files for GIMP\n').map((a) => a.id), ['gimp', 'gimp-data']);
+  const lspci = '00:02.0 VGA compatible controller: Intel Corporation Iris Xe\n\tKernel driver in use: i915\n01:00.0 3D controller: NVIDIA GA107M\n\tKernel driver in use: nouveau\n02:00.0 Network controller: Intel Wi-Fi 6E\n\tKernel driver in use: iwlwifi';
+  assert.match(onlyDevices(lspci, /VGA|3D|Display/), /i915[\s\S]*nouveau/);
+  assert.doesNotMatch(onlyDevices(lspci, /VGA|3D|Display/), /iwlwifi/);
+  assert.match(onlyDevices(lspci, /Network|Ethernet|Wireless/), /iwlwifi/);
+});

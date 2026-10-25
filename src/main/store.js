@@ -57,6 +57,7 @@ const DEFAULT_SETTINGS = {
   orbApps: true, // while the orb is open, apps open inside it (framed in its panel)
   performance: 'full', // 'full' | 'balanced' | 'light' (Settings → General → Performance)
   performanceOnBattery: false, // Light while running on battery
+  welcomeDone: false, // the spoken first start was shown (welcome.js)
   handsAlwaysOn: true, // hand gestures on (camera; off while minimized); on Windows the hand is the mouse everywhere
   wakeWord: false, // saying "Scorpion" starts listening while the orb is open
 };

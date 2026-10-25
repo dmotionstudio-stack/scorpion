@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellIntents: invoke('shell:intents'),
   shellWheel: invoke('shell:wheel'),
   shellGlance: invoke('shell:glance'),
+  sysWifi: invoke('sys:wifi'),
   onWheelOpen: on('wheel:open'),
   onWheelClose: on('wheel:close'),
   // Performance level changes (Settings, or the power cable): 'full' | 'balanced' | 'light'.

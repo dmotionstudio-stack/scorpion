@@ -10,6 +10,7 @@ import { initDesktop } from './desktop-ui.js';
 import { initOrbSystem } from './orb-system.js';
 import { initHandControl } from './hand-control.js';
 import { HandTracker, cameraError } from './gestures.js';
+import { initWelcome } from './welcome.js';
 
 const api = window.scorpion;
 const $ = (sel) => document.querySelector(sel);
@@ -85,6 +86,7 @@ let home = null; // the home screen (home-ui.js)
 let desktopUi = null; // Apps, Files and Settings → Windows desktop (desktop-ui.js)
 let orbSys = null; // the orb as the whole system (orb-system.js)
 let hands = null; // hand gestures on Scorpion's own screens (hand-control.js)
+let welcome = null; // the spoken first start (welcome.js)
 
 // ---------- top bar ----------
 function renderTopbar() {
@@ -867,6 +869,8 @@ async function openInteract(opts = {}) {
   }
   if (!IX.open) return;
   orbSys?.onOpen({ desktop, signin: opts?.signin === true });
+  // A fresh install (no chats yet): the spoken first start, once.
+  if (!S.settings.welcomeDone && !S.threads?.length) welcome?.start();
   // Hand tracking is always on in the orb (unless turned off with G).
   if (S.settings.handsAlwaysOn !== false) startGestures();
   if (S.voice?.installed && !desktop) startTalk();
@@ -1050,6 +1054,7 @@ document.addEventListener('visibilitychange', () => (document.hidden ? pauseGest
 const handIsMouse = () => !IS_MAC && navigator.userAgent.includes('Windows');
 
 function onGestureFrame(r) {
+  welcome?.onGesture(r);
   if (handIsMouse()) { handAsMouse(r); return; }
   // The orb (with the apps inside it) when it is on screen, else Scorpion's
   // own screens. What the orb doesn't use turns it.
@@ -1751,6 +1756,8 @@ function wire() {
   orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps });
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
+  welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice, startHands: () => toggleHands(true), setView });
+  $('#welcome-again').onclick = () => welcome.start({ force: true });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
   const onNav = ({ view, dir, select, signin, search, talk }) => {
     // The intent wheel's Talk: the orb, listening.

@@ -761,6 +761,98 @@ export const TOOLS = {
     },
   },
 
+  // ---------- Linux (Scorpion OS): Wi-Fi, Bluetooth, apps, troubleshooting, drivers ----------
+  wifi: {
+    access: 'system', requires: 'linux', noWorkspace: true, changes: true,
+    approve: ({ action }) => action === 'connect' || action === 'off',
+    // Never the password: it goes to NetworkManager only.
+    describeAction: ({ action, network }) => (action === 'connect' ? `join the Wi-Fi network ${network}` : `Wi-Fi: ${action}`),
+    description: 'Wi-Fi: list the networks in range (list), join one (connect, with network and, if it has one, password), disconnect, or turn Wi-Fi on or off.',
+    params: { type: 'object', properties: { action: { enum: ['list', 'connect', 'disconnect', 'on', 'off'] }, network: { type: 'string' }, password: { type: 'string' } } },
+    async run({ action = 'list', network, password }) {
+      if (action === 'list') {
+        const nets = await win.wifiList();
+        return nets.length ? nets.map((n) => `${n.connected ? '* ' : ''}${n.ssid} (signal ${n.signal}%, ${n.secure ? n.security : 'open'})`).join('\n') : 'No Wi-Fi networks in range (or Wi-Fi is off).';
+      }
+      if (action === 'connect') return win.wifiConnect(network, password);
+      if (action === 'disconnect') return win.wifiDisconnect();
+      return win.wifiRadio(action === 'on');
+    },
+  },
+  bluetooth: {
+    access: 'system', requires: 'linux', noWorkspace: true, changes: true,
+    approve: ({ action }) => action === 'connect',
+    describeAction: ({ action, device }) => `Bluetooth: ${action}${device ? ` ${device}` : ''}`,
+    description: 'Bluetooth: list known devices (list), look for new ones nearby for 10 seconds (scan), pair and connect one by name or address (connect; the device must be in pairing mode), disconnect one, or turn Bluetooth on or off.',
+    params: { type: 'object', properties: { action: { enum: ['list', 'scan', 'connect', 'disconnect', 'on', 'off'] }, device: { type: 'string' } } },
+    async run({ action = 'list', device }) {
+      if (action === 'list' || action === 'scan') {
+        const list = await win.bluetoothList({ scan: action === 'scan' });
+        return list.length ? list.map((d) => `${d.name} (${d.mac})${d.connected ? ', connected' : d.paired ? ', paired' : ''}`).join('\n') : 'No Bluetooth devices found. Put the device in pairing mode and scan again.';
+      }
+      if (action === 'connect') return win.bluetoothConnect(device);
+      if (action === 'disconnect') return win.bluetoothDisconnect(device);
+      return win.bluetoothPower(action === 'on');
+    },
+  },
+  find_apps: {
+    access: 'system', requires: 'linux', noWorkspace: true,
+    description: 'Search the apps that can be installed: Flathub (most desktop apps, e.g. Spotify, Discord, GIMP) and Ubuntu\'s packages. Returns source and id for install_app.',
+    params: { type: 'object', properties: { query: { type: 'string' } } },
+    async run({ query }) {
+      const found = await win.findApps(query);
+      return found.length ? found.map((a) => `[${a.source}] ${a.name} (id: ${a.id}): ${a.description}`).join('\n') : `Nothing called "${query}" to install.`;
+    },
+  },
+  install_app: {
+    access: 'system', requires: 'linux', noWorkspace: true, changes: true,
+    approve: () => 'always',
+    describeAction: ({ source, id }) => `install ${id} from ${source === 'flathub' ? 'Flathub' : 'Ubuntu'}`,
+    description: 'Install an app found with find_apps (source: flathub or apt, and its id). Ubuntu packages ask for the password. A snapshot is taken first where the system supports it.',
+    params: { type: 'object', properties: { source: { enum: ['flathub', 'apt'] }, id: { type: 'string' } } },
+    async run({ source, id }) {
+      await win.snapshot(`before installing ${id}`);
+      return win.installApp({ source, id });
+    },
+  },
+  remove_app: {
+    access: 'system', requires: 'linux', noWorkspace: true, changes: true,
+    approve: () => 'always',
+    describeAction: ({ id }) => `remove ${id}`,
+    description: 'Uninstall an app (source: flathub or apt, and its id).',
+    params: { type: 'object', properties: { source: { enum: ['flathub', 'apt'] }, id: { type: 'string' } } },
+    async run({ source, id }) {
+      await win.snapshot(`before removing ${id}`);
+      return win.removeApp({ source, id });
+    },
+  },
+  diagnose: {
+    access: 'system', requires: 'linux', noWorkspace: true,
+    description: `Look into a problem with this computer (nothing is changed): ${win.DIAGNOSE_TOPICS?.join(', ')}. Returns the state of the parts involved and their recent warnings; explain the cause in plain words and offer the fix.`,
+    params: { type: 'object', properties: { topic: { enum: win.DIAGNOSE_TOPICS || ['general'] } } },
+    run: ({ topic }) => win.diagnose(topic),
+  },
+  drivers: {
+    access: 'system', requires: 'linux', noWorkspace: true, changes: true,
+    approve: ({ action }) => (action === 'install' ? 'always' : false),
+    describeAction: ({ action }) => (action === 'install' ? 'install the recommended drivers (then restart)' : 'check the drivers'),
+    description: 'Drivers: list what this computer\'s hardware could use (list; e.g. NVIDIA\'s own driver), or install the recommended ones (install; needs the internet and a restart).',
+    params: { type: 'object', properties: { action: { enum: ['list', 'install'] } } },
+    async run({ action = 'list' }) {
+      if (action !== 'install') return win.driverSuggestions();
+      await win.snapshot('before installing drivers');
+      return win.installDrivers();
+    },
+  },
+  snapshots: {
+    access: 'system', requires: 'linux', noWorkspace: true, changes: true,
+    approve: ({ action }) => (action === 'undo' ? 'always' : false),
+    describeAction: ({ action, id }) => (action === 'undo' ? `roll the computer back to snapshot ${id}` : 'list the snapshots'),
+    description: 'Snapshots of the system (taken before installs and system changes): list them, or undo: roll the whole system back to one (applied at the next restart; files in the home folder stay).',
+    params: { type: 'object', properties: { action: { enum: ['list', 'undo'] }, id: { type: 'string' } } },
+    run: ({ action = 'list', id }) => (action === 'undo' ? win.undoSnapshot(id) : win.snapshots()),
+  },
+
   use_skill: {
     access: 'skill',
     description: 'Read the full instructions of one of your skills (listed under SKILLS) before doing a task it covers.',

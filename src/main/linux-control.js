@@ -557,3 +557,184 @@ export async function runStartupApps() {
 
 // The rail's bell: the last notifications again (the session's mako).
 export const showNotifications = () => run('makoctl', ['restore']).catch(() => {});
+
+// ---------- Wi-Fi (NetworkManager) ----------
+// nmcli's terse output separates fields with ":" and escapes the ones inside.
+const nmFields = (line) => line.split(/(?<!\\):/).map((f) => f.replace(/\\:/g, ':'));
+// nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY device wifi list: one entry per
+// network name, the strongest signal kept, the one in use marked.
+export function parseWifiList(out) {
+  const best = new Map();
+  for (const line of String(out).split('\n')) {
+    if (!line.trim()) continue;
+    const [inUse, ssid, signal, security] = nmFields(line);
+    if (!ssid || !ssid.trim()) continue; // hidden networks
+    const net = { ssid, signal: Number(signal) || 0, secure: Boolean(security && security !== '--'), security: security && security !== '--' ? security : 'open', connected: inUse === '*' };
+    const had = best.get(ssid);
+    if (!had || net.connected || (!had.connected && net.signal > had.signal)) best.set(ssid, net);
+  }
+  return [...best.values()].sort((a, b) => b.connected - a.connected || b.signal - a.signal);
+}
+export async function wifiList() {
+  return parseWifiList(await run('nmcli', ['-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY', 'device', 'wifi', 'list', '--rescan', 'auto'], { timeout: 30000 }));
+}
+// Joins a network; the password goes to nmcli only, never into logs or replies.
+export async function wifiConnect(ssid, password) {
+  if (!ssid) throw new Error('Which network?');
+  await run('nmcli', ['device', 'wifi', 'connect', String(ssid), ...(password ? ['password', String(password)] : [])], { timeout: 60000 });
+  return `Connected to ${ssid}.`;
+}
+export async function wifiDisconnect() {
+  const dev = String(await run('nmcli', ['-t', '-f', 'DEVICE,TYPE,STATE', 'device'])).split('\n').map(nmFields).find(([, type, state]) => type === 'wifi' && state === 'connected');
+  if (!dev) return 'Wi-Fi is not connected.';
+  await run('nmcli', ['device', 'disconnect', dev[0]]);
+  return 'Disconnected from Wi-Fi.';
+}
+export async function wifiRadio(on) {
+  await run('nmcli', ['radio', 'wifi', on ? 'on' : 'off']);
+  return `Wi-Fi turned ${on ? 'on' : 'off'}.`;
+}
+
+// ---------- Bluetooth (BlueZ) ----------
+// bluetoothctl lines like "Device 00:1A:7D:DA:71:13 WH-1000XM4" (also with
+// "[NEW]" or colour codes in front, during a scan).
+export function parseBtDevices(out) {
+  const seen = new Map();
+  for (const raw of String(out).split('\n')) {
+    const line = raw.replace(/\u001b\[[0-9;]*m/g, '');
+    const m = /Device ((?:[0-9A-F]{2}:){5}[0-9A-F]{2}) (.+)$/i.exec(line);
+    if (!m || /RSSI|TxPower|ManufacturerData|ServiceData|UUIDs|Connected:|Paired:/.test(m[2])) continue;
+    const mac = m[1].toUpperCase();
+    const name = m[2].trim();
+    if (!seen.has(mac) || seen.get(mac).name === mac.replace(/:/g, '-')) seen.set(mac, { mac, name });
+  }
+  return [...seen.values()];
+}
+const BT_MAC = /^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$/i;
+export async function bluetoothList({ scan = false } = {}) {
+  await run('bluetoothctl', ['power', 'on']).catch(() => {});
+  const known = parseBtDevices(await run('bluetoothctl', ['devices']).catch(() => ''));
+  const found = scan ? parseBtDevices(await run('bluetoothctl', ['--timeout', '10', 'scan', 'on'], { timeout: 20000 }).catch((e) => e.message || '')) : [];
+  const paired = new Set(parseBtDevices(await run('bluetoothctl', ['devices', 'Paired']).catch(() => '')).map((d) => d.mac));
+  const connected = new Set(parseBtDevices(await run('bluetoothctl', ['devices', 'Connected']).catch(() => '')).map((d) => d.mac));
+  const all = new Map([...found, ...known].map((d) => [d.mac, d]));
+  return [...all.values()].map((d) => ({ ...d, paired: paired.has(d.mac), connected: connected.has(d.mac) }));
+}
+async function btDevice(device) {
+  if (BT_MAC.test(String(device))) return { mac: String(device).toUpperCase(), name: String(device) };
+  const list = await bluetoothList({ scan: true });
+  const { best } = matchByName(device, list);
+  if (!best) throw new Error(`No Bluetooth device called "${device}" is in range. Put it in pairing mode and try again. Seen: ${list.map((d) => d.name).join(', ') || 'none'}`);
+  return best;
+}
+// Pairs (if needed), trusts and connects: headphones, speakers, keyboards, mice.
+export async function bluetoothConnect(device) {
+  const d = await btDevice(device);
+  await run('bluetoothctl', ['power', 'on']).catch(() => {});
+  await run('bluetoothctl', ['--timeout', '20', 'pair', d.mac], { timeout: 30000 }).catch((e) => { if (!/AlreadyExists|already/i.test(e.message)) throw e; });
+  await run('bluetoothctl', ['trust', d.mac]).catch(() => {});
+  await run('bluetoothctl', ['--timeout', '15', 'connect', d.mac], { timeout: 25000 });
+  return `Connected to ${d.name}.`;
+}
+export async function bluetoothDisconnect(device) {
+  const d = await btDevice(device);
+  await run('bluetoothctl', ['disconnect', d.mac]);
+  return `Disconnected ${d.name}.`;
+}
+export async function bluetoothPower(on) {
+  await run('bluetoothctl', ['power', on ? 'on' : 'off']);
+  return `Bluetooth turned ${on ? 'on' : 'off'}.`;
+}
+
+// ---------- installing apps (Flatpak from Flathub, or Ubuntu's packages) ----------
+// flatpak search --columns=application,name,description: tab separated.
+export function parseFlatpakSearch(out) {
+  return String(out).split('\n').map((l) => l.split('\t')).filter((c) => c.length >= 2 && /\./.test(c[0]))
+    .map(([id, name, description = '']) => ({ source: 'flathub', id: id.trim(), name: name.trim(), description: description.trim() }));
+}
+// apt-cache search --names-only: "name - summary".
+export function parseAptSearch(out) {
+  return String(out).split('\n').map((l) => /^(\S+) - (.+)$/.exec(l.trim())).filter(Boolean)
+    .map(([, id, description]) => ({ source: 'apt', id, name: id, description }));
+}
+const hasFlatpak = () => run('flatpak', ['--version']).then(() => true, () => false);
+export async function findApps(query) {
+  const q = String(query || '').trim();
+  if (!q) throw new Error('What app?');
+  const flat = (await hasFlatpak()) ? parseFlatpakSearch(await run('flatpak', ['search', '--columns=application,name,description', q], { timeout: 30000 }).catch(() => '')) : [];
+  const apt = parseAptSearch(await run('apt-cache', ['search', '--names-only', q]).catch(() => ''));
+  return [...flat.slice(0, 8), ...apt.slice(0, 8)];
+}
+// Flathub apps install for this user (no password); Ubuntu packages through
+// pkexec (the system asks for the password).
+export async function installApp({ source, id }) {
+  if (!id || !/^[\w.+-]+$/.test(id)) throw new Error('Pick an app from find_apps first.');
+  if (source === 'flathub') {
+    await run('flatpak', ['remote-add', '--user', '--if-not-exists', 'flathub', 'https://dl.flathub.org/repo/flathub.flatpakrepo']).catch(() => {});
+    await run('flatpak', ['install', '--user', '-y', '--noninteractive', 'flathub', id], { timeout: 30 * 60_000 });
+  } else {
+    await run('pkexec', ['apt-get', 'install', '-y', id], { timeout: 30 * 60_000 });
+  }
+  appCache = { at: 0, apps: [] };
+  return `Installed ${id}.`;
+}
+export async function removeApp({ source, id }) {
+  if (!id || !/^[\w.+-]+$/.test(id)) throw new Error('Which app?');
+  if (source === 'flathub') await run('flatpak', ['uninstall', '--user', '-y', '--noninteractive', id], { timeout: 10 * 60_000 });
+  else await run('pkexec', ['apt-get', 'remove', '-y', id], { timeout: 10 * 60_000 });
+  appCache = { at: 0, apps: [] };
+  return `Removed ${id}.`;
+}
+
+// ---------- troubleshooting ----------
+// What to look at for a kind of problem: the state of the parts involved and
+// their recent warnings, for the agent to explain (nothing is changed).
+const DIAGNOSE = {
+  sound: [['Audio devices', 'wpctl', ['status']], ['Sound cards', 'aplay', ['-l']], ['Sound service warnings', 'journalctl', ['--user', '-b', '-u', 'pipewire', '-u', 'wireplumber', '-p', 'warning', '-n', '25', '--no-pager']]],
+  network: [['Network state', 'nmcli', ['general', 'status']], ['Devices', 'nmcli', ['device']], ['DNS', 'resolvectl', ['status']], ['Reach the internet', 'ping', ['-c', '1', '-W', '3', '1.1.1.1']], ['Look up a name', 'getent', ['hosts', 'ubuntu.com']], ['Network warnings', 'journalctl', ['-b', '-u', 'NetworkManager', '-p', 'warning', '-n', '25', '--no-pager']]],
+  wifi: [['Wi-Fi radio', 'nmcli', ['radio']], ['Blocked radios', 'rfkill', ['list']], ['Devices', 'nmcli', ['device']], ['Wi-Fi hardware', 'lspci', ['-k']], ['Network warnings', 'journalctl', ['-b', '-u', 'NetworkManager', '-u', 'wpa_supplicant', '-p', 'warning', '-n', '25', '--no-pager']]],
+  bluetooth: [['Bluetooth adapter', 'bluetoothctl', ['show']], ['Blocked radios', 'rfkill', ['list']], ['Bluetooth warnings', 'journalctl', ['-b', '-u', 'bluetooth', '-p', 'warning', '-n', '25', '--no-pager']]],
+  graphics: [['Graphics hardware and drivers', 'lspci', ['-k']], ['Driver suggestions', 'ubuntu-drivers', ['devices']], ['Graphics warnings', 'journalctl', ['-b', '-k', '-p', 'warning', '-g', 'drm|gpu|nvidia|amdgpu|i915', '-n', '25', '--no-pager']]],
+  battery: [['Battery', 'upower', ['-i', '/org/freedesktop/UPower/devices/DisplayDevice']], ['Power profile', 'powerprofilesctl', ['get']]],
+  storage: [['Disks', 'df', ['-h', '-x', 'tmpfs', '-x', 'devtmpfs', '-x', 'squashfs', '-x', 'overlay']], ['Partitions', 'lsblk', ['-o', 'NAME,SIZE,FSTYPE,MOUNTPOINTS']]],
+  general: [['Failed services', 'systemctl', ['--failed', '--no-legend']], ['Errors since start-up', 'journalctl', ['-b', '-p', '3', '-n', '40', '--no-pager']], ['Memory', 'free', ['-h']], ['Disk', 'df', ['-h', '/']]],
+};
+export const DIAGNOSE_TOPICS = Object.keys(DIAGNOSE);
+// From lspci -k, only the devices a topic is about (graphics or network).
+export const onlyDevices = (out, re) => String(out).split(/\n(?=\S)/).filter((b) => re.test(b.split('\n')[0])).join('\n');
+export async function diagnose(topic = 'general') {
+  const checks = DIAGNOSE[topic] || DIAGNOSE.general;
+  const parts = [];
+  for (const [title, cmd, args] of checks) {
+    let out = await run(cmd, args, { timeout: 20000 }).catch((e) => `(${e.message})`);
+    if (cmd === 'lspci') out = onlyDevices(out, topic === 'graphics' ? /VGA|3D|Display/ : /Network|Ethernet|Wireless/);
+    parts.push(`## ${title}\n${String(out).trim().slice(0, 2500) || '(nothing)'}`);
+  }
+  return parts.join('\n\n');
+}
+
+// ---------- drivers ----------
+export const driverSuggestions = () => run('ubuntu-drivers', ['devices'], { timeout: 60000 }).catch((e) => `(${e.message})`);
+export async function installDrivers() {
+  await run('pkexec', ['ubuntu-drivers', 'install'], { timeout: 60 * 60_000 });
+  return 'Recommended drivers installed. Restart the computer to use them.';
+}
+
+// ---------- snapshots (Scorpion OS on Btrfs: os/ provides scorpion-snapshot) ----------
+// A snapshot before a system change, so it can be undone; skipped where the
+// system can't take them.
+const SNAPSHOT = '/usr/bin/scorpion-snapshot';
+export const snapshotsAvailable = () => fs.existsSync(SNAPSHOT);
+export async function snapshot(reason) {
+  if (!snapshotsAvailable()) return null;
+  return run('sudo', ['-n', SNAPSHOT, 'create', String(reason).slice(0, 120)], { timeout: 120000 }).catch(() => null);
+}
+export async function snapshots() {
+  if (!snapshotsAvailable()) throw new Error('This system has no snapshots (it needs Scorpion OS installed on Btrfs).');
+  return run(SNAPSHOT, ['list']);
+}
+export async function undoSnapshot(id) {
+  if (!snapshotsAvailable()) throw new Error('This system has no snapshots.');
+  await run('sudo', ['-n', SNAPSHOT, 'undo', String(id)], { timeout: 120000 });
+  return `The computer goes back to snapshot ${id} at the next restart.`;
+}
