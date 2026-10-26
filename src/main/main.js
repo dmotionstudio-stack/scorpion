@@ -2072,7 +2072,8 @@ function ensureTrayHint() {
 }
 
 app.whenReady().then(async () => {
-  if (!primary) return;
+  // On Linux, quitting before "ready" does nothing; now it does.
+  if (!primary) { app.quit(); return; }
   store.initStore(app.getPath('userData'));
   desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf });
   // Performance follows the power cable when "Light on battery" is on.
