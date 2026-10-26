@@ -7,3 +7,6 @@ resources/models/*.gguf
 # Scorpion OS build folders (os/build-iso.sh)
 os/work/
 os/out/
+
+# The Node runtime the Linux build ships for the model engine (CI downloads it)
+vendor/

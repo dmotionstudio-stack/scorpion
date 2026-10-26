@@ -13,7 +13,7 @@ while :; do
   if [ $((now - first)) -gt 120 ]; then crashes=0; first=$now; fi
   crashes=$((crashes + 1))
   if [ "$crashes" -ge 3 ]; then
-    notify-send -u critical "Scorpion stopped" "Scorpion closed unexpectedly three times. Right-click the background for a menu, or press Super+Return for a terminal." 2>/dev/null
+    notify-send -u critical "Scorpion stopped" "Scorpion closed unexpectedly three times. Right-click the background for a menu, or press Super+Return for a terminal. What happened is in ~/.local/state/scorpion/scorpion.log." 2>/dev/null
     exit 1
   fi
   sleep 2

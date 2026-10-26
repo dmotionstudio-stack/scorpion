@@ -41,8 +41,24 @@ jobs:
         continue-on-error: true
       - name: Check the shell host's Python
         run: python3 -m py_compile os/rootfs/usr/lib/scorpion-os/scorpion-shell && bash -n os/build-iso.sh
+      # The model engine runs in plain Node on Linux (src/main/engine-process.js).
+      - name: Node runtime for the model engine
+        run: |
+          v=24.11.0
+          f=node-v$v-linux-x64.tar.xz
+          curl -fsSLO "https://nodejs.org/dist/v$v/$f"
+          curl -fsSL "https://nodejs.org/dist/v$v/SHASUMS256.txt" | grep " $f\$" | sha256sum -c -
+          mkdir -p vendor/linux-node
+          tar -xJf "$f" -C vendor/linux-node --strip-components=1 "node-v$v-linux-x64/LICENSE"
+          tar -xJf "$f" -C vendor/linux-node --strip-components=2 "node-v$v-linux-x64/bin/node"
+          vendor/linux-node/node --version
       - name: Build .deb and AppImage
         run: npx electron-builder --linux deb AppImage --x64 --publish never
+      - name: The model engine starts in the packaged app
+        run: |
+          app=release/linux-unpacked
+          test -x "$app/resources/node/node"
+          cd "$app/resources/app" && "../node/node" -e "import('./src/main/engine.js').then(async (e) => { const hw = await e.hardwareInfo(); console.log('engine ok', hw.gpu); await e.shutdown(); })"
       # Each build is a newer package than the last (VERSION-RUN), so
       # Software Updater offers it.
       - name: Stamp the build number on the .deb

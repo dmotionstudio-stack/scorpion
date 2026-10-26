@@ -1,6 +1,7 @@
-// The only module that touches llama.cpp. Loads GGUF models in-process via
-// node-llama-cpp's prebuilt binaries (Metal on macOS, CUDA/Vulkan/CPU on Windows),
-// so inference needs no server, no port and no network.
+// The only module that touches llama.cpp. Loads GGUF models via
+// node-llama-cpp's prebuilt binaries (Metal on macOS, CUDA/Vulkan/CPU on Windows
+// and Linux), so inference needs no server, no port and no network. Used
+// through engine-client.js, which on Linux runs it in its own process.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -432,7 +433,7 @@ async function runTurnUnlocked({ threadId, history, systemPrompt, text, function
       if (overflowed) {
         session.setChatHistory(compactHistory(session.getChatHistory(), { hard: true }));
         onText?.('\n\n');
-        prompt = continuation?.() || 'Continue where you left off with the next unfinished step.';
+        prompt = (await continuation?.()) || 'Continue where you left off with the next unfinished step.';
         continue;
       }
       if (signal?.aborted) break;
@@ -471,7 +472,7 @@ async function runTurnUnlocked({ threadId, history, systemPrompt, text, function
       if (stalled >= 2) break;
       session.setChatHistory(compactHistory(session.getChatHistory()));
       onText?.('\n\n');
-      prompt = continuation?.() || 'Continue where you left off with the next unfinished step. If everything is done and tested, give the final summary.';
+      prompt = (await continuation?.()) || 'Continue where you left off with the next unfinished step. If everything is done and tested, give the final summary.';
     }
   } catch (err) {
     // Force a history reload next turn — the session may be mid-turn.

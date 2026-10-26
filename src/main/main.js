@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as store from './store.js';
 import * as models from './models.js';
-import * as engine from './engine.js';
+import * as engine from './engine-client.js';
 import * as rag from './rag.js';
 import * as memory from './memory.js';
 import * as agents from './agents.js';
@@ -1318,6 +1318,8 @@ async function runNamedIntent(id) {
 // When each open window was last in front (the taskbar asks every 1.5 s), for
 // the wheel's recent windows.
 const lastUsed = new Map();
+// A window's native handle as text: 8 bytes on Windows (HWND), 4 on Linux (an X11 id).
+const nativeId = (bw) => { const b = bw.getNativeWindowHandle(); return b.length >= 8 ? b.readBigInt64LE().toString() : String(b.readUInt32LE()); };
 // Notifications the session received (shell:notifyIn), newest first.
 let notifications = [];
 const notificationSummary = () => ({ unread: notifications.filter((n) => !n.read).length, total: notifications.length });
@@ -1735,7 +1737,7 @@ function registerIpc() {
     if (frame) return appFrame.frameWindow(frame);
     if (action === 'popout' && fullMode) setFullMode(false);
     if (action) {
-      const self = win.getNativeWindowHandle().readBigInt64LE().toString();
+      const self = nativeId(win);
       const windows = action === 'prev' || action === 'next' ? (await winctl.listWindows({ kept: true })).filter((w) => w.hwnd !== self && !/^Scorpion/.test(w.title)) : [];
       return appFrame.action(action, { windows });
     }
@@ -1745,10 +1747,16 @@ function registerIpc() {
   // Only ever from the user's own button in Settings → Desktop.
   h('shell:setDesktop', async (on) => { await winctl.setUserShell(on ? shellCommand() : null); return desktopStatus(); });
   const shellWindows = async () => {
-    const own = new Set(BrowserWindow.getAllWindows().filter((w) => w !== win).map((w) => w.getNativeWindowHandle().readBigInt64LE().toString()));
-    const self = win && !win.isDestroyed() ? win.getNativeWindowHandle().readBigInt64LE().toString() : null;
-    const list = (await winctl.listWindows({ kept: true })).filter((w) => !own.has(w.hwnd));
-    for (const w of list) { w.icon = process.platform === 'linux' ? await winctl.iconForApp(w.appId || w.exe) : await fileIcon(w.exe); w.self = w.hwnd === self; }
+    const others = BrowserWindow.getAllWindows().filter((w) => w !== win && !w.isDestroyed());
+    const alive = win && !win.isDestroyed();
+    // Windows lists HWNDs; Linux's list (lswt) has no X11 ids, so there
+    // Scorpion's own windows are known by app id and title.
+    const isOurs = (w) => /scorpion/i.test(w.appId || '');
+    const titles = new Set(others.map((w) => w.getTitle()));
+    const own = process.platform === 'linux' ? (w) => isOurs(w) && titles.has(w.title) : ((ids) => (w) => ids.has(w.hwnd))(new Set(others.map(nativeId)));
+    const self = alive ? (process.platform === 'linux' ? win.getTitle() : nativeId(win)) : null;
+    const list = (await winctl.listWindows({ kept: true })).filter((w) => !own(w));
+    for (const w of list) { w.icon = process.platform === 'linux' ? await winctl.iconForApp(w.appId || w.exe) : await fileIcon(w.exe); w.self = process.platform === 'linux' ? isOurs(w) && w.title === self : w.hwnd === self; }
     noteWindows(list);
     return list;
   };

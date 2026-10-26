@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { paths, writeJson, readJson, newId } from './store.js';
-import * as engine from './engine.js';
+import * as engine from './engine-client.js';
 
 const CHUNK_CHARS = 1200;
 const OVERLAP_CHARS = 200;

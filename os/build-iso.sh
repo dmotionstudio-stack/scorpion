@@ -132,7 +132,9 @@ log "4/7 Scorpion and the Scorpion OS files"
 cp "$DEB" "$CHROOT/tmp/scorpion.deb"
 in_chroot "${APT_INSTALL[@]}" /tmp/scorpion.deb
 rm -f "$CHROOT/tmp/scorpion.deb"
-cp -a "$OS_DIR/rootfs/." "$CHROOT/"
+# System files belong to root: the checkout's owner (the build user) would
+# make sudo ignore /etc/sudoers.d and leave files writable by user 1001.
+cp -a --no-preserve=ownership "$OS_DIR/rootfs/." "$CHROOT/"
 chmod 755 "$CHROOT/usr/bin/scorpion-session" "$CHROOT/usr/bin/scorpion-install" "$CHROOT"/usr/lib/scorpion-os/*
 chmod 600 "$CHROOT/etc/netplan/01-network-manager-all.yaml"
 # System snapshots: the command, its sudo rule (checked: a broken sudoers file
@@ -147,7 +149,7 @@ in_chroot apt-config dump >/dev/null
 if [ -n "${BUNDLE:-}" ] && [ -d "$BUNDLE" ]; then
   install -d -m 755 "$CHROOT/usr/share/scorpion/models" "$CHROOT/usr/share/scorpion/voice"
   find "$BUNDLE/models" -maxdepth 1 -name "*.gguf" -exec cp {} "$CHROOT/usr/share/scorpion/models/" \;
-  [ -f "$BUNDLE/voice/installed.json" ] && cp -a "$BUNDLE/voice/." "$CHROOT/usr/share/scorpion/voice/"
+  [ -f "$BUNDLE/voice/installed.json" ] && cp -a --no-preserve=ownership "$BUNDLE/voice/." "$CHROOT/usr/share/scorpion/voice/"
   chmod -R a+rX "$CHROOT/usr/share/scorpion"
   du -sh "$CHROOT/usr/share/scorpion"/*
 fi
@@ -203,6 +205,9 @@ in_chroot dpkg-query -W --showformat='${Package} ${Version}\n' > "$WORK/filesyst
 unmount_all
 
 log "5/7 The live system (squashfs)"
+# Nothing in the system folders may belong to the build user.
+stray="$(find "$CHROOT/etc" "$CHROOT/usr" "$CHROOT/opt" -xdev -uid "$(id -u "${SUDO_USER:-nobody}" 2>/dev/null || echo 65534)" -print -quit 2>/dev/null)"
+[ -z "$stray" ] || die "$stray belongs to the build user, not root"
 mkdir -p "$IMAGE/casper" "$IMAGE/.disk" "$IMAGE/boot/grub/fonts" "$IMAGE/EFI/boot"
 KERNEL="$(ls -1 "$CHROOT"/boot/vmlinuz-* | sort -V | tail -n 1)"
 INITRD="$CHROOT/boot/initrd.img-${KERNEL##*/vmlinuz-}"

@@ -65,9 +65,12 @@ class Api:
     def page(self, name):
         return f"{self.base}/{name}"
 
-    def call(self, channel, arg=None):
-        """A call in the background (never blocks the panels)."""
-        if not self.base:
+    def call(self, channel, arg=None, on_fail=None):
+        """A call in the background (never blocks the panels). on_fail runs
+        on the main loop when Scorpion can't be reached."""
+        if not self.base and not self.load():
+            if on_fail:
+                GLib.idle_add(on_fail)
             return
         url = f"{self.base}/ipc/{channel}"
         body = json.dumps(arg).encode()
@@ -76,8 +79,10 @@ class Api:
             try:
                 req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
                 urllib.request.urlopen(req, timeout=15).read()
-            except Exception as err:  # Scorpion restarting
+            except Exception as err:  # Scorpion restarting, or not running
                 log(channel, err)
+                if on_fail:
+                    GLib.idle_add(on_fail)
 
         threading.Thread(target=go, daemon=True).start()
 
@@ -137,6 +142,56 @@ class Panel(Gtk.Window):
         except Exception:
             return
         self.host.handle(self, msg)
+
+
+class Notice(Gtk.Window):
+    """A notification shown by the host itself, for when Scorpion can't show
+    it (for example "Scorpion stopped"): top right, beside the rail. Click to
+    close; it closes itself after 8 seconds unless it is urgent."""
+
+    CSS = b"""
+    .scorpion-notice { background: #161512; border: 1px solid #f5c518; border-radius: 12px; padding: 12px 14px; }
+    .scorpion-notice .title { color: #f5c518; font-weight: bold; }
+    .scorpion-notice .body { color: #f2eee2; }
+    """
+    shown = []
+
+    def __init__(self, summary, body, urgency=1):
+        super().__init__(title="Scorpion notice")
+        GtkLayerShell.init_for_window(self)
+        GtkLayerShell.set_namespace(self, "scorpion-notice")
+        GtkLayerShell.set_layer(self, GtkLayerShell.Layer.OVERLAY)
+        GtkLayerShell.set_anchor(self, E.TOP, True)
+        GtkLayerShell.set_anchor(self, E.RIGHT, True)
+        GtkLayerShell.set_margin(self, E.TOP, 8 + 96 * len(Notice.shown))
+        GtkLayerShell.set_margin(self, E.RIGHT, RAIL + 8)
+        css = Gtk.CssProvider()
+        css.load_from_data(self.CSS)
+        Gtk.StyleContext.add_provider_for_screen(self.get_screen(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        box.get_style_context().add_class("scorpion-notice")
+        box.set_size_request(NOTIFY_WIDTH, -1)
+        for text, cls in ((summary, "title"), (body, "body")):
+            if text:
+                label = Gtk.Label(label=text, xalign=0)
+                label.set_line_wrap(True)
+                label.set_max_width_chars(48)
+                label.get_style_context().add_class(cls)
+                box.pack_start(label, False, False, 0)
+        events = Gtk.EventBox()
+        events.add(box)
+        events.connect("button-press-event", lambda *a: self.close_notice())
+        self.add(events)
+        self.show_all()
+        Notice.shown.append(self)
+        if urgency < 2:
+            GLib.timeout_add_seconds(8, self.close_notice)
+
+    def close_notice(self):
+        if self in Notice.shown:
+            Notice.shown.remove(self)
+            self.destroy()
+        return False
 
 
 class Notifications:
@@ -205,13 +260,21 @@ class Notifications:
             if not replaces:
                 self.next_id += 1
             self.open.add(nid)
-            urgency = hints.get("urgency", 1)
-            api.call("shell:notifyIn", {"id": nid, "app": app, "summary": summary, "body": body, "icon": self.icon(app_icon, hints), "urgency": int(urgency), "actions": list(actions)})
+            urgency = int(hints.get("urgency", 1))
+            # Scorpion keeps and shows notifications; when it can't (not
+            # running, or stopped), this host shows the notice itself.
+            api.call("shell:notifyIn", {"id": nid, "app": app, "summary": summary, "body": body, "icon": self.icon(app_icon, hints), "urgency": urgency, "actions": list(actions)},
+                     on_fail=lambda: self.show_here(summary, body, urgency))
             invocation.return_value(GLib.Variant("(u)", (nid,)))
         elif method == "CloseNotification":
             (nid,) = params.unpack()
             self.closed(nid, 3)
             invocation.return_value(None)
+
+    @staticmethod
+    def show_here(summary, body, urgency):
+        Notice(summary, body, urgency)
+        return False  # once (GLib.idle_add)
 
     def closed(self, nid, reason):
         """reason: 1 expired, 2 dismissed, 3 closed by the app."""

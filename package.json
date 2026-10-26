@@ -163,6 +163,24 @@
         "!node_modules/@node-llama-cpp/mac-*/**",
         "!node_modules/@node-llama-cpp/linux-arm*/**",
         "!node_modules/@node-llama-cpp/linux-x64-cuda*/**"
+      ],
+      "asar": false,
+      "extraResources": [
+        {
+          "from": "resources/models",
+          "to": "models",
+          "filter": [
+            "**/*.gguf"
+          ]
+        },
+        {
+          "from": "vendor/linux-node",
+          "to": "node",
+          "filter": [
+            "node",
+            "LICENSE"
+          ]
+        }
       ]
     },
     "deb": {

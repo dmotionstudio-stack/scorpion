@@ -9,10 +9,28 @@ for agent in /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 /usr
   [ -x "$agent" ] && { "$agent" & break; }
 done
 
+# This session's logs (Scorpion and its shell), with the last session's kept
+# beside them as *.old.log.
+logs="${XDG_STATE_HOME:-$HOME/.local/state}/scorpion"
+mkdir -p "$logs"
+for name in scorpion shell; do
+  [ -f "$logs/$name.log" ] && mv -f "$logs/$name.log" "$logs/$name.old.log"
+done
+
 # Scorpion's shell: the rail, the summon dot and wheel, notifications and the
 # on-screen display as layer-shell panels; it is also the notification server.
-# Where it can't run, mako shows notifications (and Scorpion its own rail).
-( /usr/lib/scorpion-os/scorpion-shell || exec mako ) >/dev/null 2>&1 &
+# It starts again if it crashes (up to three times). Where it can't run at all
+# (exit 1: no layer-shell), mako shows notifications and Scorpion its own rail.
+(
+  for try in 1 2 3; do
+    /usr/lib/scorpion-os/scorpion-shell
+    code=$?
+    [ "$code" -eq 0 ] && exit 0
+    [ "$code" -eq 1 ] && break
+    sleep 2
+  done
+  exec mako
+) >>"$logs/shell.log" 2>&1 &
 
 # Lock after 10 idle minutes and before sleep; screen off after 15.
 swayidle -w \
@@ -21,4 +39,4 @@ swayidle -w \
   before-sleep 'swaylock -f' >/dev/null 2>&1 &
 
 # Scorpion: the desktop, taskbar (the edge rail) and launcher.
-/usr/lib/scorpion-os/run-scorpion >/dev/null 2>&1 &
+/usr/lib/scorpion-os/run-scorpion >>"$logs/scorpion.log" 2>&1 &
