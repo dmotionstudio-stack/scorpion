@@ -40,7 +40,9 @@ export function raiseTaskbar() {
   if (summon && !summon.isDestroyed()) summon.moveTop();
 }
 // The room Scorpion's taskbar takes: along the bottom, or down the right edge.
-export const taskbarInsets = () => (!mode || hostMode ? { bottom: 0, right: 0 } : layout === 'bar' ? { bottom: TASKBAR_HEIGHT, right: 0 } : { bottom: 0, right: RAIL_WIDTH });
+// The native shell host (Scorpion OS) always draws the edge rail, over
+// Scorpion's window (XWayland windows aren't shrunk to leave it room).
+export const taskbarInsets = () => (hostMode ? { bottom: 0, right: RAIL_WIDTH } : !mode ? { bottom: 0, right: 0 } : layout === 'bar' ? { bottom: TASKBAR_HEIGHT, right: 0 } : { bottom: 0, right: RAIL_WIDTH });
 const file = (name) => path.join(deps.dataDir, name);
 
 // Crash-loop guard: true when the last three shell starts were within 3 minutes.

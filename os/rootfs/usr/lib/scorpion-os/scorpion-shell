@@ -26,6 +26,12 @@ import sys
 import threading
 import urllib.request
 
+# WebKitGTK's GPU paths draw nothing where the graphics driver can't do them
+# (virtual machines, some drivers); the panels are small and simple, so they
+# are painted in software unless the session says otherwise.
+os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+os.environ.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
+
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -301,9 +307,11 @@ class Host:
         if not api.load():
             GLib.timeout_add(500, self.start)
             return False
-        top, overlay = GtkLayerShell.Layer.TOP, GtkLayerShell.Layer.OVERLAY
-        self.panels["edge"] = Panel(self, "edge.html", layer=top, anchors={E.RIGHT, E.TOP, E.BOTTOM}, width=RAIL, height=-1, exclusive=RAIL)
-        self.panels["summon"] = Panel(self, "summon.html", layer=top, anchors={E.LEFT, E.BOTTOM}, width=DOT, height=DOT, margins={E.LEFT: 8, E.BOTTOM: 8})
+        # All on the overlay layer: Scorpion's full mode is a full-screen
+        # window, which compositors draw above the top layer.
+        overlay = GtkLayerShell.Layer.OVERLAY
+        self.panels["edge"] = Panel(self, "edge.html", layer=overlay, anchors={E.RIGHT, E.TOP, E.BOTTOM}, width=RAIL, height=-1, exclusive=RAIL)
+        self.panels["summon"] = Panel(self, "summon.html", layer=overlay, anchors={E.LEFT, E.BOTTOM}, width=DOT, height=DOT, margins={E.LEFT: 8, E.BOTTOM: 8})
         self.panels["notify"] = Panel(self, "notify.html", layer=overlay, anchors={E.TOP, E.RIGHT}, width=NOTIFY_WIDTH, height=1, margins={E.TOP: 8, E.RIGHT: RAIL + 8})
         self.panels["osd"] = Panel(self, "osd.html", layer=overlay, anchors={E.BOTTOM}, width=340, height=90, margins={E.BOTTOM: 90})
         self.panels["edge"].show_all()
@@ -311,7 +319,7 @@ class Host:
         for name in ("notify", "osd"):
             self.panels[name].show_all()
             self.panels[name].hide()
-        api.call("shell:hostReady")
+        self.say_ready()
         self.ready = True
         # Scorpion restarted: a new address and key, so the pages load again.
         monitor = Gio.File.new_for_path(INFO).monitor_file(Gio.FileMonitorFlags.NONE, None)
@@ -325,7 +333,17 @@ class Host:
             log("Scorpion restarted; reloading the panels")
             for p in self.panels.values():
                 p.load()
-            api.call("shell:hostReady")
+            self.say_ready()
+
+    def say_ready(self, tries=0):
+        """Tells Scorpion its panels are here (it then hides its own); again
+        a little later if Scorpion isn't answering yet."""
+        def again():
+            if tries < 30:
+                GLib.timeout_add_seconds(2, lambda: self.say_ready(tries + 1))
+            return False
+        api.call("shell:hostReady", on_fail=again)
+        return False
 
     def wheel(self, is_open):
         p = self.panels["summon"]
@@ -333,7 +351,7 @@ class Host:
             p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.RIGHT, E.TOP, E.BOTTOM}, width=-1, height=-1, exclusive=-1, keyboard="exclusive")
             p.present()
         else:
-            p.place(layer=GtkLayerShell.Layer.TOP, anchors={E.LEFT, E.BOTTOM}, width=DOT, height=DOT, margins={E.LEFT: 8, E.BOTTOM: 8}, keyboard="none")
+            p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.BOTTOM}, width=DOT, height=DOT, margins={E.LEFT: 8, E.BOTTOM: 8}, keyboard="none")
 
     def menu(self, panel, msg):
         """A native menu at the pointer, from Scorpion's description."""

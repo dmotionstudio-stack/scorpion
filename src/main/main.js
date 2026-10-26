@@ -104,7 +104,11 @@ if (process.platform === 'linux' && process.env.XDG_SESSION_DESKTOP === 'scorpio
 // software renderer, so the orb still draws (slower).
 if (process.platform === 'linux') app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 
-if (!app.requestSingleInstanceLock()) app.quit();
+// A second start (a shortcut like scorpion --wheel or --osd) only hands its
+// arguments to the running Scorpion and quits: it must not start anything
+// (on Scorpion OS its shell API would take over the host's connection file).
+const primary = app.requestSingleInstanceLock();
+if (!primary) app.quit();
 // Covered by other windows, Scorpion still counts as on screen, so hand
 // tracking (which replaces the mouse) keeps running; only minimized pauses it.
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
@@ -2068,11 +2072,8 @@ function ensureTrayHint() {
 }
 
 app.whenReady().then(async () => {
+  if (!primary) return;
   store.initStore(app.getPath('userData'));
-  // Scorpion OS's session: the local connection for the native shell host.
-  if (process.platform === 'linux' && process.env.XDG_SESSION_DESKTOP === 'scorpion') {
-    startShellApi({ handlers, roots: [path.join(__dirname, '..', 'renderer'), path.join(__dirname, '..', 'shared')], gone: () => { desktop.useHost(false); sendTaskbarInset(); } }).catch((err) => console.error('shell API:', err));
-  }
   desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf });
   // Performance follows the power cable when "Light on battery" is on.
   applyPerf();
@@ -2126,6 +2127,11 @@ app.whenReady().then(async () => {
   await autoSelectModels();
   serveApp();
   registerIpc();
+  // Scorpion OS's session: the local connection for the native shell host,
+  // once every handler it may call is registered.
+  if (process.platform === 'linux' && process.env.XDG_SESSION_DESKTOP === 'scorpion') {
+    startShellApi({ handlers, roots: [path.join(__dirname, '..', 'renderer'), path.join(__dirname, '..', 'shared')], gone: () => { desktop.useHost(false); sendTaskbarInset(); } }).catch((err) => console.error('shell API:', err));
+  }
   createWindow();
   if (asDesktop) await desktop.startShell('shell').catch((err) => { console.error(err); return winctl.startExplorer(); });
   else if (process.platform === 'win32' && store.getSettings().taskbarAlwaysOn !== false) desktop.startShell('bar').then(() => { desktop.raiseTaskbar(); sendTaskbarInset(); }).catch((err) => console.error(err));
