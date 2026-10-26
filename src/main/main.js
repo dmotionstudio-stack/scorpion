@@ -107,8 +107,10 @@ if (process.platform === 'linux') app.commandLine.appendSwitch('enable-unsafe-sw
 // A second start (a shortcut like scorpion --wheel or --osd) only hands its
 // arguments to the running Scorpion and quits: it must not start anything
 // (on Scorpion OS its shell API would take over the host's connection file).
+// The hand-over is done when the lock call returns; on Linux app.quit() at
+// this point leaves the process waiting forever, so it simply exits.
 const primary = app.requestSingleInstanceLock();
-if (!primary) app.quit();
+if (!primary) process.exit(0);
 // Covered by other windows, Scorpion still counts as on screen, so hand
 // tracking (which replaces the mouse) keeps running; only minimized pauses it.
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
@@ -2072,8 +2074,7 @@ function ensureTrayHint() {
 }
 
 app.whenReady().then(async () => {
-  // On Linux, quitting before "ready" does nothing; now it does.
-  if (!primary) { app.quit(); return; }
+  if (!primary) return;
   store.initStore(app.getPath('userData'));
   desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf });
   // Performance follows the power cable when "Light on battery" is on.
