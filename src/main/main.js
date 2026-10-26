@@ -1333,6 +1333,11 @@ function noteWindows(list) {
   const now = Date.now();
   for (const w of list) if (w.active) lastUsed.set(w.hwnd, now);
   for (const h of lastUsed.keys()) if (!list.some((w) => w.hwnd === h)) lastUsed.delete(h);
+  // Scorpion OS: full mode is a full-screen window, which hides every other
+  // (Windows pulls a focused app into the orb instead). When another app's
+  // window takes focus (one opened from the wheel, the installer, a
+  // terminal), Scorpion leaves full mode so it can be seen.
+  if (process.platform === 'linux' && fullMode && list.some((w) => w.active && !w.self)) setFullMode(false);
 }
 // The wheel's summon shortcut (Win+Shift+Space, or Alt+Shift+Space): the wheel
 // opens where the pointer is.
