@@ -135,6 +135,7 @@ rm -f "$CHROOT/tmp/scorpion.deb"
 # System files belong to root: the checkout's owner (the build user) would
 # make sudo ignore /etc/sudoers.d and leave files writable by user 1001.
 cp -a --no-preserve=ownership "$OS_DIR/rootfs/." "$CHROOT/"
+sh "$OS_DIR/patch-calamares.sh" "$CHROOT" # installs onto Btrfs (see the file)
 chmod 755 "$CHROOT/usr/bin/scorpion-session" "$CHROOT/usr/bin/scorpion-install" "$CHROOT"/usr/lib/scorpion-os/*
 chmod 600 "$CHROOT/etc/netplan/01-network-manager-all.yaml"
 # System snapshots: the command, its sudo rule (checked: a broken sudoers file
