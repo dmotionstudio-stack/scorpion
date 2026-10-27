@@ -80,6 +80,7 @@ cursor-theme-name=Yaru
 font-name=Ubuntu 11
 background=${hex(c.bg)}
 user-background=false
+default-user-image=/usr/share/pixmaps/scorpion-os.png
 indicators=~host;~spacer;~clock;~spacer;~session;~a11y;~power
 clock-format=%a %d %b, %H:%M
 `,

@@ -1,0 +1,53 @@
+#!/bin/bash
+# Scorpion OS: system updates for Scorpion (Settings → This computer, and its
+# "Updates ready" notice), in place of Ubuntu's Software Updater pop-up.
+#
+#   scorpion-update check     refresh the package lists, then one line per
+#                             update: name<TAB>installed<TAB>new
+#   scorpion-update install   install them all (apt's hook takes a snapshot
+#                             first, so it can be undone); progress lines
+#                             start with "progress<TAB>" and a percentage
+#
+# Administrators (the sudo group) may run it without a password
+# (/etc/sudoers.d/scorpion-update). Apps from Flathub are updated by
+# Scorpion as the user, not here.
+#
+# Exit codes: 0 done, 1 error, 3 usage.
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
+
+[ "$(id -u)" -eq 0 ] || { echo "scorpion-update: run it with sudo" >&2; exit 1; }
+
+# Another program (unattended-upgrades, Software Updater) may hold apt's lock:
+# wait for it up to 10 minutes instead of failing.
+APT=(apt-get -o DPkg::Lock::Timeout=600 -q)
+
+check() {
+  "${APT[@]}" update >/dev/null
+  # "Inst name [installed] (new suite [arch])" for each upgrade.
+  "${APT[@]}" -s full-upgrade | sed -n 's/^Inst \([^ ]*\) \[\([^]]*\)\] (\([^ ]*\) .*/\1\t\2\t\3/p'
+}
+
+install() {
+  local total done=0
+  total="$("${APT[@]}" -s full-upgrade | grep -c '^Inst ' || true)"
+  echo -e "progress\t0\tStarting"
+  # Each package unpacked and set up is two steps.
+  "${APT[@]}" -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold full-upgrade 2>&1 |
+    while IFS= read -r line; do
+      case "$line" in
+        Unpacking*|Setting\ up*)
+          done=$((done + 1))
+          [ "$total" -gt 0 ] && echo -e "progress\t$(( done * 50 / total ))\t${line%% (*}" ;;
+      esac
+    done
+  [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "scorpion-update: apt-get failed" >&2; exit 1; }
+  "${APT[@]}" -y autoremove --purge >/dev/null 2>&1 || true
+  echo -e "progress\t100\tDone"
+}
+
+case "${1:-}" in
+  check) check ;;
+  install) install ;;
+  *) echo "usage: scorpion-update check | install" >&2; exit 3 ;;
+esac

@@ -272,6 +272,25 @@
       <section class="view hidden" id="view-settings">
         <div class="page">
           <h1>General</h1>
+          <div class="field sys-card" id="sys-card" hidden>
+            <label>This computer</label>
+            <div class="sys-block">
+              <div class="sys-line"><b>Updates</b><span class="muted small" id="sys-upd-status"></span></div>
+              <ul class="sys-upd-list small" id="sys-upd-list" hidden></ul>
+              <div class="sys-progress" id="sys-upd-progress" hidden><div id="sys-upd-bar"></div></div>
+              <div class="row">
+                <button class="btn small" type="button" id="sys-upd-check">Check now</button>
+                <button class="btn primary small" type="button" id="sys-upd-install" hidden>Install updates</button>
+                <button class="btn small" type="button" id="sys-restart" hidden>Restart now</button>
+              </div>
+              <p class="muted small">Scorpion looks for updates every few hours and tells you when some are ready. Security fixes install by themselves. A snapshot is taken first, so an update can be undone below.</p>
+            </div>
+            <div class="sys-block" id="sys-undo-block">
+              <div class="sys-line"><b>Undo a change</b><span class="muted small" id="sys-snap-status"></span></div>
+              <div class="sys-snaps" id="sys-snaps"></div>
+              <p class="muted small">Puts programs and system settings back as they were at that moment, from the next restart. Your files, chats and documents are never touched.</p>
+            </div>
+          </div>
           <div class="field">
             <label>Theme</label>
             <div class="theme-grid" id="theme-grid"></div>

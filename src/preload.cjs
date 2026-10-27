@@ -55,6 +55,10 @@ contextBridge.exposeInMainWorld('scorpion', {
   // Scorpion OS: quick settings and, from the ISO, the installer.
   shellQuick: invoke('shell:quick'),
   shellInstall: invoke('shell:install'),
+  // Scorpion OS: updates and snapshots (Settings → This computer).
+  sysUpdates: invoke('sys:updates'),
+  sysSnapshots: invoke('sys:snapshots'),
+  onSysUpdates: on('sys:updates'),
   shellGlance: invoke('shell:glance'),
   sysWifi: invoke('sys:wifi'),
   onWheelOpen: on('wheel:open'),

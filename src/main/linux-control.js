@@ -737,6 +737,12 @@ export async function snapshots() {
   if (!snapshotsAvailable()) throw new Error('This system has no snapshots (it needs Scorpion OS installed on Btrfs).');
   return run(SNAPSHOT, ['list']);
 }
+// The snapshots as a list for Settings → This computer: [{ id, date, reason }].
+export async function snapshotList() {
+  if (!snapshotsAvailable()) return null;
+  const out = await run('sudo', ['-n', SNAPSHOT, 'list', '--json'], { timeout: 60000 });
+  try { return JSON.parse(out || '[]'); } catch { return []; }
+}
 export async function undoSnapshot(id) {
   if (!snapshotsAvailable()) throw new Error('This system has no snapshots.');
   await run('sudo', ['-n', SNAPSHOT, 'undo', String(id)], { timeout: 120000 });
@@ -888,4 +894,53 @@ export async function quickAction(action, value = {}) {
     case 'settings': return openSettings(value.page || 'home');
     default: throw new Error('Unknown quick setting');
   }
+}
+
+// ---------- system updates (os/rootfs/usr/lib/scorpion-os/scorpion-update) ----------
+const UPDATER = '/usr/lib/scorpion-os/scorpion-update';
+export const updatesAvailable = () => fs.existsSync(UPDATER) && !isLiveSession();
+// scorpion-update check: "name<TAB>installed<TAB>new" per line.
+export function parseUpdates(out) {
+  return String(out).split('\n').map((l) => l.split('\t')).filter((c) => c.length === 3 && c[0])
+    .map(([name, from, to]) => ({ name, from, to }));
+}
+// flatpak remote-ls --updates --columns=application,name: apps from Flathub with an update.
+export function parseFlatpakUpdates(out) {
+  return String(out).split('\n').map((l) => l.split('\t')).filter((c) => c[0] && /\./.test(c[0]))
+    .map(([id, name]) => ({ name: (name || id).trim(), id: id.trim() }));
+}
+export async function checkUpdates() {
+  if (!updatesAvailable()) throw new Error('Updates are managed this way only on an installed Scorpion OS.');
+  const [system, apps] = await Promise.all([
+    run('sudo', ['-n', UPDATER, 'check'], { timeout: 15 * 60000 }).then(parseUpdates),
+    run('flatpak', ['remote-ls', '--updates', '--user', '--columns=application,name'], { timeout: 120000 }).then(parseFlatpakUpdates, () => []),
+  ]);
+  return { system, apps };
+}
+// Installs everything; onProgress(percent, text) as it goes.
+export function installUpdates(onProgress = () => {}) {
+  if (!updatesAvailable()) return Promise.reject(new Error('Updates are managed this way only on an installed Scorpion OS.'));
+  return new Promise((resolve, reject) => {
+    const child = spawn('sudo', ['-n', UPDATER, 'install'], { env: process.env });
+    let err = '';
+    let buf = '';
+    child.stdout.on('data', (d) => {
+      buf += d;
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        const [kind, pct, text] = line.split('\t');
+        if (kind === 'progress') onProgress(Math.min(90, Number(pct) * 0.9), text || '');
+      }
+    });
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('error', reject);
+    child.on('close', async (code) => {
+      if (code !== 0) { reject(new Error(err.trim().split('\n').pop() || 'The updates could not be installed.')); return; }
+      onProgress(92, 'Updating apps');
+      await run('flatpak', ['update', '-y', '--user', '--noninteractive'], { timeout: 30 * 60000 }).catch(() => {});
+      onProgress(100, 'Done');
+      resolve(fs.existsSync('/var/run/reboot-required'));
+    });
+  });
 }

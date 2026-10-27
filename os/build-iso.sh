@@ -141,9 +141,30 @@ chmod 600 "$CHROOT/etc/netplan/01-network-manager-all.yaml"
 # System snapshots: the command, its sudo rule (checked: a broken sudoers file
 # would lock sudo out) and apt's hook (checked: a broken one stops apt).
 chmod 755 "$CHROOT/usr/bin/scorpion-snapshot"
-chmod 440 "$CHROOT/etc/sudoers.d/scorpion-snapshot"
+chmod 440 "$CHROOT/etc/sudoers.d/scorpion-snapshot" "$CHROOT/etc/sudoers.d/scorpion-update"
 in_chroot visudo -cf /etc/sudoers.d/scorpion-snapshot
+in_chroot visudo -cf /etc/sudoers.d/scorpion-update
 in_chroot apt-config dump >/dev/null
+
+# Updates are Scorpion's (Settings → This computer, and its "Updates ready"
+# notice): Ubuntu's pop-up doesn't appear. Software Updater stays installed
+# for anyone who wants it, and security updates still install by themselves
+# (unattended-upgrades).
+in_chroot apt-get purge -y update-notifier update-notifier-common >/dev/null 2>&1 || true
+rm -f "$CHROOT/etc/xdg/autostart/update-notifier.desktop"
+
+# The text console speaks for Scorpion OS, not Ubuntu (login messages, legal note).
+for f in "$CHROOT"/etc/update-motd.d/*; do [ -f "$f" ] && chmod -x "$f"; done
+install -m 755 /dev/stdin "$CHROOT/etc/update-motd.d/00-scorpion" <<'EOF'
+#!/bin/sh
+printf '\nWelcome to Scorpion OS. Type exit to leave this console;\nCtrl+Alt+F7 goes back to the desktop.\n\n'
+EOF
+cat > "$CHROOT/etc/legal" <<'EOF'
+Scorpion OS is built from Ubuntu's free software; each program keeps its own
+license, listed in /usr/share/doc/*/copyright.
+EOF
+# Scorpion's mark for the sign-in screen (lightdm-gtk-greeter.conf).
+install -D -m 644 "$OS_DIR/rootfs/etc/calamares/branding/scorpion/logo.png" "$CHROOT/usr/share/pixmaps/scorpion-os.png"
 
 # The built-in model and voice: Scorpion talks and answers from the first
 # minute, with no download (read from here; nothing is copied to the user).

@@ -8,7 +8,7 @@ import fs from 'node:fs';
 // message fails here instead of failing quietly in the app.
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const preload = read('src/preload.cjs');
-const mainFiles = ['src/main/main.js', 'src/main/shell.js', 'src/main/shell-api.js'].map(read).join('\n');
+const mainFiles = ['src/main/main.js', 'src/main/shell.js', 'src/main/shell-api.js', 'src/main/updates.js'].map(read).join('\n');
 
 const calls = [...preload.matchAll(/\binvoke\('([^']+)'\)/g)].map((m) => m[1]);
 const events = [...preload.matchAll(/\bon\('([^']+)'\)/g)].map((m) => m[1]);

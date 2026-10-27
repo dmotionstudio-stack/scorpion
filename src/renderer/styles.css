@@ -864,3 +864,14 @@ body.sidebar-hidden .main .page { padding-left: 56px; }
   color: var(--text); font-size: 12.5px; cursor: pointer; opacity: .6; box-shadow: 0 4px 16px rgba(0, 0, 0, .35); transition: opacity .15s, border-color .15s; }
 .full-exit:hover, .full-exit:focus-visible { opacity: 1; border-color: var(--accent); }
 .full-exit svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Settings → This computer (Scorpion OS): updates and Undo a change. */
+.sys-card[hidden], .sys-card [hidden] { display: none !important; }
+.sys-block { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; margin-top: 6px; border: 1px solid var(--border); border-radius: var(--radius, 10px); background: var(--panel); max-width: 760px; }
+.sys-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sys-line .error-text { color: var(--danger, #e5534b); }
+.sys-upd-list { margin: 0; padding-left: 18px; columns: 2; column-gap: 24px; }
+.sys-progress { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+.sys-progress > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.sys-snaps { display: flex; flex-direction: column; gap: 6px; }
+.sys-snap { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); }

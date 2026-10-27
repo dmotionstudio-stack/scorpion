@@ -1,0 +1,3 @@
+# Scorpion OS: administrators (the sudo group) may check for and install
+# system updates from Scorpion without a password. Only this command.
+%sudo ALL=(root) NOPASSWD: /usr/lib/scorpion-os/scorpion-update check, /usr/lib/scorpion-os/scorpion-update install

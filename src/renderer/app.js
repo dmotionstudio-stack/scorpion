@@ -13,6 +13,7 @@ import { HandTracker, cameraError } from './gestures.js';
 import { initWelcome } from './welcome.js';
 import { initLookSettings } from './settings-look.js';
 import { initPalette } from './palette.js';
+import { initSystemSettings } from './settings-system.js';
 
 const api = window.scorpion;
 const $ = (sel) => document.querySelector(sel);
@@ -91,6 +92,7 @@ let hands = null; // hand gestures on Scorpion's own screens (hand-control.js)
 let welcome = null; // the spoken first start (welcome.js)
 let lookSettings = null; // Settings → General: Performance, the orb's look (settings-look.js)
 let palette = null; // the command palette, Ctrl+K (palette.js)
+let systemSettings = null; // Settings → This computer on Scorpion OS (settings-system.js)
 
 // ---------- top bar ----------
 function renderTopbar() {
@@ -1756,10 +1758,13 @@ function wire() {
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice, startHands: () => toggleHands(true), setView });
   lookSettings = initLookSettings({ $, api, S, setSetting, toast, IX, startWelcome: () => welcome.start({ force: true }) });
+  systemSettings = initSystemSettings({ $, esc, api, toast, errText });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
-  const onNav = ({ view, dir, select, signin, search, talk, query }) => {
+  const onNav = ({ view, dir, select, signin, search, talk, query, section }) => {
     // Typing on the intent wheel: the command palette, with what was typed.
     if (view === 'palette') { palette.open(query || ''); return; }
+    // The "Updates ready" notice and "Software updates": Settings → This computer.
+    if (view === 'settings' && section === 'system') { const go = () => { setView('settings'); systemSettings?.show(); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
     // The intent wheel's Talk: the orb, listening.
     if (view === 'orb' && talk) {
       const ready = () => { if (!S.voice?.installed) $('#ix-input').focus(); else if (!V.talk) startTalk(); };

@@ -30,6 +30,7 @@ import { recentActivity } from './activity.js';
 import * as desktop from './shell.js';
 import { startShellApi, shellEvent } from './shell-api.js';
 import winctl from './system.js';
+import { createUpdates } from './updates.js';
 import * as appFrame from './orb-frame.js';
 import * as appIcons from './app-icons.js';
 import * as constellations from './constellations.js';
@@ -1317,6 +1318,8 @@ async function runIntent(id) {
 async function runNamedIntent(id) {
   const it = findIntent(id, process.platform, { live: process.platform === 'linux' && winctl.isLiveSession() });
   const kind = it?.run?.main;
+  // Scorpion OS's updates are Scorpion's own (Settings → This computer).
+  if (kind === 'settings' && it.run.arg === 'update' && process.platform === 'linux') return showView('settings', { section: 'system' });
   if (kind === 'settings') return winctl.openSettings(it.run.arg);
   if (kind === 'control' && MAIN_CONTROLS.includes(it.run.arg)) return winctl.systemControl(it.run.arg);
   if (kind === 'wheel') return runIntent(it.run.arg);
@@ -1326,6 +1329,7 @@ async function runNamedIntent(id) {
 // When each open window was last in front (the taskbar asks every 1.5 s), for
 // the wheel's recent windows.
 const lastUsed = new Map();
+let updates = null; // Scorpion OS's updates (updates.js)
 // A window's native handle as text: 8 bytes on Windows (HWND), 4 on Linux (an X11 id).
 const nativeId = (bw) => { const b = bw.getNativeWindowHandle(); return b.length >= 8 ? b.readBigInt64LE().toString() : String(b.readUInt32LE()); };
 // Notifications the session received (shell:notifyIn), newest first.
@@ -1822,6 +1826,22 @@ function registerIpc() {
   h('shell:volume', async (action) => { const r = await winctl.volumeStep(action); showOsd('volume'); return r; });
   // The welcome's internet step (Scorpion OS): online or not, the Wi-Fi
   // networks in range, joining one. Windows and macOS handle their own.
+  // Scorpion OS: its updates and snapshots (Settings → This computer).
+  h('sys:updates', ({ action } = {}) => {
+    if (!updates) return { supported: false };
+    if (action === 'check') return updates.check();
+    if (action === 'install') { updates.install(); return updates.view(); } // progress comes as sys:updates events
+    return updates.view();
+  });
+  h('sys:snapshots', async ({ action, id } = {}) => {
+    if (process.platform !== 'linux' || !winctl.snapshotsAvailable()) return { supported: false, list: [] };
+    if (action === 'undo') {
+      const message = await winctl.undoSnapshot(String(id));
+      return { supported: true, list: await winctl.snapshotList().catch(() => []), message };
+    }
+    if (action === 'restart') return winctl.powerNow('restart');
+    return { supported: true, list: await winctl.snapshotList() };
+  });
   h('sys:wifi', async ({ action, ssid, password } = {}) => {
     if (process.platform !== 'linux') return action === 'status' ? { supported: false } : [];
     if (action === 'status') return { supported: true, online: Boolean((await winctl.trayStatus().catch(() => ({}))).network) };
@@ -2156,6 +2176,10 @@ app.whenReady().then(async () => {
   if (asDesktop) await desktop.startShell('shell').catch((err) => { console.error(err); return winctl.startExplorer(); });
   else if (process.platform === 'win32' && store.getSettings().taskbarAlwaysOn !== false) desktop.startShell('bar').then(() => { desktop.raiseTaskbar(); sendTaskbarInset(); }).catch((err) => console.error(err));
   scheduler.startScheduler(runScheduled);
+  if (process.platform === 'linux') {
+    updates = createUpdates({ sys: winctl, send, getSettings: store.getSettings, updateSettings: store.updateSettings, onInstallAsked: () => showView('settings', { section: 'system' }) });
+    updates.start();
+  }
   for (const server of store.getSettings().mcpServers || []) if (server.enabled) connectMcp(server).catch(() => {});
   startTelegram().catch(() => {});
   // Pick up new and changed files a little after start-up.
