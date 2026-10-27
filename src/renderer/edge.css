@@ -68,3 +68,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; bo
   background: var(--accent); color: var(--accent-ink, #141210); font-weight: 600; font-size: 11px; box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent); }
 .eg-install svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .eg-install:hover { filter: brightness(1.08); }
+.eg-install:disabled { opacity: .75; cursor: progress; animation: eg-wait 1.2s ease-in-out infinite alternate; }
+@keyframes eg-wait { to { filter: brightness(.8); } }
+@media (prefers-reduced-motion: reduce) { .eg-install:disabled { animation: none; } }

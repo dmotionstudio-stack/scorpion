@@ -86,7 +86,15 @@ if (api.notifications) { api.notifications().then(setBadge).catch(() => {}); api
 $('#eg-clock').addEventListener('click', () => api.shellMenu({ kind: 'clock' }));
 $('#eg-power').addEventListener('click', () => api.shellMenu({ kind: 'power' }));
 $('#eg-volume').addEventListener('click', () => (window.scorpionHost ? quick('sound') : api.shellVolume('mute')));
-$('#eg-install').addEventListener('click', () => api.shellInstall().catch(() => {}));
+// The installer takes a while to appear, so the button says it's coming.
+$('#eg-install').addEventListener('click', () => {
+  const b = $('#eg-install');
+  if (b.disabled) return;
+  b.disabled = true;
+  $('#eg-install-label').textContent = 'Opening…';
+  setTimeout(() => { b.disabled = false; $('#eg-install-label').textContent = 'Install'; }, 45000);
+  api.shellInstall().catch(() => { b.disabled = false; $('#eg-install-label').textContent = 'Install'; });
+});
 if (window.scorpionHost) $('#eg-volume').title = 'Sound: click for quick settings, scroll to change';
 $('#eg-volume').addEventListener('wheel', (e) => { e.preventDefault(); api.shellVolume(e.deltaY < 0 ? 'up' : 'down'); }, { passive: false });
 
