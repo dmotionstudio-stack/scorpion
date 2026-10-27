@@ -6,7 +6,8 @@
 //
 // run: { view } a place in Scorpion's window; { ui } something the window
 // does itself; { main: 'settings' | 'control' | 'wheel', arg } done by the main
-// process (intent:run). only: the one platform an entry exists on.
+// process (intent:run). only: the one platform an entry exists on; live:
+// only in Scorpion OS's live session (from the ISO or a USB stick).
 
 export const INTENTS = [
   // ---- places ----
@@ -36,6 +37,7 @@ export const INTENTS = [
   { id: 'sidebar', label: 'Show or hide the sidebar', group: 'Do', keys: ['sidebar', 'toggle sidebar'], hint: 'Ctrl+B', run: { ui: 'sidebar' } },
   { id: 'welcome', label: 'Show the welcome again', group: 'Do', keys: ['welcome', 'tour', 'first start', 'tutorial'], run: { ui: 'welcome' } },
   // ---- the system ----
+  { id: 'install', label: 'Install Scorpion OS', group: 'System', keys: ['install', 'install scorpion', 'install scorpion os', 'install the system', 'install it on this computer'], run: { main: 'install' }, only: 'linux', live: true },
   { id: 'wifi', label: 'Wi-Fi settings', group: 'System', keys: ['wifi', 'wi fi', 'wireless', 'network', 'internet', 'network settings'], run: { main: 'settings', arg: 'wifi' } },
   { id: 'bluetooth', label: 'Bluetooth settings', group: 'System', keys: ['bluetooth', 'headphones', 'pair a device'], run: { main: 'settings', arg: 'bluetooth' } },
   { id: 'sound', label: 'Sound settings', group: 'System', keys: ['sound', 'audio', 'volume', 'speakers', 'microphone'], run: { main: 'settings', arg: 'sound' } },
@@ -56,8 +58,8 @@ export const INTENTS = [
 // or anything else that asks first).
 export const MAIN_CONTROLS = ['lock', 'screenshot', 'dark_mode', 'light_mode'];
 
-export const intentsFor = (platform) => INTENTS.filter((i) => !i.only || i.only === platform);
-export const findIntent = (id, platform) => intentsFor(platform).find((i) => i.id === id) || null;
+export const intentsFor = (platform, { live = false } = {}) => INTENTS.filter((i) => (!i.only || i.only === platform) && (!i.live || live));
+export const findIntent = (id, platform, opts) => intentsFor(platform, opts).find((i) => i.id === id) || null;
 
 const clean = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
   .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();

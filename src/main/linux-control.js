@@ -581,7 +581,11 @@ export async function wifiList() {
 // Joins a network; the password goes to nmcli only, never into logs or replies.
 export async function wifiConnect(ssid, password) {
   if (!ssid) throw new Error('Which network?');
-  await run('nmcli', ['device', 'wifi', 'connect', String(ssid), ...(password ? ['password', String(password)] : [])], { timeout: 60000 });
+  await run('nmcli', ['device', 'wifi', 'connect', String(ssid), ...(password ? ['password', String(password)] : [])], { timeout: 60000 }).catch((err) => {
+    // nmcli's words for a wrong or missing password ("Secrets were required…").
+    if (/secrets|password|psk|802-1x/i.test(err.message)) throw new Error(password ? `That password for ${ssid} didn't work. Check it and try again.` : `${ssid} needs a password.`);
+    throw err;
+  });
   return `Connected to ${ssid}.`;
 }
 export async function wifiDisconnect() {
@@ -753,4 +757,125 @@ export function parseBrightness(out) {
 export async function levelOf(kind) {
   if (kind === 'brightness') return parseBrightness(await run('brightnessctl', ['-m']).catch(() => ''));
   return parseVolume(await run('wpctl', ['get-volume', '@DEFAULT_AUDIO_SINK@']).catch(() => ''));
+}
+
+// ---------- the live system and its installer ----------
+// Running from the ISO or a USB stick (casper), not an installed system.
+export function parseLiveCmdline(cmdline) { return /(^|\s)boot=casper(\s|$)/.test(String(cmdline)); }
+let live = null;
+export function isLiveSession() {
+  if (live === null) { try { live = parseLiveCmdline(fs.readFileSync('/proc/cmdline', 'utf8')); } catch { live = false; } }
+  return live;
+}
+export function startInstaller() {
+  if (!isLiveSession()) throw new Error('Scorpion OS is already installed on this computer.');
+  detach('scorpion-install');
+  return 'The installer is opening.';
+}
+
+// ---------- quick settings (the rail's panel) ----------
+// wpctl status: the Audio block's "Sinks:" lines, like
+// " │  *   46. Built-in Audio Analog Stereo [vol: 0.40]" (* = the default).
+export function parseSinks(out) {
+  const sinks = [];
+  let audio = false, inSinks = false;
+  for (const raw of String(out).split('\n')) {
+    const line = raw.replace(/[│├└─]/g, ' ');
+    if (/^\S/.test(raw)) { audio = /^Audio\b/.test(raw.trim()); inSinks = false; continue; }
+    if (!audio) continue;
+    if (/^\s*\w[\w ]*:\s*$/.test(line)) { inSinks = /^\s*Sinks:\s*$/.test(line); continue; }
+    if (!inSinks) continue;
+    const m = /^\s*(\*)?\s*(\d+)\.\s+(.+?)\s*(?:\[vol:[^\]]*\])?\s*$/.exec(line);
+    if (m) sinks.push({ id: Number(m[2]), name: m[3], active: Boolean(m[1]) });
+  }
+  return sinks;
+}
+// bluetoothctl show: is there an adapter, and is it on?
+export function parseBtShow(out) {
+  const s = String(out);
+  if (!/^Controller /m.test(s)) return { adapter: false, on: false };
+  return { adapter: true, on: /Powered:\s*yes/i.test(s) };
+}
+// nmcli -t -f TYPE,STATE,CONNECTION device: Wi-Fi hardware, and what's connected.
+export function parseNmDevices(out) {
+  const devs = String(out).split('\n').filter(Boolean).map(nmFields);
+  const up = (type) => devs.find(([t, state]) => t === type && state === 'connected')?.[2] || null;
+  return { wifiAdapter: devs.some(([t]) => t === 'wifi'), wifi: up('wifi'), wired: up('ethernet') };
+}
+// upower -i: "time to empty: 3.2 hours" → "3 h 12 min".
+export function parseBatteryTime(out) {
+  const m = /time to (empty|full):\s*([\d.]+)\s*(hours?|minutes?)/i.exec(String(out));
+  if (!m) return null;
+  const mins = Math.round(Number(m[2]) * (/^hour/i.test(m[3]) ? 60 : 1));
+  const text = mins >= 60 ? `${Math.floor(mins / 60)} h${mins % 60 ? ` ${mins % 60} min` : ''}` : `${mins} min`;
+  return m[1].toLowerCase() === 'empty' ? `${text} left` : `Full in ${text}`;
+}
+// nmcli -t -f NAME,TYPE connection show: the saved Wi-Fi networks' names.
+export const parseSavedWifi = (out) => String(out).split('\n').map(nmFields).filter(([, type]) => /wireless/.test(type || '')).map(([name]) => name);
+const POWER_PROFILES = ['power-saver', 'balanced', 'performance'];
+
+async function bluetoothState() {
+  const show = parseBtShow(await run('bluetoothctl', ['show']).catch(() => ''));
+  if (!show.adapter) return show;
+  const list = (args) => run('bluetoothctl', args).then(parseBtDevices, () => []);
+  const [paired, connected] = await Promise.all([list(['devices', 'Paired']), list(['devices', 'Connected'])]);
+  const on = new Set(connected.map((d) => d.mac));
+  return { ...show, devices: paired.map((d) => ({ ...d, paired: true, connected: on.has(d.mac) })) };
+}
+
+// Everything the panel shows. Scanning (Wi-Fi networks, new Bluetooth
+// devices) takes seconds, so it happens only when asked.
+export async function quickState({ wifiScan = false, btScan = false } = {}) {
+  const [devices, radio, bt, volume, sinks, bright, upower, profile] = await Promise.all([
+    run('nmcli', ['-t', '-f', 'TYPE,STATE,CONNECTION', 'device']).then(parseNmDevices, () => ({ wifiAdapter: false, wifi: null, wired: null })),
+    run('nmcli', ['-t', '-f', 'WIFI', 'radio']).catch(() => ''),
+    btScan ? bluetoothList({ scan: true }).then((devices) => ({ adapter: true, on: true, devices }), () => bluetoothState()) : bluetoothState(),
+    levelOf('volume'),
+    run('wpctl', ['status']).then(parseSinks, () => []),
+    levelOf('brightness'),
+    run('sh', ['-c', 'upower -i "$(upower -e | grep -m1 BAT)"']).catch(() => ''),
+    run('powerprofilesctl', ['get']).catch(() => null),
+  ]);
+  const wifiOn = /enabled/i.test(radio);
+  return {
+    supported: true,
+    wifi: { adapter: devices.wifiAdapter, on: wifiOn, connected: devices.wifi, wired: devices.wired, networks: wifiScan && devices.wifiAdapter && wifiOn ? await wifiList().catch(() => []) : null,
+      // Saved networks connect without asking for the password again.
+      known: wifiScan ? await run('nmcli', ['-t', '-f', 'NAME,TYPE', 'connection', 'show']).then(parseSavedWifi, () => []) : [] },
+    bluetooth: bt,
+    sound: { level: volume?.level ?? null, muted: Boolean(volume?.muted), outputs: sinks },
+    brightness: bright,
+    battery: { ...readBattery(), time: parseBatteryTime(upower), profile: POWER_PROFILES.includes(profile) ? profile : null },
+  };
+}
+
+// One change from the panel; the panel then shows quickState again.
+export async function quickAction(action, value = {}) {
+  switch (action) {
+    case 'wifi': return wifiRadio(Boolean(value.on));
+    case 'wifiConnect': return wifiConnect(value.ssid, value.password);
+    case 'wifiDisconnect': return wifiDisconnect();
+    case 'bluetooth': return bluetoothPower(Boolean(value.on));
+    case 'btConnect': return bluetoothConnect(String(value.mac));
+    case 'btDisconnect': return bluetoothDisconnect(String(value.mac));
+    case 'volume': { // moving the slider also unmutes
+      await run('wpctl', ['set-mute', SINK, '0']).catch(() => {});
+      return systemControl('set_volume', value.level);
+    }
+    case 'mute': return systemControl('mute');
+    case 'output': {
+      const id = Number(value.id);
+      if (!Number.isInteger(id)) throw new Error('Which output?');
+      await run('wpctl', ['set-default', String(id)]);
+      return 'Sound output changed.';
+    }
+    case 'brightness': return systemControl('brightness', value.level);
+    case 'profile': {
+      if (!POWER_PROFILES.includes(value.profile)) throw new Error('Unknown power mode');
+      await run('powerprofilesctl', ['set', value.profile]);
+      return 'Power mode changed.';
+    }
+    case 'settings': return openSettings(value.page || 'home');
+    default: throw new Error('Unknown quick setting');
+  }
 }

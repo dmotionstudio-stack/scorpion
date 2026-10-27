@@ -460,6 +460,7 @@ async function state() {
     schedules: scheduleView(),
     loginStart: loginStart(),
     fullMode,
+    live: process.platform === 'linux' && winctl.isLiveSession(), // Scorpion OS from the ISO or a USB stick
     taskbarInset: taskbarInset(),
     perf: currentPerf(),
     supportedDocs: rag.SUPPORTED_EXTENSIONS,
@@ -1314,11 +1315,12 @@ async function runIntent(id) {
 // An entry of the shared list (src/shared/intents.js) that the main process
 // runs: a system settings page, a safe system control, or a wheel intent.
 async function runNamedIntent(id) {
-  const it = findIntent(id, process.platform);
+  const it = findIntent(id, process.platform, { live: process.platform === 'linux' && winctl.isLiveSession() });
   const kind = it?.run?.main;
   if (kind === 'settings') return winctl.openSettings(it.run.arg);
   if (kind === 'control' && MAIN_CONTROLS.includes(it.run.arg)) return winctl.systemControl(it.run.arg);
   if (kind === 'wheel') return runIntent(it.run.arg);
+  if (kind === 'install') return winctl.startInstaller();
   throw new Error(`"${id}" isn't something Scorpion can do here.`);
 }
 // When each open window was last in front (the taskbar asks every 1.5 s), for
@@ -1803,7 +1805,17 @@ function registerIpc() {
     return shell.openExternal(RAIL_LINKS[what]);
   });
   h('shell:window', ({ hwnd, action }) => winctl.windowByHandle(String(hwnd), action));
-  h('shell:tray', () => desktop.trayStatus());
+  // live: running from the ISO or a USB stick (the rail then offers Install).
+  h('shell:tray', async () => ({ ...(await desktop.trayStatus()), live: process.platform === 'linux' && winctl.isLiveSession() }));
+  h('shell:install', () => winctl.startInstaller());
+  // Scorpion OS's quick settings (quick.html, from the rail's network,
+  // battery and volume): one change, then everything as it is now.
+  h('shell:quick', async ({ action, value, wifiScan, btScan } = {}) => {
+    if (process.platform !== 'linux') return { supported: false };
+    let result = null, error = null;
+    if (action) { try { result = await winctl.quickAction(String(action), value || {}); } catch (err) { error = err.message; } }
+    return { ...(await winctl.quickState({ wifiScan: Boolean(wifiScan), btScan: Boolean(btScan) })), result, error };
+  });
   h('shell:show', (view) => { showView(view || 'home'); return true; });
   // The keyboard's volume keys (each step is 2%).
   h('shell:volume', async (action) => { const r = await winctl.volumeStep(action); showOsd('volume'); return r; });

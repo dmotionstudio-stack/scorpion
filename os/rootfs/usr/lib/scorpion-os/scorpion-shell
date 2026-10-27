@@ -9,6 +9,7 @@ pages in WebKitGTK:
   edge.html    the rail down the right edge (reserves its 76 pixels)
   summon.html  the summon dot (bottom left), opening into the intent wheel
   notify.html  notification cards and the list, beside the rail
+  quick.html   quick settings (Wi-Fi, Bluetooth, sound, brightness, battery)
   osd.html     the on-screen volume and brightness
 
 The pages talk to Scorpion over its local shell API (src/main/shell-api.js;
@@ -43,6 +44,9 @@ from gi.repository import Gdk, Gio, GLib, Gtk, GtkLayerShell, WebKit2  # noqa: E
 RAIL = 76
 DOT = 88
 NOTIFY_WIDTH = 380
+QUICK_WIDTH = 360
+# The panels that open beside the rail, and their widths.
+BESIDE_RAIL = {"notify": NOTIFY_WIDTH, "quick": QUICK_WIDTH}
 INFO = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "scorpion-shell.json")
 E = GtkLayerShell.Edge
 
@@ -313,10 +317,11 @@ class Host:
         self.panels["edge"] = Panel(self, "edge.html", layer=overlay, anchors={E.RIGHT, E.TOP, E.BOTTOM}, width=RAIL, height=-1, exclusive=RAIL)
         self.panels["summon"] = Panel(self, "summon.html", layer=overlay, anchors={E.LEFT, E.BOTTOM}, width=DOT, height=DOT, margins={E.LEFT: 8, E.BOTTOM: 8})
         self.panels["notify"] = Panel(self, "notify.html", layer=overlay, anchors={E.TOP, E.RIGHT}, width=NOTIFY_WIDTH, height=1, margins={E.TOP: 8, E.RIGHT: RAIL + 8})
+        self.panels["quick"] = Panel(self, "quick.html", layer=overlay, anchors={E.TOP, E.RIGHT}, width=QUICK_WIDTH, height=1, margins={E.TOP: 8, E.RIGHT: RAIL + 8})
         self.panels["osd"] = Panel(self, "osd.html", layer=overlay, anchors={E.BOTTOM}, width=340, height=90, margins={E.BOTTOM: 90})
         self.panels["edge"].show_all()
         self.panels["summon"].show_all()
-        for name in ("notify", "osd"):
+        for name in ("notify", "quick", "osd"):
             self.panels[name].show_all()
             self.panels[name].hide()
         self.say_ready()
@@ -395,17 +400,22 @@ class Host:
             self.wheel(bool(msg.get("open")))
         elif kind == "menu":
             self.menu(panel, msg)
-        elif kind == "panel" and msg.get("name") == "notify":
-            p = self.panels["notify"]
-            p.js("window.scorpionPanel && window.scorpionPanel.toggle()")
+        elif kind == "panel" and msg.get("name") in BESIDE_RAIL:
+            # One panel beside the rail at a time: the other one closes.
+            name = msg["name"]
+            for other in BESIDE_RAIL:
+                if other != name:
+                    self.panels[other].js("window.scorpionPanel && window.scorpionPanel.close()")
+            self.panels[name].js(f"window.scorpionPanel && window.scorpionPanel.toggle({json.dumps(msg.get('section'))})")
         elif kind == "size":
             p = self.panels.get(msg.get("panel"))
             if not p:
                 return
-            if msg.get("panel") == "notify":
+            width = BESIDE_RAIL.get(msg.get("panel"))
+            if width:
                 h = max(1, min(int(msg.get("height") or 1), self.get_screen_height() - 16))
-                p.set_size_request(NOTIFY_WIDTH, h)
-                p.resize(NOTIFY_WIDTH, h)
+                p.set_size_request(width, h)
+                p.resize(width, h)
                 GtkLayerShell.set_keyboard_mode(p, GtkLayerShell.KeyboardMode.ON_DEMAND if msg.get("visible") else GtkLayerShell.KeyboardMode.NONE)
             if msg.get("visible"):
                 p.show_all()

@@ -57,6 +57,7 @@ function tick() {
 
 async function refreshTray() {
   const t = await api.shellTray().catch(() => ({}));
+  $('#eg-install').hidden = !t.live;
   $('#eg-net-label').textContent = t.network ? 'Connected' : 'Offline';
   $('#eg-net').title = t.network ? `Connected: ${t.network}` : 'Not connected';
   $('#eg-net').classList.toggle('off', !t.network);
@@ -70,9 +71,13 @@ async function refreshTray() {
   }
 }
 
+// Scorpion OS (the native shell host): the network and battery open the
+// quick settings panel beside the rail (quick.html), the bell the
+// notification list (notify.html).
+const quick = (section) => api.host({ type: 'panel', name: 'quick', section });
 for (const b of document.querySelectorAll('[data-glance]')) b.addEventListener('click', () => {
-  // In the native shell host the bell opens Scorpion's own notification list.
   if (b.dataset.glance === 'notifications' && window.scorpionHost) { api.host({ type: 'panel', name: 'notify', toggle: true }); api.notificationAct({ action: 'read' }).catch(() => {}); return; }
+  if ((b.dataset.glance === 'network' || b.dataset.glance === 'battery') && window.scorpionHost) { quick(b.dataset.glance); return; }
   api.shellGlance(b.dataset.glance).catch(() => {});
 });
 // The bell's count of unread notifications (the native shell host is the notification server).
@@ -80,7 +85,9 @@ const setBadge = (s) => { const n = s?.unread || 0; $('#eg-badge').hidden = !n; 
 if (api.notifications) { api.notifications().then(setBadge).catch(() => {}); api.onNotificationsChanged?.(setBadge); }
 $('#eg-clock').addEventListener('click', () => api.shellMenu({ kind: 'clock' }));
 $('#eg-power').addEventListener('click', () => api.shellMenu({ kind: 'power' }));
-$('#eg-volume').addEventListener('click', () => api.shellVolume('mute'));
+$('#eg-volume').addEventListener('click', () => (window.scorpionHost ? quick('sound') : api.shellVolume('mute')));
+$('#eg-install').addEventListener('click', () => api.shellInstall().catch(() => {}));
+if (window.scorpionHost) $('#eg-volume').title = 'Sound: click for quick settings, scroll to change';
 $('#eg-volume').addEventListener('wheel', (e) => { e.preventDefault(); api.shellVolume(e.deltaY < 0 ? 'up' : 'down'); }, { passive: false });
 
 // A window: to the front, or (if it is in front) minimized, like the Windows taskbar.

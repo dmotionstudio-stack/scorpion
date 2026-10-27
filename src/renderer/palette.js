@@ -11,9 +11,10 @@ const MAX_SHOWN = 12;
 const readRecent = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; } };
 const keepRecent = (id) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...readRecent().filter((r) => r !== id)].slice(0, 5))); } catch { /* not kept */ } };
 
-// ctx: { $, esc, api, toast, errText, nav, ask, ui: { newChat, talk, sidebar, welcome } }
-export function initPalette({ $, esc, api, toast, errText, nav, ask, ui }) {
-  const list = intentsFor(PLATFORM);
+// ctx: { $, esc, api, toast, errText, nav, ask, ui: { newChat, talk, sidebar, welcome }, live }
+// live(): Scorpion OS's live session (offers Install).
+export function initPalette({ $, esc, api, toast, errText, nav, ask, ui, live = () => false }) {
+  let list = intentsFor(PLATFORM);
   const P = { open: false, shown: [], sel: 0, query: '', back: null };
 
   const root = document.createElement('div');
@@ -53,6 +54,7 @@ export function initPalette({ $, esc, api, toast, errText, nav, ask, ui }) {
   }
 
   function open(query = '') {
+    list = intentsFor(PLATFORM, { live: live() });
     if (!P.open) P.back = document.activeElement; // focus goes back there on close
     P.open = true;
     P.sel = 0;

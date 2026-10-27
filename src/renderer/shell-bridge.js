@@ -13,7 +13,7 @@
     state: 'app:state', shellPinned: 'shell:pinned', shellWindows: 'shell:windows', shellWindow: 'shell:window',
     shellTray: 'shell:tray', shellLaunch: 'shell:launch', shellVolume: 'shell:volume', shellMenu: 'shell:menu',
     shellGlance: 'shell:glance', shellRecent: 'shell:recent', shellIntent: 'shell:intent', shellIntents: 'shell:intents',
-    shellWheel: 'shell:wheel', shellPalette: 'shell:palette', constPreview: 'const:preview', notifications: 'shell:notifications', notificationAct: 'shell:notificationAct',
+    shellWheel: 'shell:wheel', shellPalette: 'shell:palette', shellQuick: 'shell:quick', shellInstall: 'shell:install', constPreview: 'const:preview', notifications: 'shell:notifications', notificationAct: 'shell:notificationAct',
   };
   const EVENTS = {
     onSettingsChanged: 'settings:changed', onPerfChanged: 'perf:changed', onWheelOpen: 'wheel:open', onWheelClose: 'wheel:close',

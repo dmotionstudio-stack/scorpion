@@ -52,6 +52,9 @@ contextBridge.exposeInMainWorld('scorpion', {
   // The command palette: opened from the wheel, and its system entries run (src/shared/intents.js).
   shellPalette: invoke('shell:palette'),
   intentRun: invoke('intent:run'),
+  // Scorpion OS: quick settings and, from the ISO, the installer.
+  shellQuick: invoke('shell:quick'),
+  shellInstall: invoke('shell:install'),
   shellGlance: invoke('shell:glance'),
   sysWifi: invoke('sys:wifi'),
   onWheelOpen: on('wheel:open'),

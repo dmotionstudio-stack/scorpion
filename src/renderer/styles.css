@@ -857,3 +857,10 @@ body.sidebar-hidden .main .page { padding-left: 56px; }
 .pal-side { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .pal-item.sel .pal-side { color: inherit; opacity: .75; }
 .pal-foot { padding: 8px 14px; border-top: 1px solid var(--border); }
+
+/* Full mode: a way out that can always be seen (top centre, over the orb and the welcome). */
+.full-exit { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 985; display: flex; align-items: center; gap: 7px;
+  padding: 6px 14px 6px 11px; border-radius: 999px; border: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 88%, transparent);
+  color: var(--text); font-size: 12.5px; cursor: pointer; opacity: .6; box-shadow: 0 4px 16px rgba(0, 0, 0, .35); transition: opacity .15s, border-color .15s; }
+.full-exit:hover, .full-exit:focus-visible { opacity: 1; border-color: var(--accent); }
+.full-exit svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

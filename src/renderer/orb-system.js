@@ -214,7 +214,7 @@ export function initOrbSystem(ctx) {
     const m = matchShortcut(text, items());
     if (!m) {
       // Anything else Scorpion does in one step ("open Wi-Fi settings", "lock the screen").
-      const it = ctx.runIntent && matchSpoken(text, intentsFor(PLATFORM));
+      const it = ctx.runIntent && matchSpoken(text, intentsFor(PLATFORM, { live: Boolean(S.live) }));
       if (!it) return false;
       $('#ix-you').textContent = text;
       caption(it.label);

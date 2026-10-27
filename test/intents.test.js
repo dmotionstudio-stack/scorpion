@@ -23,6 +23,7 @@ test('every entry is complete and points at something that exists', () => {
       if (!it.only) assert.ok(arg in linux.SETTINGS_PAGES, `Scorpion OS has no settings page "${arg}"`);
     } else if (main === 'control') assert.ok(MAIN_CONTROLS.includes(arg) && win.ACTIONS.includes(arg), arg);
     else if (main === 'wheel') assert.ok(WHEEL.some((w) => w.id === arg), `the wheel has no "${arg}"`);
+    else if (main === 'install') assert.ok(it.live && it.only === 'linux');
     else assert.fail(`${it.id} runs nothing`);
   }
 });

@@ -1790,7 +1790,7 @@ function wire() {
   };
   api.onNavView?.(onNav);
   palette = initPalette({
-    $, esc, api, toast, errText, nav: onNav,
+    $, esc, api, toast, errText, nav: onNav, live: () => Boolean(S.live),
     ask: (text) => { if (!IX.open) setView('chat'); sendMessage(text); },
     ui: {
       newChat: () => { if (IX.open && !orbSys.away) orbSys.leave(() => newThread()); else newThread(); },
@@ -2022,8 +2022,13 @@ function wire() {
   api.onPerfChanged?.(applyPerf);
   $('#full-at-start').onchange = async (e) => { S.settings = await api.updateSettings({ fullModeAtStart: e.target.checked }); };
   $('#full-now').onclick = () => api.setFullMode(true);
+  // Full mode always shows its way out (the keys are in the button's tip).
+  const showFullExit = () => $('#full-exit').classList.toggle('hidden', !S.fullMode);
+  $('#full-exit').onclick = () => api.setFullMode(false);
+  showFullExit();
   api.onFullMode?.((on) => {
     S.fullMode = on;
+    showFullExit();
     if (on) toast('Full screen. To leave: Ctrl+Esc, or press Esc twice. F11 brings it back.', 6000);
   });
   $('#login-start').onchange = async (e) => { S.loginStart = await api.setLoginStart(e.target.value); e.target.value = S.loginStart; $('#open-at-login').checked = S.loginStart !== 'off'; };
