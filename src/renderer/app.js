@@ -2026,6 +2026,9 @@ function wire() {
   const showFullExit = () => $('#full-exit').classList.toggle('hidden', !S.fullMode);
   $('#full-exit').onclick = () => api.setFullMode(false);
   showFullExit();
+  // Full mode can start before this page listens for the change (Scorpion
+  // OS's first start), so the main process is asked as well.
+  api.state().then((st) => { S.fullMode = Boolean(st.fullMode); showFullExit(); }).catch(() => {});
   api.onFullMode?.((on) => {
     S.fullMode = on;
     showFullExit();
