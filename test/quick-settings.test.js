@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSinks, parseBtShow, parseNmDevices, parseBatteryTime, parseLiveCmdline, parseSavedWifi } from '../src/main/linux-control.js';
+import { parseSinks, parseBtShow, parseNmDevices, parseBatteryTime, parseLiveCmdline, parseSavedWifi, parseBusString } from '../src/main/linux-control.js';
 import { wifiSub, btSub, batteryLine, bars, needsPassword } from '../src/renderer/quick-core.js';
 import { intentsFor, findIntent } from '../src/shared/intents.js';
 
@@ -55,6 +55,8 @@ test('Bluetooth, network devices, battery time, live session, saved networks', (
   assert.equal(parseLiveCmdline('BOOT_IMAGE=/casper/vmlinuz boot=casper quiet splash ---'), true);
   assert.equal(parseLiveCmdline('BOOT_IMAGE=/@/boot/vmlinuz root=UUID=1 ro rootflags=subvol=@ quiet'), false);
 
+  assert.equal(parseBusString('s "power-saver"\n'), 'power-saver');
+  assert.equal(parseBusString(''), null);
   assert.deepEqual(parseSavedWifi('Home:802-11-wireless\nWired connection 1:802-3-ethernet\nCafe\\:Guest:802-11-wireless'), ['Home', 'Cafe:Guest']);
 });
 

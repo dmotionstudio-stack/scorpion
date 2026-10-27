@@ -813,6 +813,12 @@ export function parseBatteryTime(out) {
 // nmcli -t -f NAME,TYPE connection show: the saved Wi-Fi networks' names.
 export const parseSavedWifi = (out) => String(out).split('\n').map(nmFields).filter(([, type]) => /wireless/.test(type || '')).map(([name]) => name);
 const POWER_PROFILES = ['power-saver', 'balanced', 'performance'];
+// The power mode straight from power-profiles-daemon over D-Bus
+// (powerprofilesctl is a Python program and takes seconds to start).
+const PPD = ['--system', 'net.hadess.PowerProfiles', '/net/hadess/PowerProfiles', 'net.hadess.PowerProfiles', 'ActiveProfile'];
+// busctl get-property: 's "balanced"'.
+export const parseBusString = (out) => /^s\s+"([^"]*)"/.exec(String(out).trim())?.[1] ?? null;
+const powerProfile = () => run('busctl', ['get-property', ...PPD], { timeout: 3000 }).then(parseBusString, () => null);
 
 // Without an adapter (or its service) bluetoothctl waits for ever, so the
 // kernel is asked first, and bluetoothctl gets a few seconds at most.
@@ -838,7 +844,7 @@ export async function quickState({ wifiScan = false, btScan = false } = {}) {
     run('wpctl', ['status']).then(parseSinks, () => []),
     levelOf('brightness'),
     run('sh', ['-c', 'upower -i "$(upower -e | grep -m1 BAT)"']).catch(() => ''),
-    run('powerprofilesctl', ['get']).catch(() => null),
+    powerProfile(),
   ]);
   const wifiOn = /enabled/i.test(radio);
   return {
@@ -876,7 +882,7 @@ export async function quickAction(action, value = {}) {
     case 'brightness': return systemControl('brightness', value.level);
     case 'profile': {
       if (!POWER_PROFILES.includes(value.profile)) throw new Error('Unknown power mode');
-      await run('powerprofilesctl', ['set', value.profile]);
+      await run('busctl', ['set-property', ...PPD, 's', value.profile]);
       return 'Power mode changed.';
     }
     case 'settings': return openSettings(value.page || 'home');

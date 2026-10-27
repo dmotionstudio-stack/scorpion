@@ -141,9 +141,11 @@ async function open(section) {
   if (Date.now() - Q.closedAt < 400) return; // the click on the rail that closed it
   Q.open = true;
   $('#qs').hidden = false;
-  say('');
-  fit();
+  // Shown at once: with how things were last time, or "Loading…" the first
+  // time, then brought up to date.
+  if (Q.state) { say(''); render(); } else say('Loading…');
   await call({}, { quiet: true });
+  if ($('#qs-msg').textContent === 'Loading…') say('');
   if (section === 'network' && Q.state?.wifi?.adapter) { Q.expanded = null; expand('wifi'); }
   clearInterval(Q.timer);
   Q.timer = setInterval(() => { if (!Q.scanning.wifi && !Q.scanning.bt && !Q.joining) call({}, { quiet: true }); }, 5000);
