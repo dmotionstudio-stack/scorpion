@@ -220,9 +220,10 @@ $('#qs-mute').addEventListener('click', () => act('mute'));
 $('#qs-output').addEventListener('change', (e) => act('output', { id: Number(e.target.value) }));
 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
-// Clicking elsewhere closes it, once it has had the keyboard (a layer panel
-// only gets it when clicked).
-addEventListener('focus', () => { Q.focused = true; });
+// Clicking elsewhere closes it once it has been used (the compositor may hand
+// a new panel the keyboard and take it straight back, which isn't a click
+// elsewhere).
+addEventListener('pointerdown', () => { Q.focused = true; }, true);
 addEventListener('blur', () => { if (Q.focused) close(); });
 
 // The host relays the rail's clicks (edge.js) as a toggle with a section.

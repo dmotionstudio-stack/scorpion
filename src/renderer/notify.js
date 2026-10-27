@@ -76,4 +76,7 @@ api.onNotificationsChanged(() => { if (listOpen) renderList(); });
 window.scorpionPanel = { toggle: () => toggleList(), close: () => toggleList(false) };
 api.state().then((st) => { if (st?.settings?.theme) document.documentElement.dataset.theme = st.settings.theme; }).catch(() => {});
 api.onSettingsChanged((s) => { if (s?.theme) document.documentElement.dataset.theme = s.theme; });
+// The panel is only as tall as its content, so "vh" would mean that height:
+// the list's limit comes from the screen instead.
+document.documentElement.style.setProperty('--screen-h', `${screen.availHeight || 900}px`);
 fit();

@@ -814,10 +814,14 @@ export function parseBatteryTime(out) {
 export const parseSavedWifi = (out) => String(out).split('\n').map(nmFields).filter(([, type]) => /wireless/.test(type || '')).map(([name]) => name);
 const POWER_PROFILES = ['power-saver', 'balanced', 'performance'];
 
+// Without an adapter (or its service) bluetoothctl waits for ever, so the
+// kernel is asked first, and bluetoothctl gets a few seconds at most.
+const hasBtAdapter = () => { try { return fs.readdirSync('/sys/class/bluetooth').length > 0; } catch { return false; } };
 async function bluetoothState() {
-  const show = parseBtShow(await run('bluetoothctl', ['show']).catch(() => ''));
+  if (!hasBtAdapter()) return { adapter: false, on: false };
+  const show = parseBtShow(await run('bluetoothctl', ['show'], { timeout: 4000 }).catch(() => ''));
   if (!show.adapter) return show;
-  const list = (args) => run('bluetoothctl', args).then(parseBtDevices, () => []);
+  const list = (args) => run('bluetoothctl', args, { timeout: 4000 }).then(parseBtDevices, () => []);
   const [paired, connected] = await Promise.all([list(['devices', 'Paired']), list(['devices', 'Connected'])]);
   const on = new Set(connected.map((d) => d.mac));
   return { ...show, devices: paired.map((d) => ({ ...d, paired: true, connected: on.has(d.mac) })) };
@@ -829,7 +833,7 @@ export async function quickState({ wifiScan = false, btScan = false } = {}) {
   const [devices, radio, bt, volume, sinks, bright, upower, profile] = await Promise.all([
     run('nmcli', ['-t', '-f', 'TYPE,STATE,CONNECTION', 'device']).then(parseNmDevices, () => ({ wifiAdapter: false, wifi: null, wired: null })),
     run('nmcli', ['-t', '-f', 'WIFI', 'radio']).catch(() => ''),
-    btScan ? bluetoothList({ scan: true }).then((devices) => ({ adapter: true, on: true, devices }), () => bluetoothState()) : bluetoothState(),
+    btScan && hasBtAdapter() ? bluetoothList({ scan: true }).then((devices) => ({ adapter: true, on: true, devices }), () => bluetoothState()) : bluetoothState(),
     levelOf('volume'),
     run('wpctl', ['status']).then(parseSinks, () => []),
     levelOf('brightness'),

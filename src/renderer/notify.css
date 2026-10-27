@@ -10,7 +10,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .nt-list { margin-bottom: 8px; padding: 10px; border-radius: 16px; background: var(--shell-glass); border: 1px solid var(--shell-line); }
 .nt-head { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px 10px; font-weight: 600; }
 .nt-clear { color: var(--accent); font-size: 12px; }
-.nt-items { max-height: 70vh; overflow-y: auto; }
+.nt-items { max-height: calc(var(--screen-h, 900px) * .7); overflow-y: auto; }
 .nt-empty { color: var(--dim); text-align: center; padding: 18px 0; }
 .nt-card { position: relative; display: flex; gap: 10px; padding: 12px 34px 12px 12px; border-radius: 14px; cursor: pointer;
   background: linear-gradient(160deg, var(--shell-glass-2), var(--shell-glass-3)); border: 1px solid var(--shell-line);
