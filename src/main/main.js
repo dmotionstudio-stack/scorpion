@@ -267,6 +267,9 @@ function createWindow() {
     const now = Date.now();
     if (now - lastEsc < 450) { lastEsc = 0; setFullMode(false); } else lastEsc = now;
   });
+  // The window manager can end full screen itself (Scorpion OS, when another
+  // window takes focus): then full mode is over too.
+  win.on('leave-full-screen', () => { if (fullMode) setFullMode(false); });
   win.on('focus', () => {
     if (!fullMode) return;
     win.setAlwaysOnTop(true, 'screen-saver');
@@ -1638,7 +1641,7 @@ function registerIpc() {
     return Boolean(win?.isFullScreen());
   });
   h('window:fullMode', (on) => setFullMode(on));
-  h('window:isFullMode', () => fullMode);
+  h('window:isFullMode', () => fullMode && Boolean(win?.isFullScreen()));
   h('voice:micAccess', async () => {
     if (process.platform !== 'darwin') return true;
     if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true;
