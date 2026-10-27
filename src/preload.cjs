@@ -184,6 +184,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   installLanguageVoice: invoke('voice:installLanguage'),
   setFullScreen: invoke('window:fullscreen'),
   setFullMode: invoke('window:fullMode'),
+  isFullMode: invoke('window:isFullMode'),
   onFullMode: on('fullmode:changed'),
   onVoiceDownload: on('voice:download'),
 

@@ -1634,6 +1634,7 @@ function registerIpc() {
     return Boolean(win?.isFullScreen());
   });
   h('window:fullMode', (on) => setFullMode(on));
+  h('window:isFullMode', () => fullMode);
   h('voice:micAccess', async () => {
     if (process.platform !== 'darwin') return true;
     if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true;
