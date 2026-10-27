@@ -34,7 +34,8 @@ function showPop(n) {
   if (listOpen) { renderList(); return; }
   $('#nt-pops').insertAdjacentHTML('afterbegin', card(n));
   clearTimeout(pops.get(n.id));
-  pops.set(n.id, n.urgency >= 2 ? null : setTimeout(() => dropPop(n.id), 6000));
+  // A card that asks something (buttons) stays longer; urgent ones until closed.
+  pops.set(n.id, n.urgency >= 2 ? null : setTimeout(() => dropPop(n.id), n.actions.some((a, i) => i % 2 === 0 && a !== 'default') ? 20000 : 6000));
   while ($('#nt-pops').children.length > 3) dropPop(Number($('#nt-pops').lastElementChild.dataset.id));
   fit();
 }
