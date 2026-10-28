@@ -82,11 +82,14 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
         <div class="apps-store" id="apps-store" hidden></div>
         <div class="apps-body"><div class="apps-grid" id="apps-grid"></div><nav class="apps-letters" id="apps-letters" aria-label="Jump to a letter"></nav></div>`;
       // Scorpion OS: apps from Flathub too.
-      api.sysApps?.({}).then((r) => {
+      api.sysApps?.({ action: 'prepare' }).then((r) => {
         A.store = Boolean(r?.supported);
+        A.live = Boolean(r?.live);
         if (!A.store) return;
         $('#apps-search').placeholder = 'Search your apps, or apps to get (Spotify, GIMP, VLC…)';
-        $('.apps-hint').textContent = 'Click to open. Right-click to pin to the taskbar. To add an app, search for it and choose Search Flathub.';
+        $('.apps-hint').textContent = A.live
+          ? 'Click to open. To add apps, install Scorpion OS first (the Install button on the right): apps added now would be gone at the next restart.'
+          : 'Click to open. Right-click to pin to the taskbar. To add an app, search for it and choose Search Flathub.';
         renderStore();
       }).catch(() => {});
       $('#apps-store').addEventListener('click', async (e) => {

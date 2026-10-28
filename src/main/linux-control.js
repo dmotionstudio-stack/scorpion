@@ -686,13 +686,18 @@ export async function installApp({ source, id }) {
 // without a password). Flathub's catalog is fetched first when it's missing
 // or a day old (a fresh system has none, and search finds nothing without it).
 const appstreamDir = () => path.join(os.homedir(), '.local/share/flatpak/appstream/flathub');
-async function freshCatalog() {
+let fetching = null; // one download at a time (opening Apps and a search share it)
+function freshCatalog() {
   let age = Infinity;
   try { age = Date.now() - fs.statSync(appstreamDir()).mtimeMs; } catch { /* none yet */ }
-  if (age < 24 * 3600_000) return;
-  await run('flatpak', ['remote-add', '--user', '--if-not-exists', 'flathub', 'https://dl.flathub.org/repo/flathub.flatpakrepo']).catch(() => {});
-  await run('flatpak', ['update', '--user', '--appstream', 'flathub'], { timeout: 5 * 60_000 });
+  if (age < 24 * 3600_000) return Promise.resolve();
+  fetching ??= (async () => {
+    await run('flatpak', ['remote-add', '--user', '--if-not-exists', 'flathub', 'https://dl.flathub.org/repo/flathub.flatpakrepo']).catch(() => {});
+    await run('flatpak', ['update', '--user', '--appstream', 'flathub'], { timeout: 5 * 60_000 });
+  })().finally(() => { fetching = null; });
+  return fetching;
 }
+export const prepareCatalog = () => (hasFlatpak().then((ok) => ok && freshCatalog()));
 export async function flathubSearch(query) {
   const q = String(query || '').trim();
   if (!q) return [];

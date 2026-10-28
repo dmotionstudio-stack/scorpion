@@ -1858,9 +1858,18 @@ function registerIpc() {
   // Scorpion OS: Apps → Get more apps (Flathub).
   h('sys:apps', async ({ action, query, id } = {}) => {
     if (process.platform !== 'linux') return { supported: false, results: [] };
-    if (action === 'install') { await winctl.installApp({ source: 'flathub', id: String(id) }); return { supported: true, installed: id }; }
+    const live = winctl.isLiveSession();
+    if (action === 'install') {
+      // The live system keeps everything in memory: an app (and its runtime)
+      // would crowd out the AI model, and be gone at the next restart.
+      if (live) throw new Error('Apps added now would live in memory and be gone at the next restart. Install Scorpion OS first (the Install button on the right), then add apps.');
+      await winctl.installApp({ source: 'flathub', id: String(id) });
+      return { supported: true, installed: id };
+    }
+    // Opening Apps fetches Flathub's catalog in the background, so the first search is quick.
+    if (action === 'prepare') { winctl.prepareCatalog().catch(() => {}); return { supported: true, live }; }
     if (action === 'remove') { await winctl.removeApp({ source: 'flathub', id: String(id) }); return { supported: true, removed: id }; }
-    return { supported: true, results: await winctl.flathubSearch(query) };
+    return { supported: true, live, results: await winctl.flathubSearch(query) };
   });
   // Accessibility (the welcome, Settings → General): bigger text, a screen
   // reader, an on-screen keyboard. Remembered in settings.access.
