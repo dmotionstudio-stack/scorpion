@@ -1346,7 +1346,11 @@ async function applyAccess(a = accessSettings(), only = ACCESS_FEATURES) {
     if (a.screenReader) app.setAccessibilitySupportEnabled(true);
     await winctl.screenReader(a.screenReader);
   }
-  if (only.includes('keyboard')) await winctl.onScreenKeyboard(a.keyboard);
+  if (only.includes('keyboard')) {
+    await winctl.onScreenKeyboard(a.keyboard);
+    // Full screen would cover the keyboard (Scorpion OS draws it at the bottom).
+    if (a.keyboard && fullMode) setFullMode(false);
+  }
 }
 // A window's native handle as text: 8 bytes on Windows (HWND), 4 on Linux (an X11 id).
 const nativeId = (bw) => { const b = bw.getNativeWindowHandle(); return b.length >= 8 ? b.readBigInt64LE().toString() : String(b.readUInt32LE()); };
@@ -2225,7 +2229,7 @@ app.whenReady().then(async () => {
   ensureTrayHint();
   if (startHidden && !keepsRunning()) showWindow();
   // Full mode from the start (once the window is on screen, so nothing flashes).
-  if (!startHidden && store.getSettings().fullModeAtStart !== false) { if (win.isVisible()) setFullMode(true); else win.once('show', () => setFullMode(true)); }
+  if (!startHidden && store.getSettings().fullModeAtStart !== false && !accessSettings().keyboard) { if (win.isVisible()) setFullMode(true); else win.once('show', () => setFullMode(true)); }
   // Signed in with "Open the orb": Scorpion fills the screen with the orb.
   if (startOrb && !asDesktop) { win.maximize(); showView('orb', { signin: true }); }
   app.on('activate', showWindow);

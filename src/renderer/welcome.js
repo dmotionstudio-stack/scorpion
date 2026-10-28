@@ -36,6 +36,7 @@ export function initWelcome(ctx) {
   let box = null;
   let running = false;
   let answer = null; // resolves the step waiting for a choice
+  let early = null; // a click on this card while Scorpion was still talking
   let lesson = null; // the hand lesson waiting for a gesture
 
   const talks = () => Boolean(S.voice?.installed) && S.settings.voiceSpeak !== false;
@@ -43,7 +44,7 @@ export function initWelcome(ctx) {
   async function say(text) {
     if (!talks()) return;
     speaker.say(text);
-    for (let i = 0; i < 120 && speaker.busy; i++) await sleep(200);
+    for (let i = 0; i < 120 && speaker.busy && early === null; i++) await sleep(200);
   }
   // One spoken answer, when Scorpion can hear (no microphone: clicks only).
   let hasMic = null;
@@ -59,6 +60,7 @@ export function initWelcome(ctx) {
   }
 
   function card({ title, body = '', choices = [], extra = '' }) {
+    early = null;
     box.querySelector('.wl-card').innerHTML = `
       <div class="wl-title">${esc(title)}</div>
       ${body ? `<div class="wl-body">${body}</div>` : ''}
@@ -68,6 +70,7 @@ export function initWelcome(ctx) {
   }
   // Waits for a click or a spoken answer; resolves with the choice's value.
   function choose(spokenMap = {}) {
+    if (early !== null) { const c = early; early = null; return Promise.resolve(spokenMap[c] ?? c); }
     return new Promise((resolve) => {
       answer = (c) => { answer = null; resolve(spokenMap[c] ?? c); };
       hear();
@@ -253,7 +256,10 @@ export function initWelcome(ctx) {
     document.body.appendChild(box);
     box.addEventListener('click', (e) => {
       const b = e.target.closest('[data-choice], [data-ssid]');
-      if (b && answer) answer(b.dataset.choice ?? b.dataset.ssid);
+      if (!b) return;
+      // While Scorpion is still saying the card, a click stops it and counts.
+      if (answer) answer(b.dataset.choice ?? b.dataset.ssid);
+      else { early = b.dataset.choice ?? b.dataset.ssid; speaker.stop?.(); }
     });
     try {
       for (const step of STEPS) {
