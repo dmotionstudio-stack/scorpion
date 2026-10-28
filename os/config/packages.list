@@ -145,3 +145,7 @@ cryptsetup
 # Qt apps (the installer is Qt 5) on Wayland
 qtwayland5
 qt6-wayland
+
+# --- accessibility (the welcome and Settings → General): screen reader and on-screen keyboard ---
+orca
+wvkbd

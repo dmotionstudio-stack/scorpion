@@ -197,7 +197,9 @@ function renderWait(st) {
   document.querySelector('.wait-progress').classList.toggle('indeterminate', !reading);
   $('#wait-step').textContent = reading ? `Reading the model into memory… ${Math.round(p * 100)}%` : p === null ? 'Starting…' : 'Preparing the model to chat…';
   $('#wait-hint').textContent = st.bytes > 3 * 1024 ** 3 ? `This is a large model (${gb(st.bytes)}), so it can take a minute or more.` : '';
-  if (!S.wait.hidden) box.classList.remove('hidden');
+  // The first start (the welcome) carries on while the model loads; the
+  // welcome says it's getting ready. Afterwards the wait shows as usual.
+  if (!S.wait.hidden && S.settings.welcomeDone) box.classList.remove('hidden');
 }
 
 // ---------- messages ----------
@@ -1025,6 +1027,10 @@ function stopGestures(error = '') {
   api.gesturesCamera(false);
   hands?.hideCursor();
   renderGestures();
+  // With gestures off, the camera's box goes away: a problem is shown for a
+  // few seconds (G or the Gestures button tries again), not left in the corner.
+  clearTimeout(G.errorTimer);
+  if (error) G.errorTimer = setTimeout(() => { if (!G.on && G.error === error) { G.error = ''; renderGestures(); } }, 8000);
 }
 
 // The G key, the orb's Gestures button, Off and the Settings switch: on or off,

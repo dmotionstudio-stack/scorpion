@@ -1,5 +1,5 @@
 // Settings → General, the part about how Scorpion looks and runs:
-// Performance (Full, Balanced, Light, and Light on battery), the orb's look,
+// Performance (Full, Balanced, Light, and Light on battery), accessibility, the orb's look,
 // the constellation map's options, its summon shortcut, and showing the
 // welcome again. Its own module (show the values, wire the controls), the
 // first part of Settings moved out of app.js.
@@ -23,6 +23,8 @@ export function initLookSettings({ $, api, S, setSetting, toast, IX, startWelcom
     if (document.activeElement !== $('#const-shortcut')) $('#const-shortcut').value = S.settings.constellationShortcut ?? 'Super+Space';
     const opts = constellationOptions(S.settings);
     for (const box of document.querySelectorAll('[data-const]')) box.checked = opts[box.dataset.const];
+    const access = S.settings.access || {};
+    for (const box of document.querySelectorAll('[data-access]')) box.checked = Boolean(access[box.dataset.access]);
   }
 
   $('#perf-level').onchange = (e) => setSetting({ performance: e.target.value });
@@ -39,6 +41,12 @@ export function initLookSettings({ $, api, S, setSetting, toast, IX, startWelcom
     box.onchange = async () => {
       S.settings = await api.updateSettings({ constellation: { ...constellationOptions(S.settings), [box.dataset.const]: box.checked } });
       IX.orb?.refreshSettings?.();
+    };
+  }
+  // Accessibility: each switch takes effect at once (main.js applyAccess).
+  for (const box of document.querySelectorAll('[data-access]')) {
+    box.onchange = async () => {
+      try { S.settings.access = await api.sysAccess({ feature: box.dataset.access, on: box.checked }); } catch (err) { box.checked = !box.checked; toast(err.message || String(err)); }
     };
   }
   $('#welcome-again').onclick = () => startWelcome();

@@ -58,6 +58,8 @@ const DEFAULT_SETTINGS = {
   performance: 'full', // 'full' | 'balanced' | 'light' (Settings → General → Performance)
   performanceOnBattery: false, // Light while running on battery
   welcomeDone: false, // the spoken first start was shown (welcome.js)
+  access: { bigText: false, screenReader: false, keyboard: false }, // accessibility (main.js applyAccess)
+  updatesAnnounced: '', // Scorpion OS: the set of updates last announced (updates.js), so each is said once
   handsAlwaysOn: true, // hand gestures on (camera; off while minimized); on Windows the hand is the mouse everywhere
   wakeWord: false, // saying "Scorpion" starts listening while the orb is open
 };

@@ -67,3 +67,16 @@ test('what Settings → This computer says', () => {
   assert.match(s.at, /Oct 26/);
   assert.equal(snapshotLabel({ id: '20261026-083040', date: '' }).at, '20261026-083040');
 });
+
+test('the settings keep what updates and accessibility store', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const store = await import('../src/main/store.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-store-'));
+  store.initStore(dir);
+  store.updateSettings({ updatesAnnounced: 'firefox=132', access: { bigText: true, screenReader: false, keyboard: false } });
+  assert.equal(store.getSettings().updatesAnnounced, 'firefox=132');
+  assert.equal(store.getSettings().access.bigText, true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

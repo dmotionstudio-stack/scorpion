@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('scorpion', {
   // Scorpion OS: updates and snapshots (Settings → This computer).
   sysUpdates: invoke('sys:updates'),
   sysSnapshots: invoke('sys:snapshots'),
+  sysApps: invoke('sys:apps'),
+  sysAccess: invoke('sys:access'),
   onSysUpdates: on('sys:updates'),
   shellGlance: invoke('shell:glance'),
   sysWifi: invoke('sys:wifi'),

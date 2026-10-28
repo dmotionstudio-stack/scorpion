@@ -513,3 +513,14 @@ export async function windowByHandle(hwnd, action) {
   if (action === 'close') return runPsKept(`${WINAPI} [ScorpionWindows]::PostMessage(${h}, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null`);
   throw new Error('Unknown window action');
 }
+
+// ---------- accessibility (the welcome and Settings → General) ----------
+// Windows' own Narrator and on-screen keyboard; bigger text is Scorpion's
+// zoom (Windows' text size is in Settings → Accessibility).
+export async function textScale() {}
+const toggleProgram = (exe, on) => new Promise((resolve) => {
+  if (on) { const c = spawn(exe, [], { detached: true, stdio: 'ignore' }); c.on('error', () => {}); c.unref(); resolve(); }
+  else execFile('taskkill.exe', ['/IM', exe, '/F'], { windowsHide: true }, () => resolve());
+});
+export const screenReader = (on) => toggleProgram('Narrator.exe', on);
+export const onScreenKeyboard = (on) => toggleProgram('osk.exe', on);

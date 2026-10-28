@@ -1333,6 +1333,21 @@ async function runNamedIntent(id) {
 // the wheel's recent windows.
 const lastUsed = new Map();
 let updates = null; // Scorpion OS's updates (updates.js)
+const ACCESS_FEATURES = ['bigText', 'screenReader', 'keyboard'];
+const accessSettings = () => ({ bigText: false, screenReader: false, keyboard: false, ...(store.getSettings().access || {}) });
+// Bigger text is Scorpion's zoom plus (Scorpion OS) the system's text size;
+// the screen reader and keyboard are the system's own.
+async function applyAccess(a = accessSettings(), only = ACCESS_FEATURES) {
+  if (only.includes('bigText')) {
+    for (const w of BrowserWindow.getAllWindows()) if (w === win) w.webContents.setZoomFactor(a.bigText ? 1.25 : 1);
+    await winctl.textScale(a.bigText ? 1.25 : 1);
+  }
+  if (only.includes('screenReader')) {
+    if (a.screenReader) app.setAccessibilitySupportEnabled(true);
+    await winctl.screenReader(a.screenReader);
+  }
+  if (only.includes('keyboard')) await winctl.onScreenKeyboard(a.keyboard);
+}
 // A window's native handle as text: 8 bytes on Windows (HWND), 4 on Linux (an X11 id).
 const nativeId = (bw) => { const b = bw.getNativeWindowHandle(); return b.length >= 8 ? b.readBigInt64LE().toString() : String(b.readUInt32LE()); };
 // Notifications the session received (shell:notifyIn), newest first.
@@ -1836,6 +1851,23 @@ function registerIpc() {
     if (action === 'install') { updates.install(); return updates.view(); } // progress comes as sys:updates events
     return updates.view();
   });
+  // Scorpion OS: Apps → Get more apps (Flathub).
+  h('sys:apps', async ({ action, query, id } = {}) => {
+    if (process.platform !== 'linux') return { supported: false, results: [] };
+    if (action === 'install') { await winctl.installApp({ source: 'flathub', id: String(id) }); return { supported: true, installed: id }; }
+    if (action === 'remove') { await winctl.removeApp({ source: 'flathub', id: String(id) }); return { supported: true, removed: id }; }
+    return { supported: true, results: await winctl.flathubSearch(query) };
+  });
+  // Accessibility (the welcome, Settings → General): bigger text, a screen
+  // reader, an on-screen keyboard. Remembered in settings.access.
+  h('sys:access', async ({ feature, on } = {}) => {
+    if (!ACCESS_FEATURES.includes(feature)) throw new Error('Unknown accessibility feature');
+    const access = { ...accessSettings(), [feature]: Boolean(on) };
+    store.updateSettings({ access });
+    await applyAccess(access, [feature]);
+    send('settings:changed', store.getSettings());
+    return access;
+  });
   h('sys:snapshots', async ({ action, id } = {}) => {
     if (process.platform !== 'linux' || !winctl.snapshotsAvailable()) return { supported: false, list: [] };
     if (action === 'undo') {
@@ -2179,6 +2211,9 @@ app.whenReady().then(async () => {
   if (asDesktop) await desktop.startShell('shell').catch((err) => { console.error(err); return winctl.startExplorer(); });
   else if (process.platform === 'win32' && store.getSettings().taskbarAlwaysOn !== false) desktop.startShell('bar').then(() => { desktop.raiseTaskbar(); sendTaskbarInset(); }).catch((err) => console.error(err));
   scheduler.startScheduler(runScheduled);
+  // Accessibility from last time: Scorpion's zoom everywhere; on Scorpion OS
+  // also the screen reader and keyboard (Windows starts its own).
+  win.webContents.once('did-finish-load', () => applyAccess(accessSettings(), process.platform === 'linux' ? ACCESS_FEATURES : ['bigText']).catch((err) => console.error('accessibility:', err.message)));
   if (process.platform === 'linux') {
     updates = createUpdates({ sys: winctl, send, getSettings: store.getSettings, updateSettings: store.updateSettings, onInstallAsked: () => showView('settings', { section: 'system' }) });
     updates.start();

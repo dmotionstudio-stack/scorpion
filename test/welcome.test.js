@@ -27,3 +27,12 @@ test('each hand lesson is completed by its gesture', () => {
   assert.equal(lesson.scroll({ scroll: -1 }), true);
   assert.equal(lesson.scroll({ pose: 'two' }), true);
 });
+
+test('the accessibility step understands its three switches', () => {
+  assert.equal(spokenChoice('Bigger text please'), 'bigText');
+  assert.equal(spokenChoice('make it bigger'), 'bigText');
+  assert.equal(spokenChoice('the screen reader'), 'screenReader');
+  assert.equal(spokenChoice('read the screen'), 'screenReader');
+  assert.equal(spokenChoice('a keyboard on the screen'), 'keyboard');
+  assert.equal(spokenChoice('next'), 'next');
+});

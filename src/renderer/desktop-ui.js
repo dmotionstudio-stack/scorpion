@@ -12,7 +12,7 @@ const KB = 1024;
 const size = (n) => (n == null ? '' : n < KB ? `${n} B` : n < KB ** 2 ? `${(n / KB).toFixed(0)} KB` : n < KB ** 3 ? `${(n / KB ** 2).toFixed(1)} MB` : `${(n / KB ** 3).toFixed(1)} GB`);
 
 export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
-  const A = { apps: [], icons: {}, query: '' };
+  const A = { apps: [], icons: {}, query: '', store: false, found: null, searching: '', installing: new Set(), storeError: '' };
   const F = { dir: null, parent: null, items: [], selected: new Set(), clip: null, hidden: false, renaming: null, history: [] };
 
   // ---------- Apps ----------
@@ -25,7 +25,33 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     A.icons[a.id] ? `<img class="app-icon" src="${esc(A.icons[a.id])}" alt="">` : `<span class="app-initial">${esc(a.name.slice(0, 1).toUpperCase())}</span>`
   }<span class="app-name">${esc(a.name)}</span></button>`;
 
+  // Get more apps (Scorpion OS): Flathub, searched when asked (it needs the
+  // internet and takes a few seconds), installed for this user.
+  function renderStore() {
+    const box = $('#apps-store');
+    if (!box) return;
+    const q = A.query.trim();
+    box.hidden = !A.store || !q;
+    if (box.hidden) return;
+    const rows = (A.found || []).map((a) => `<div class="store-app"><span class="app-initial">${esc(a.name.slice(0, 1).toUpperCase())}</span>
+        <div class="store-text"><b>${esc(a.name)}</b><span class="muted small">${esc(a.description)}</span></div>
+        ${a.installed ? '<span class="muted small">Installed</span>' : A.installing.has(a.id) ? '<button class="btn small" disabled>Installing…</button>' : `<button class="btn small primary" data-get="${esc(a.id)}">Install</button>`}</div>`).join('');
+    box.innerHTML = `<h2 class="apps-letter">Get more apps</h2>`
+      + (A.searching === q ? '<p class="muted small">Searching Flathub…</p>'
+        : A.storeError ? `<p class="muted small">${esc(A.storeError)}</p>`
+          : A.found && A.foundFor === q ? (rows || '<p class="muted small">Nothing on Flathub matches that.</p>')
+            : `<button class="btn small" id="store-search">Search Flathub for “${esc(q)}”</button>`);
+  }
+  async function searchStore() {
+    const q = A.query.trim();
+    if (!q) return;
+    A.searching = q; A.storeError = ''; renderStore();
+    try { A.found = (await api.sysApps({ action: 'find', query: q })).results; A.foundFor = q; } catch (err) { A.storeError = errText(err); }
+    A.searching = ''; renderStore();
+  }
+
   function renderApps() {
+    renderStore();
     const q = A.query.trim().toLowerCase();
     if (!A.apps.length) { $('#apps-grid').innerHTML = '<p class="muted">Loading your apps…</p>'; $('#apps-letters').innerHTML = ''; return; }
     if (q) {
@@ -53,9 +79,34 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
         <div class="files-head"><h1>Apps</h1><span class="muted small" id="apps-count"></span><span class="spacer"></span><button class="btn small" id="apps-refresh" type="button">Refresh</button></div>
         <input class="text-input apps-search" id="apps-search" placeholder="Search your apps" aria-label="Search apps" autocomplete="off">
         <p class="muted small apps-hint">Click to open. Right-click to pin to the taskbar, or unpin.</p>
+        <div class="apps-store" id="apps-store" hidden></div>
         <div class="apps-body"><div class="apps-grid" id="apps-grid"></div><nav class="apps-letters" id="apps-letters" aria-label="Jump to a letter"></nav></div>`;
+      // Scorpion OS: apps from Flathub too.
+      api.sysApps?.({}).then((r) => {
+        A.store = Boolean(r?.supported);
+        if (!A.store) return;
+        $('#apps-search').placeholder = 'Search your apps, or apps to get (Spotify, GIMP, VLC…)';
+        $('.apps-hint').textContent = 'Click to open. Right-click to pin to the taskbar. To add an app, search for it and choose Search Flathub.';
+        renderStore();
+      }).catch(() => {});
+      $('#apps-store').addEventListener('click', async (e) => {
+        if (e.target.closest('#store-search')) { searchStore(); return; }
+        const id = e.target.closest('[data-get]')?.dataset.get;
+        if (!id) return;
+        const app = A.found.find((a) => a.id === id);
+        A.installing.add(id); renderStore();
+        toast(`Installing ${app.name}… (this can take a few minutes)`, 8000);
+        try {
+          await api.sysApps({ action: 'install', id });
+          app.installed = true;
+          toast(`${app.name} is installed.`);
+          loadApps(true);
+        } catch (err) { toast(errText(err), 'error'); }
+        A.installing.delete(id); renderStore();
+      });
       $('#apps-search').addEventListener('input', (e) => { A.query = e.target.value; renderApps(); });
-      $('#apps-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#apps-grid .app-tile')?.click(); });
+      // Enter opens the first app; with none, it searches Flathub.
+      $('#apps-search').addEventListener('keydown', (e) => { if (e.key !== 'Enter') return; const first = $('#apps-grid .app-tile'); if (first) first.click(); else if (A.store) searchStore(); });
       $('#apps-refresh').onclick = () => loadApps(true);
       $('#apps-letters').addEventListener('click', (e) => {
         const l = e.target.closest('[data-letter]')?.dataset.letter;

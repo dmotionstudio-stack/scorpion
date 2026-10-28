@@ -682,6 +682,26 @@ export async function installApp({ source, id }) {
   appCache = { at: 0, apps: [] };
   return `Installed ${id}.`;
 }
+// Apps → Get more apps: Flathub only (desktop apps, installed for this user
+// without a password). Flathub's catalog is fetched first when it's missing
+// or a day old (a fresh system has none, and search finds nothing without it).
+const appstreamDir = () => path.join(os.homedir(), '.local/share/flatpak/appstream/flathub');
+async function freshCatalog() {
+  let age = Infinity;
+  try { age = Date.now() - fs.statSync(appstreamDir()).mtimeMs; } catch { /* none yet */ }
+  if (age < 24 * 3600_000) return;
+  await run('flatpak', ['remote-add', '--user', '--if-not-exists', 'flathub', 'https://dl.flathub.org/repo/flathub.flatpakrepo']).catch(() => {});
+  await run('flatpak', ['update', '--user', '--appstream', 'flathub'], { timeout: 5 * 60_000 });
+}
+export async function flathubSearch(query) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  if (!(await hasFlatpak())) throw new Error('Flatpak is not installed, so apps from Flathub can\'t be added here.');
+  await freshCatalog().catch(() => { throw new Error('Flathub can\'t be reached. Check the internet connection.'); });
+  const installed = new Set(String(await run('flatpak', ['list', '--app', '--columns=application']).catch(() => '')).split('\n').map((s) => s.trim()));
+  return parseFlatpakSearch(await run('flatpak', ['search', '--columns=application,name,description', q], { timeout: 60000 }).catch(() => ''))
+    .slice(0, 12).map((a) => ({ ...a, installed: installed.has(a.id) }));
+}
 export async function removeApp({ source, id }) {
   if (!id || !/^[\w.+-]+$/.test(id)) throw new Error('Which app?');
   if (source === 'flathub') await run('flatpak', ['uninstall', '--user', '-y', '--noninteractive', id], { timeout: 10 * 60_000 });
@@ -943,4 +963,22 @@ export function installUpdates(onProgress = () => {}) {
       resolve(fs.existsSync('/var/run/reboot-required'));
     });
   });
+}
+
+// ---------- accessibility (the welcome and Settings → General) ----------
+// Bigger text for the system's own apps (GTK), the Orca screen reader, and
+// wvkbd, an on-screen keyboard for this kind of session (wlroots).
+export async function textScale(factor) {
+  await run('gsettings', ['set', 'org.gnome.desktop.interface', 'text-scaling-factor', String(factor)]).catch(() => {});
+}
+export async function screenReader(on) {
+  await run('gsettings', ['set', 'org.gnome.desktop.a11y.applications', 'screen-reader-enabled', on ? 'true' : 'false']).catch(() => {});
+  if (!on) { await run('pkill', ['-x', 'orca']).catch(() => {}); return; }
+  if (!fs.existsSync('/usr/bin/orca')) throw new Error('The screen reader (Orca) is not installed.');
+  await run('pgrep', ['-x', 'orca']).catch(() => detach('orca', ['--replace']));
+}
+export async function onScreenKeyboard(on) {
+  if (!on) { await run('pkill', ['-x', 'wvkbd-mobintl']).catch(() => {}); return; }
+  if (!fs.existsSync('/usr/bin/wvkbd-mobintl')) throw new Error('The on-screen keyboard (wvkbd) is not installed.');
+  await run('pgrep', ['-x', 'wvkbd-mobintl']).catch(() => detach('wvkbd-mobintl', []));
 }

@@ -15,6 +15,7 @@ export const INTENTS = [
   { id: 'chat', label: 'Chats', group: 'Go to', keys: ['chat', 'conversations', 'messages'], run: { view: 'chat' } },
   { id: 'library', label: 'Library', group: 'Go to', keys: ['photos', 'pictures', 'music', 'videos'], run: { view: 'library' } },
   { id: 'apps', label: 'Apps', group: 'Go to', keys: ['applications', 'programs', 'start menu'], run: { view: 'apps' } },
+  { id: 'get-apps', label: 'Get more apps', group: 'Go to', keys: ['install an app', 'app store', 'store', 'software', 'get apps', 'flathub'], run: { view: 'apps' }, only: 'linux' },
   { id: 'files', label: 'Files', group: 'Go to', keys: ['my files', 'file explorer', 'explorer', 'folders'], run: { view: 'files' } },
   // ---- Scorpion's settings ----
   { id: 'settings', label: 'Settings', group: 'Scorpion settings', keys: ['general', 'preferences', 'options', 'performance', 'theme', 'appearance', 'orb look'], run: { view: 'settings' } },

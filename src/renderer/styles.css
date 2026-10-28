@@ -875,3 +875,12 @@ body.sidebar-hidden .main .page { padding-left: 56px; }
 .sys-progress > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
 .sys-snaps { display: flex; flex-direction: column; gap: 6px; }
 .sys-snap { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); }
+/* Apps → Get more apps (Scorpion OS: Flathub). */
+.apps-store { flex: none; max-width: 760px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+.apps-store[hidden] { display: none; }
+.store-app { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+.store-app .app-initial { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; background: var(--panel-2); font-weight: 600; }
+.store-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.store-text .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wl-toggle[aria-pressed="true"] { border-color: var(--accent); }
+.wl-toggle[aria-pressed="true"] span { color: var(--accent-text, var(--accent)); font-weight: 600; }

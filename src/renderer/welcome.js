@@ -1,5 +1,5 @@
 // The first start: the orb walks the person through setup out loud, one card
-// at a time: the internet (Wi-Fi, on Scorpion OS), the AI model, whether
+// at a time: easier to see, hear or type (accessibility), the internet (Wi-Fi, on Scorpion OS), the AI model, whether
 // Scorpion talks back, face recognition, and a short hand-gesture tutorial
 // that reacts live to the camera. Every step can be answered by voice ("yes",
 // "no", "next", "skip"), by clicking, or with the hand (it moves the
@@ -12,6 +12,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export function spokenChoice(text) {
   const t = String(text || '').toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, ' ').trim();
   if (!t) return null;
+  // The accessibility step's three switches.
+  if (/\b(bigger|larger|big) (text|letters|writing)\b|\bbigger\b/.test(t)) return 'bigText';
+  if (/\bscreen ?reader\b|\bread (it|the screen|aloud)\b/.test(t)) return 'screenReader';
+  if (/\bkeyboard\b/.test(t)) return 'keyboard';
   if (/\b(skip|later|not now|maybe later)\b/.test(t)) return 'skip';
   if (/\b(no|nope|don ?t|do not|text only|quiet)\b/.test(t)) return 'no';
   if (/\b(yes|yeah|yep|sure|ok|okay|please|do it|start|go)\b/.test(t)) return 'yes';
@@ -82,6 +86,35 @@ export function initWelcome(ctx) {
       },
     },
     {
+      id: 'access',
+      async run() {
+        // Bigger text, a screen reader, a keyboard on the screen: each one on
+        // or off at once, as many as wanted, then Next.
+        const A = { bigText: false, screenReader: false, keyboard: false, ...(S.settings.access || {}) };
+        const FEATURES = [['bigText', 'Bigger text'], ['screenReader', 'Screen reader'], ['keyboard', 'Keyboard on the screen']];
+        const show = () => card({
+          title: 'Easier to see, hear or type?',
+          body: 'Turn on any of these now; they are also in Settings → General.',
+          extra: `<div class="wl-list">${FEATURES.map(([id, label]) => `<button class="wl-net wl-toggle" data-choice="${id}" aria-pressed="${A[id]}">${esc(label)}<span>${A[id] ? 'On' : 'Off'}</span></button>`).join('')}</div>`,
+          choices: [['Next', 'next']],
+        });
+        show();
+        await say('If you\'d like bigger text, a screen reader that reads the screen aloud, or a keyboard on the screen, say which one, or say next.');
+        for (;;) {
+          const c = await choose({ yes: 'next', no: 'next', skip: 'next' });
+          if (!FEATURES.some(([id]) => id === c)) return 'ok';
+          try {
+            Object.assign(A, await api.sysAccess({ feature: c, on: !A[c] }));
+            S.settings.access = { ...A };
+            if (c !== 'screenReader') await say(A[c] ? 'Done.' : 'Turned off.');
+          } catch (err) {
+            ctx.toast(ctx.errText(err), 8000);
+          }
+          show();
+        }
+      },
+    },
+    {
       id: 'internet',
       async run() {
         const status = await api.sysWifi({ action: 'status' }).catch(() => null);
@@ -130,8 +163,12 @@ export function initWelcome(ctx) {
         const chat = (S.models || []).find((m) => m.kind === 'chat');
         if (chat || S.settings.chatModel) {
           const name = chat?.name || 'your model';
-          card({ title: 'Your AI is ready', body: `I think with <b>${esc(name)}</b>, right here on this computer. You can add others in Settings → Models.`, choices: [['Next', 'next']] });
-          await say(`My brain is ready: ${name}, right here on this computer.`);
+          // On the first start the model is often still loading: say so, and carry on.
+          const loading = Boolean(S.modelStatus?.loading);
+          card({ title: loading ? 'Your AI is getting ready' : 'Your AI is ready', body: loading
+            ? `I think with <b>${esc(name)}</b>, right here on this computer. It's loading in the background (the first time takes a minute or two); we can carry on meanwhile.`
+            : `I think with <b>${esc(name)}</b>, right here on this computer. You can add others in Settings → Models.`, choices: [['Next', 'next']] });
+          await say(loading ? `I think with ${name}, right here on this computer. It's getting ready in the background, so let's carry on.` : `My brain is ready: ${name}, right here on this computer.`);
           await choose({ yes: 'next' });
           return 'ok';
         }
