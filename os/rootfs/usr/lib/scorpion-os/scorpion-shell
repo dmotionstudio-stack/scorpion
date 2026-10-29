@@ -519,6 +519,7 @@ class Host:
     def stage_mode(self, on):
         """Stage on: an invisible strip along the left edge slides it in."""
         self.stage_on = on
+        log("stage", "on" if on else "off")
         if on and not self.stage_strip:
             self.stage_strip = EdgeStrip(E.LEFT, self.stage_show)
             self.stage_strip.show_all()
@@ -528,6 +529,7 @@ class Host:
             self.stage_hide(now=True)
 
     def stage_show(self):
+        log("stage: the pointer at the left edge", self.stage_on, self.stage_shown, self.wheel_open)
         if not self.stage_on or self.stage_shown or self.wheel_open:
             return
         self.stage_shown = True
@@ -566,6 +568,7 @@ class Host:
     def stage_arriving(self):
         """A window just minimized flies in: for the flight the panel covers
         the screen and lets every click through."""
+        log("stage: a window flies in", self.stage_on, self.wheel_open)
         if not self.stage_on or self.wheel_open:
             return
         self.stage_keep()
