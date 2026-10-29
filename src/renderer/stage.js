@@ -40,8 +40,8 @@ async function fill() {
 function show() {
   document.body.classList.remove('out');
   fill().then(() => {
-    requestAnimationFrame(() => document.body.classList.add('in'));
-    api.host?.({ type: 'stage', shown: strip.children.length, size: `${innerWidth}x${innerHeight}` });
+    // A timer, not an animation frame: a panel just shown may not run those yet.
+    setTimeout(() => document.body.classList.add('in'), 16);
   });
 }
 function hide() {

@@ -57,10 +57,13 @@ const KINDS = [
   [/^(outlook|olk|thunderbird|hxoutlook)$/i, 'Mail'],
   [/^(photoshop|illustrator|mspaint|paint|figma|blender|gimp|krita|afterfx|premiere|resolve)$/i, 'Design'],
 ];
+// On Linux the program is the app's desktop file (org.codeberg.dnkl.foot.desktop):
+// then the app's own name stands in when no kind fits.
 export function kindOf(w = {}) {
-  const exe = String(w.exe || '').split(/[\\/]/).pop().replace(/\.exe$/i, '');
-  const name = exe || String(w.process || '');
-  for (const [re, kind] of KINDS) if (re.test(name)) return kind;
+  const exe = String(w.exe || '').split(/[\\/]/).pop().replace(/\.(exe|desktop)$/i, '');
+  const proc = String(w.process || '');
+  for (const name of [exe, proc]) for (const [re, kind] of KINDS) if (name && re.test(name)) return kind;
+  const name = proc || exe.split('.').pop();
   return name ? name[0].toUpperCase() + name.slice(1) : 'App';
 }
 

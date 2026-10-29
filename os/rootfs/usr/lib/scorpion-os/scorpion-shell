@@ -54,6 +54,7 @@ RAIL = 76
 DOT = 88
 STAGE = 230
 EDGE = 3  # the strip at a screen edge that brings a hidden panel back
+DEBUG = bool(os.environ.get("SCORPION_SHELL_DEBUG"))  # every message from the pages, in the log
 NOTIFY_WIDTH = 380
 QUICK_WIDTH = 360
 # The panels that open beside the rail, and their widths.
@@ -174,7 +175,7 @@ class Panel(Gtk.Window):
             msg = json.loads(result.get_js_value().to_string())
         except Exception:
             return
-        if os.environ.get("SCORPION_SHELL_DEBUG") or msg.get("type") == "stage":
+        if DEBUG:
             log("from", self.page, json.dumps(msg)[:200])
         self.host.handle(self, msg)
 
@@ -343,7 +344,7 @@ class EdgeStrip(Gtk.Window):
         GtkLayerShell.set_exclusive_zone(self, -1)
         self.set_size_request(EDGE, -1)
         self.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK)
-        self.connect("enter-notify-event", lambda *_: (log("edge strip: the pointer"), on_enter()))
+        self.connect("enter-notify-event", lambda *_: on_enter())
         self.connect("draw", lambda _w, cr: True)  # draws nothing
 
 
@@ -441,8 +442,6 @@ class Host:
         threading.Thread(target=run, daemon=True).start()
 
     def dispatch(self, event, data):
-        if event.startswith("stage:"):
-            log("event", event)
         code = f"window.scorpionEvent && window.scorpionEvent({json.dumps(event)}, {data})"
         for p in self.panels.values():
             p.js(code)
@@ -523,7 +522,6 @@ class Host:
     def stage_mode(self, on):
         """Stage on: an invisible strip along the left edge slides it in."""
         self.stage_on = on
-        log("stage", "on" if on else "off")
         if on and not self.stage_strip:
             self.stage_strip = EdgeStrip(E.LEFT, self.stage_show)
             self.stage_strip.show_all()
@@ -533,16 +531,20 @@ class Host:
             self.stage_hide(now=True)
 
     def stage_show(self):
-        log("stage: the pointer at the left edge", self.stage_on, self.stage_shown, self.wheel_open)
         if not self.stage_on or self.stage_shown or self.wheel_open:
             return
         self.stage_shown = True
         p = self.panels["stage"]
-        p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.TOP, E.BOTTOM}, width=STAGE, height=-1, exclusive=-1)
+        self.place_strip(p)
         p.show_all()
         p.clicks(None)
         p.js("window.scorpionStage && window.scorpionStage.show()")
-        self.stage_probe("show")
+
+    def place_strip(self, p):
+        """Stage as a strip down the left edge, its height given (a panel
+        shown again doesn't always stretch to the edges it's anchored to)."""
+        _, h = self.get_screen_size()
+        p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.TOP}, width=STAGE, height=h, exclusive=-1)
 
     def stage_keep(self):
         if self.stage_timer:
@@ -573,16 +575,16 @@ class Host:
     def stage_arriving(self):
         """A window just minimized flies in: for the flight the panel covers
         the screen and lets every click through."""
-        log("stage: a window flies in", self.stage_on, self.wheel_open)
         if not self.stage_on or self.wheel_open:
             return
         self.stage_keep()
         self.stage_shown = True
         p = self.panels["stage"]
-        p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.RIGHT, E.TOP, E.BOTTOM}, width=-1, height=-1, exclusive=-1)
+        # The screen's own size: asked to stretch, a panel shown again kept 1 x 1.
+        w, h = self.get_screen_size()
+        p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.TOP}, width=w, height=h, exclusive=-1)
         p.show_all()
         p.clicks((0, 0, 0, 0))
-        self.stage_probe("arriving")
 
     def stage_arrived(self):
         """Landed: back to a strip, which stays a moment, then slides away
@@ -590,21 +592,10 @@ class Host:
         if not self.stage_shown:
             return
         p = self.panels["stage"]
-        p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.TOP, E.BOTTOM}, width=STAGE, height=-1, exclusive=-1)
+        self.place_strip(p)
         p.clicks(None)
         self.stage_keep()
         self.stage_timer = GLib.timeout_add(1400, self.stage_hide)
-        self.stage_probe("arrived")
-
-    def stage_probe(self, why):
-        """For the log: how Stage's panel and page are, a moment later."""
-        p = self.panels["stage"]
-
-        def later():
-            log("stage probe", why, p.get_visible(), p.get_allocated_width(), p.get_allocated_height(), p.view.get_allocated_width(), p.view.get_allocated_height())
-            p.js("window.webkit.messageHandlers.scorpionShell.postMessage(JSON.stringify({type: 'stage', probe: [innerWidth, innerHeight, document.body.className, document.querySelectorAll('.st-card').length, getComputedStyle(document.querySelector('.st-card') || document.body).opacity, document.visibilityState]}))")
-            return False
-        GLib.timeout_add(400, later)
 
     def menu(self, panel, msg):
         """A native menu at the pointer, from Scorpion's description."""
@@ -702,6 +693,12 @@ class Host:
         elif kind == "notifyCloseAll":
             for nid in list(self.notifications.open):
                 self.notifications.closed(nid, 2)
+
+    def get_screen_size(self):
+        display = Gdk.Display.get_default()
+        mon = display.get_primary_monitor() or display.get_monitor(0)
+        g = mon.get_geometry() if mon else None
+        return (g.width, g.height) if g else (1920, 1080)
 
     def get_screen_height(self):
         display = Gdk.Display.get_default()

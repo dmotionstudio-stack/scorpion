@@ -33,6 +33,10 @@ test('recent windows say what they are and when they were used', () => {
   assert.equal(kindOf({ exe: 'C:\\x\\WINWORD.EXE' }), 'Document');
   assert.equal(kindOf({ exe: 'C:\\x\\unknownapp.exe' }), 'Unknownapp');
   assert.equal(kindOf({}), 'App');
+  // Linux: the program is the app's desktop file; its own name stands in.
+  assert.equal(kindOf({ exe: 'org.codeberg.dnkl.foot.desktop', process: 'Foot' }), 'Foot');
+  assert.equal(kindOf({ exe: 'firefox.desktop', process: 'Firefox' }), 'Browser');
+  assert.equal(kindOf({ exe: 'org.gnome.TextEditor.desktop' }), 'TextEditor');
   assert.equal(titleOf({ title: 'Project Notes - Google Docs - Google Chrome' }), 'Project Notes');
   assert.equal(titleOf({ title: 'Calculator' }), 'Calculator');
 });
