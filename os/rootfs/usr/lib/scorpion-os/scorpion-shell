@@ -175,7 +175,7 @@ class Panel(Gtk.Window):
         except Exception:
             return
         if os.environ.get("SCORPION_SHELL_DEBUG") or msg.get("type") == "stage":
-            log("from", self.page, msg.get("type"))
+            log("from", self.page, json.dumps(msg)[:200])
         self.host.handle(self, msg)
 
 

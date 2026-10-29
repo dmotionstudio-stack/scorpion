@@ -1922,8 +1922,9 @@ function registerIpc() {
       const { opened, minimized } = windowChanges(lastLook, list);
       lastLook = list;
       if (s.appsFull !== false) for (const w of opened) if (shouldFill(w, list)) winctl.windowByHandle(w.hwnd, 'maximize').catch(() => {});
+      if (minimized.length) console.log('windows minimized:', minimized.map((w) => w.title).join(', '), 'stage', s.stage, s.minimizeToStage);
       if (s.minimizeToStage !== false && s.stage) { const w = minimized.find((x) => !x.self); if (w) desktop.stageArrive(w.hwnd); }
-    } catch { /* the list failed this time */ } finally { looking = false; }
+    } catch (err) { console.error('window look:', err.message); } finally { looking = false; }
   };
   watchWindows = () => {
     const s = store.getSettings();

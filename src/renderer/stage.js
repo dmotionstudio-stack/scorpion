@@ -39,7 +39,10 @@ async function fill() {
 
 function show() {
   document.body.classList.remove('out');
-  fill().then(() => requestAnimationFrame(() => document.body.classList.add('in')));
+  fill().then(() => {
+    requestAnimationFrame(() => document.body.classList.add('in'));
+    api.host?.({ type: 'stage', shown: strip.children.length, size: `${innerWidth}x${innerHeight}` });
+  });
 }
 function hide() {
   document.body.classList.remove('in');
