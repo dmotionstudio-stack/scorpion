@@ -525,12 +525,21 @@ class Host:
             log("stage", "on" if on else "off")
         self.stage_on = on
         if on and not self.stage_strip:
-            self.stage_strip = EdgeStrip(E.LEFT, self.stage_show)
-            self.stage_strip.show_all()
+            self.new_strip()
+            # Made this early in the session, the strip may never hear the
+            # pointer (it does once made again): it's made again shortly.
+            GLib.timeout_add_seconds(30, lambda: self.stage_on and self.new_strip() and False)
         elif not on and self.stage_strip:
             self.stage_strip.destroy()
             self.stage_strip = None
             self.stage_hide(now=True)
+
+    def new_strip(self):
+        if self.stage_strip:
+            self.stage_strip.destroy()
+        self.stage_strip = EdgeStrip(E.LEFT, self.stage_show)
+        self.stage_strip.show_all()
+        return False
 
     def stage_show(self):
         if not self.stage_on or self.stage_shown or self.wheel_open:
