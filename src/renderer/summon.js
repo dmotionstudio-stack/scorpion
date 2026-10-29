@@ -176,7 +176,8 @@ async function open(centre) {
   if (!W.open) return;
   W.recent = recent.slice(0, 5); // five tiles fit the ring above the hint
   W.intents = intents;
-  for (const el of document.querySelectorAll('[data-intent]')) el.title = `${INTENTS.find((i) => i.id === el.dataset.intent).label}: ${intents[el.dataset.intent] || ''}`;
+  // Named for screen readers; the hint under the wheel says the same on hover.
+  for (const el of document.querySelectorAll('[data-intent]')) el.setAttribute('aria-label', `${INTENTS.find((i) => i.id === el.dataset.intent).label}: ${intents[el.dataset.intent] || ''}`);
   renderCards();
 }
 

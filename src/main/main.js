@@ -1397,8 +1397,14 @@ function setStage(on) {
   return s.stage;
 }
 // A small picture of the main screen (a quarter size: it is only shown blurred,
-// behind the intent wheel). It stays on this computer.
+// behind the intent wheel). It stays on this computer. Scorpion OS takes it
+// with grim (labwc lets it read the screen without asking).
 async function snapScreen() {
+  if (process.platform === 'linux') {
+    const { execFile } = await import('node:child_process');
+    const jpeg = await new Promise((resolve, reject) => execFile('grim', ['-s', '0.25', '-t', 'jpeg', '-q', '70', '-'], { encoding: 'buffer', maxBuffer: 8 << 20, timeout: 2000 }, (err, out) => (err ? reject(err) : resolve(out))));
+    return jpeg.length ? `data:image/jpeg;base64,${jpeg.toString('base64')}` : null;
+  }
   const d = screen.getPrimaryDisplay();
   const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(d.size.width / 4), height: Math.round(d.size.height / 4) } });
   const s = sources.find((x) => String(x.display_id) === String(d.id)) || sources[0];

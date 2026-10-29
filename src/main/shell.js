@@ -143,9 +143,24 @@ function destroyWindows() {
 // On the normal Windows desktop the dot's window is made when first needed.
 // The page hears where the dot is, so the wheel can grow out of it and
 // shrink back into it.
+// Frosted glass: a small picture of the screen, taken before the wheel shows,
+// which the page blurs behind it (not in Light, nor if it's slow).
+async function snapBackdrop(r, wait) {
+  if (!deps.snapScreen || deps.perf?.() === 'light') return null;
+  const src = await Promise.race([deps.snapScreen().catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), wait))]);
+  return src ? { src, w: r.width, h: r.height } : null;
+}
 export async function openWheel(at) {
   const r = deps.screen.getPrimaryDisplay().bounds;
-  if (hostMode) { shellEvent('wheel:open', at ? { x: at.x - r.x, y: at.y - r.y } : null); return true; }
+  // Scorpion OS: the host's summon surface grows to the whole screen (rail
+  // included) once the page asks, so the page hears the centre left of the
+  // rail and where the dot sits, both in screen terms.
+  if (hostMode) {
+    const backdrop = await snapBackdrop(r, 400);
+    const centre = at ? { x: at.x - r.x, y: at.y - r.y } : { x: (r.width - RAIL_WIDTH) / 2, y: r.height / 2 };
+    shellEvent('wheel:open', { ...centre, dot: { x: 8 + DOT / 2, y: r.height - 8 - DOT / 2 }, backdrop });
+    return true;
+  }
   if (!summon || summon.isDestroyed()) {
     if (!WIN) return false;
     makeSummon();
@@ -153,18 +168,14 @@ export async function openWheel(at) {
   await summon.loaded;
   if (!summon || summon.isDestroyed()) return false;
   hideStage(true);
-  // Frosted glass: a small picture of the screen, taken before the wheel
-  // shows, which the page blurs behind it (not in Light, nor if it's slow).
-  const shot = WIN && deps.snapScreen && deps.perf?.() !== 'light'
-    ? await Promise.race([deps.snapScreen().catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), 250))])
-    : null;
+  const shot = WIN ? await snapBackdrop(r, 250) : null;
   wheelOpen = true;
   summon.setAlwaysOnTop(true, 'screen-saver');
   placeSummon();
   const spot = dotSpot();
   const dot = dotWanted() ? { x: spot.x - r.x, y: spot.y - r.y } : null;
   const centre = at ? { x: at.x - r.x, y: at.y - r.y } : { x: (r.width - (railUp() ? RAIL_WIDTH : 0)) / 2, y: r.height / 2 };
-  summon.webContents.send('wheel:open', { ...centre, dot, backdrop: shot ? { src: shot, w: r.width, h: r.height } : null });
+  summon.webContents.send('wheel:open', { ...centre, dot, backdrop: shot });
   summon.show();
   summon.focus();
   return true;
