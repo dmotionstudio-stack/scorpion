@@ -1,5 +1,6 @@
 # Builds installers for Windows (.exe) and macOS (.dmg, Apple Silicon + Intel).
-# Run it from the Actions tab, or push a tag like v0.1.0.
+# Run it from the Actions tab, or push a tag like v0.1.0: a tag also publishes
+# them as a GitHub release, with docs/releases/<tag>.md as its notes.
 # Set the input "bundle_model" to ship a model inside the installer (fully offline install).
 name: Release
 
@@ -51,3 +52,25 @@ jobs:
             release/*.exe
             release/*.dmg
           if-no-files-found: error
+
+  # A tag (v0.1.8): the three installers become a GitHub release.
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
+          gh release create "$GITHUB_REF_NAME" dist/*.exe dist/*.dmg --title "Scorpion ${GITHUB_REF_NAME#v}" "$@"

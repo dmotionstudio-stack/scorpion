@@ -218,6 +218,10 @@ written fresh for Scorpion.
 
 ### Get the installer
 
+Windows and Mac installers for each version are on the repository's
+[**Releases**](https://github.com/dmotionstudio-stack/scorpion/releases) page.
+For the newest build between versions, or for Linux and Scorpion OS:
+
 1. Sign in to GitHub and open this repository's **Actions** tab.
 2. Click the newest successful **Release** run, then **Summary** in the left sidebar.
 3. Scroll to **Artifacts** at the bottom and download the one for your computer:
