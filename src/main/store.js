@@ -48,8 +48,9 @@ const DEFAULT_SETTINGS = {
   // The constellation map: recommendations (relevance ordering and suggestions), motion, bigger items, high contrast.
   constellation: { recommend: true, motion: true, large: false, contrast: false },
   // Scorpion's taskbar: pinned apps ({ id, name }: a Start menu app or a program path), app
-  // names or icons only, centered, size, look, and which tray items show.
-  taskbar: { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', show: { network: true, battery: true, volume: true, clock: true } },
+  // names or icons only, centered, size, look, hiding by itself until the pointer reaches
+  // its edge, and which items show.
+  taskbar: { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', autoHide: false, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true } },
   taskbarAlwaysOn: true, // Windows: the holographic taskbar in place of the Windows one whenever Scorpion runs
   orbDesktop: true, // as the Windows desktop, show the orb (false: the Home page)
   orbGreet: true, // at sign-in, the orb greets the person it recognizes (face recognition installed)
@@ -60,7 +61,11 @@ const DEFAULT_SETTINGS = {
   welcomeDone: false, // the spoken first start was shown (welcome.js)
   access: { bigText: false, screenReader: false, keyboard: false }, // accessibility (main.js applyAccess)
   summonDot: true, // Windows: the summon dot floats over the desktop while Scorpion's window is away
-  stage: false, // Windows: Stage, the recent windows' strip from the left edge
+  railAway: true, // Windows: and the rail (open windows, clock, notifications) with it
+  dotAt: null, // where the summon dot was dragged ({ x, y } as fractions of the screen; null: its corner)
+  stage: true, // Stage, the windows' strip from the left edge (Windows; Scorpion OS)
+  appsFull: true, // an app's window fills the screen when it opens (Windows; Scorpion OS)
+  minimizeToStage: true, // a window minimized flies into Stage's strip
   updatesAnnounced: '', // Scorpion OS: the set of updates last announced (updates.js), so each is said once
   handsAlwaysOn: true, // hand gestures on (camera; off while minimized); on Windows the hand is the mouse everywhere
   wakeWord: false, // saying "Scorpion" starts listening while the orb is open

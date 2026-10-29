@@ -28,6 +28,7 @@ import * as mcp from './mcp.js';
 import * as workspaces from './workspaces.js';
 import { recentActivity } from './activity.js';
 import * as desktop from './shell.js';
+import { windowChanges, shouldFill } from './window-watch.js';
 import { startShellApi, shellEvent } from './shell-api.js';
 import winctl from './system.js';
 import { createUpdates } from './updates.js';
@@ -551,6 +552,7 @@ function applyPerf() {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('perf:changed', level);
   applyLowCpu();
   switchModelForPerf().catch((err) => console.error(err));
+  watchWindows(); // looks at the windows less often in Light
   return level;
 }
 // Background media work (the Library, faces) on fewer cores: the Library's
@@ -1278,12 +1280,14 @@ function registerSummon(accel) {
 // 'orbit' (the edge rail with the summon dot and intent wheel) or 'bar'.
 function taskbarSettings() {
   const t = store.getSettings().taskbar || {};
-  return { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, ...(t.show || {}) } };
+  return { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(t.show || {}) } };
 }
 function setTaskbarLook(t) {
   const s = store.updateSettings({ taskbar: t });
   send('settings:changed', s);
   desktop.relayout().then((changed) => { if (changed) { desktop.raiseTaskbar(); sendTaskbarInset(); } }).catch((err) => console.error(err));
+  desktop.refreshRail(); // auto-hide on or off
+  sendTaskbarInset();
   return s;
 }
 
@@ -1388,12 +1392,16 @@ function registerWheelKey() {
   }
   return wheelKey;
 }
-// Stage (Windows only): kept in the settings, and the pages told.
+// The look at the open windows (filling the screen, flying into Stage); set
+// up with the IPC handlers, which have the window list.
+let watchWindows = () => {};
+// Stage (Windows, and Scorpion OS's shell host): kept in the settings, and the pages told.
 function setStage(on) {
-  if (process.platform !== 'win32') throw new Error('Stage is on Windows for now.');
+  if (process.platform !== 'win32' && !desktop.hostActive()) throw new Error('Stage needs Windows or Scorpion OS.');
   const s = store.updateSettings({ stage: Boolean(on) });
   desktop.setStage(s.stage);
   send('settings:changed', s);
+  watchWindows();
   return s.stage;
 }
 // A small picture of the main screen (a quarter size: it is only shown blurred,
@@ -1734,6 +1742,16 @@ function registerIpc() {
     }
     ensureTrayHint(); // check-ins turned on: keep running in the tray when closed
     if ('performance' in patch || 'performanceOnBattery' in patch) applyPerf();
+    if ('railAway' in patch) desktop.refreshRail();
+    // The taskbar customized in Settings: the rail, its room and its pages follow.
+    if ('taskbar' in patch) {
+      desktop.relayout().then((changed) => { if (changed) desktop.raiseTaskbar(); }).catch((err) => console.error(err));
+      desktop.refreshRail();
+      sendTaskbarInset();
+    }
+    if (['taskbar', 'dotAt', 'stage', 'minimizeToStage', 'railAway', 'appsFull'].some((k) => k in patch)) send('settings:changed', next);
+    if ('dotAt' in patch) desktop.placeDot();
+    if ('appsFull' in patch || 'minimizeToStage' in patch) watchWindows();
     return next;
   });
 
@@ -1826,7 +1844,8 @@ function registerIpc() {
   h('shell:taskbar', (on) => (process.platform === 'win32' ? setTaskbarAlwaysOn(on) : desktopStatus()));
   // Only ever from the user's own button in Settings → Desktop.
   h('shell:setDesktop', async (on) => { await winctl.setUserShell(on ? shellCommand() : null); return desktopStatus(); });
-  const shellWindows = async () => {
+  // The open windows, without Scorpion's own (its main window marked self).
+  const openWindows = async () => {
     const others = BrowserWindow.getAllWindows().filter((w) => w !== win && !w.isDestroyed());
     const alive = win && !win.isDestroyed();
     // Windows lists HWNDs; Linux's list (lswt) has no X11 ids, so there
@@ -1836,7 +1855,12 @@ function registerIpc() {
     const own = process.platform === 'linux' ? (w) => isOurs(w) && titles.has(w.title) : ((ids) => (w) => ids.has(w.hwnd))(new Set(others.map(nativeId)));
     const self = alive ? (process.platform === 'linux' ? win.getTitle() : nativeId(win)) : null;
     const list = (await winctl.listWindows({ kept: true })).filter((w) => !own(w));
-    for (const w of list) { w.icon = process.platform === 'linux' ? await winctl.iconForApp(w.appId || w.exe) : await fileIcon(w.exe); w.self = process.platform === 'linux' ? isOurs(w) && w.title === self : w.hwnd === self; }
+    for (const w of list) w.self = process.platform === 'linux' ? isOurs(w) && w.title === self : w.hwnd === self;
+    return list;
+  };
+  const shellWindows = async () => {
+    const list = await openWindows();
+    for (const w of list) w.icon = process.platform === 'linux' ? await winctl.iconForApp(w.appId || w.exe) : await fileIcon(w.exe);
     noteWindows(list);
     return list;
   };
@@ -1875,6 +1899,40 @@ function registerIpc() {
   // Stage: on or off (the wheel, Settings, the palette), and a window picked
   // from its strip comes forward while the one in front steps aside.
   h('shell:stage', (on) => setStage(on));
+  // The summon dot dragged (each move, then where it's dropped, which is
+  // kept), asked where it is, or put back in its corner.
+  h('shell:dot', (arg = {}) => {
+    if (arg.phase === 'reset') { store.updateSettings({ dotAt: null }); desktop.placeDot(); send('settings:changed', store.getSettings()); return desktop.dragDot({ phase: 'get' }); }
+    const r = desktop.dragDot(arg);
+    if (arg.phase === 'end' && r?.at) send('settings:changed', store.updateSettings({ dotAt: r.at }));
+    return r;
+  });
+  // Apps fill the screen when they open, and a minimized one flies into
+  // Stage (Settings → Windows and taskbar): a look at the windows every
+  // moment while either is on.
+  let lastLook = null;
+  let looking = false;
+  let lookTimer = 0;
+  const lookAtWindows = async () => {
+    if (looking) return;
+    looking = true;
+    try {
+      const s = store.getSettings();
+      const list = await openWindows();
+      const { opened, minimized } = windowChanges(lastLook, list);
+      lastLook = list;
+      if (s.appsFull !== false) for (const w of opened) if (shouldFill(w, list)) winctl.windowByHandle(w.hwnd, 'maximize').catch(() => {});
+      if (s.minimizeToStage !== false && s.stage) { const w = minimized.find((x) => !x.self); if (w) desktop.stageArrive(w.hwnd); }
+    } catch { /* the list failed this time */ } finally { looking = false; }
+  };
+  watchWindows = () => {
+    const s = store.getSettings();
+    const on = (s.appsFull !== false || (s.minimizeToStage !== false && s.stage)) && (process.platform === 'win32' || desktop.hostActive());
+    clearInterval(lookTimer);
+    lookTimer = 0;
+    lastLook = null;
+    if (on) lookTimer = setInterval(lookAtWindows, { light: 2000, balanced: 1200 }[currentPerf()] || 800);
+  };
   h('shell:stagePick', async (hwnd) => {
     desktop.hideStage();
     const front = (await shellWindows()).find((w) => w.active && !w.self && w.hwnd !== String(hwnd));
@@ -1986,22 +2044,25 @@ function registerIpc() {
       // Customizing the taskbar (right-click on an empty part of it).
       const t = taskbarSettings();
       const set = (patch) => setTaskbarLook({ ...t, ...patch });
-      const show = (k) => ({ label: { network: 'Network', battery: 'Battery', volume: 'Volume', clock: 'Clock' }[k], type: 'checkbox', checked: t.show[k] !== false, click: () => set({ show: { ...t.show, [k]: t.show[k] === false } }) });
+      const show = (k) => ({ label: { network: 'Network', battery: 'Battery', volume: 'Volume', clock: 'Clock', notifications: 'Notifications', mail: 'Mail', chat: 'Chat with Scorpion' }[k], type: 'checkbox', checked: t.show[k] !== false, click: () => set({ show: { ...t.show, [k]: t.show[k] === false } }) });
+      const autoHide = { label: 'Hide automatically', type: 'checkbox', checked: t.autoHide === true, click: () => set({ autoHide: t.autoHide !== true }) };
       const layoutMenu = { label: 'Layout', submenu: [['orbit', 'Edge rail with the intent wheel'], ['bar', 'Bar along the bottom']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.layout === v, click: () => set({ layout: v }) })) };
       if (t.layout !== 'bar') {
-        template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu,
-          { label: 'Show', submenu: ['network', 'battery', 'volume', 'clock'].map(show) },
+        template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, autoHide,
+          { label: 'Show', submenu: ['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume'].map(show) },
           { type: 'separator' },
-          item('Apps…', () => showView('apps')),
+          item('Add or remove apps…', () => showView('apps')),
+          item('Customize…', () => showView('settings', { section: 'layout' })),
           ...(t.pinned.length ? [item('Unpin all apps', () => setTaskbarLook({ ...t, pinned: [] }))] : [])];
-      } else template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu,
+      } else template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, autoHide,
         { label: 'Show app names', type: 'checkbox', checked: t.labels, click: () => set({ labels: !t.labels }) },
         { label: 'Center the apps', type: 'checkbox', checked: t.center, click: () => set({ center: !t.center }) },
         { label: 'Size', submenu: ['small', 'normal', 'large'].map((v) => ({ label: v[0].toUpperCase() + v.slice(1), type: 'radio', checked: t.size === v, click: () => set({ size: v }) })) },
         { label: 'Look', submenu: [['holo', 'Holographic'], ['neon', 'Neon'], ['glass', 'Glass'], ['solid', 'Solid']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.style === v, click: () => set({ style: v }) })) },
         { label: 'Show', submenu: ['network', 'battery', 'volume', 'clock'].map(show) },
         { type: 'separator' },
-        item('Apps…', () => showView('apps')),
+        item('Add or remove apps…', () => showView('apps')),
+        item('Customize…', () => showView('settings', { section: 'layout' })),
         ...(t.pinned.length ? [item('Unpin all apps', () => setTaskbarLook({ ...t, pinned: [] }))] : [])];
     } else if (kind === 'clock') {
       template = [{ label: new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }), enabled: false }, { type: 'separator' },
@@ -2021,7 +2082,8 @@ function registerIpc() {
     const template = await shellMenuTemplate(arg, owner);
     // The wheel stays open while its menu is up.
     desktop.holdWheel(true);
-    Menu.buildFromTemplate(template).popup({ window: owner, callback: () => desktop.holdWheel(false) });
+    desktop.holdRail(true); // a hiding taskbar stays while its menu is up
+    Menu.buildFromTemplate(template).popup({ window: owner, callback: () => { desktop.holdWheel(false); desktop.holdRail(false); } });
     return true;
   });
   // The native shell host shows menus itself: the menu as data, and what
@@ -2066,7 +2128,7 @@ function registerIpc() {
     return true;
   });
   // The native shell host is up: its panels replace Scorpion's own rail and dot.
-  h('shell:hostReady', () => { desktop.useHost(true); sendTaskbarInset(); return true; });
+  h('shell:hostReady', () => { desktop.useHost(true); sendTaskbarInset(); watchWindows(); return true; });
   h('shell:appIcons', (fresh) => (process.platform === 'linux' ? winctl.appIcons() : appIcons.appIcons({ fresh: Boolean(fresh) })));
   // The constellation launcher (constellations.js).
   h('const:get', () => constellations.load(taskbarSettings().pinned));
@@ -2212,7 +2274,8 @@ function ensureTrayHint() {
 app.whenReady().then(async () => {
   if (!primary) return;
   store.initStore(app.getPath('userData'));
-  desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf, snapScreen });
+  desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf, snapScreen,
+    dotAt: () => store.getSettings().dotAt || null, autoHide: () => taskbarSettings().autoHide === true, railAway: () => store.getSettings().railAway !== false });
   // Performance follows the power cable when "Light on battery" is on.
   applyPerf();
   powerMonitor.on('on-battery', applyPerf);
@@ -2228,6 +2291,7 @@ app.whenReady().then(async () => {
   registerSummon();
   registerWheelKey();
   if (process.platform === 'win32' && store.getSettings().stage) desktop.setStage(true);
+  watchWindows();
   appFrame.initFrame({
     dataDir: app.getPath('userData'),
     panelToScreen: (r) => {

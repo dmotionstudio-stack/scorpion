@@ -2,7 +2,7 @@
 ---
 componentName: scorpion
 welcomeStyleCalamares: true
-welcomeExpandingLogo: true
+welcomeExpandingLogo: false
 windowExpanding: normal
 windowSize: 900px,600px
 windowPlacement: center
@@ -21,9 +21,9 @@ strings:
     supportUrl:          "https://github.com/dmotionstudio-stack/scorpion/issues"
 
 images:
-    productLogo:         "logo.png"
+    productLogo:         "logo-small.png"
     productIcon:         "logo.png"
-    productWelcome:      "logo.png"
+    productWelcome:      "welcome.png"
 
 slideshow:               "show.qml"
 slideshowAPI:            2

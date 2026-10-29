@@ -156,7 +156,7 @@ public static class ScorpionWindows {
       int cloaked; if (DwmGetWindowAttribute(h, 14, out cloaked, 4) == 0 && cloaked != 0) return true;
       var sb = new StringBuilder(512); GetWindowText(h, sb, 512); if (sb.Length == 0) return true;
       uint pid; GetWindowThreadProcessId(h, out pid);
-      o.Add(h.ToInt64() + "\\t" + pid + "\\t" + sb.ToString());
+      o.Add(h.ToInt64() + "\\t" + pid + "\\t" + (IsIconic(h) ? 1 : 0) + "\\t" + sb.ToString());
       return true;
     }, IntPtr.Zero);
     return o;
@@ -171,11 +171,11 @@ public static class ScorpionWindows {
 
 // kept: through the PowerShell kept open (the taskbar's frequent polling).
 export async function listWindows({ kept = false } = {}) {
-  const script = `${WINAPI} $fg = [ScorpionWindows]::GetForegroundWindow().ToInt64(); $names = @{}; $paths = @{}; Get-Process | ForEach-Object { $names[$_.Id] = $_.ProcessName; $paths[$_.Id] = $_.Path }; [ScorpionWindows]::List() | ForEach-Object { $p = $_.Split("\`t", 3); "$($p[0])\`t$($p[1])\`t$($names[[int]$p[1]])\`t$([int]($p[0] -eq $fg))\`t$($paths[[int]$p[1]])\`t$($p[2])" }`;
+  const script = `${WINAPI} $fg = [ScorpionWindows]::GetForegroundWindow().ToInt64(); $names = @{}; $paths = @{}; Get-Process | ForEach-Object { $names[$_.Id] = $_.ProcessName; $paths[$_.Id] = $_.Path }; [ScorpionWindows]::List() | ForEach-Object { $p = $_.Split("\`t", 4); "$($p[0])\`t$($p[1])\`t$($names[[int]$p[1]])\`t$([int]($p[0] -eq $fg))\`t$($paths[[int]$p[1]])\`t$($p[2])\`t$($p[3])" }`;
   const out = await (kept ? runPsKept(script) : runPs(script));
   return out.split(/\r?\n/).filter(Boolean).map((line) => {
-    const [hwnd, pid, proc, active, exe, title] = line.split('\t');
-    return { hwnd, pid: Number(pid), process: proc === 'ApplicationFrameHost' ? 'Store app' : proc, title, active: active === '1', exe: exe || null };
+    const [hwnd, pid, proc, active, exe, iconic, ...rest] = line.split('\t');
+    return { hwnd, pid: Number(pid), process: proc === 'ApplicationFrameHost' ? 'Store app' : proc, title: rest.join('\t'), active: active === '1', minimized: iconic === '1', exe: exe || null };
   }).filter((w) => w.title && !/^(Program Manager|Windows Input Experience)$/.test(w.title));
 }
 
@@ -510,6 +510,7 @@ export async function windowByHandle(hwnd, action) {
   const h = `([IntPtr][long]${psQuote(hwnd)})`;
   if (action === 'focus') return runPsKept(`${WINAPI} [ScorpionWindows]::Focus(${h})`);
   if (action === 'minimize') return runPsKept(`${WINAPI} [ScorpionWindows]::ShowWindowAsync(${h}, 6) | Out-Null`);
+  if (action === 'maximize') return runPsKept(`${WINAPI} [ScorpionWindows]::ShowWindowAsync(${h}, 3) | Out-Null`);
   if (action === 'close') return runPsKept(`${WINAPI} [ScorpionWindows]::PostMessage(${h}, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null`);
   throw new Error('Unknown window action');
 }

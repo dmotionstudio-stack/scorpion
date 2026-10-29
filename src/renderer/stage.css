@@ -1,5 +1,5 @@
 /* Stage's strip (stage.html): frosted cards with a live picture of each
-   recent window, stacked down the left edge and turned a little toward the
+   open window, stacked down the left edge and turned a little toward the
    middle of the screen. They slide in one after another and out together.
    The window itself is transparent (shell.js). */
 :root { --accent: #5aa9ff; }
@@ -7,7 +7,9 @@ html, body.stage { margin: 0; height: 100%; background: transparent; overflow: h
 body.stage { color: var(--shell-ink); font: 12.5px/1.25 var(--font-ui); user-select: none; perspective: 700px; perspective-origin: 0 50%; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 
-.st-strip { height: 100%; box-sizing: border-box; padding: 24px 14px 24px 16px; display: flex; flex-direction: column; justify-content: center; gap: 18px; }
+/* All the open apps: it scrolls when they don't fit. */
+.st-strip { height: 100%; width: 230px; box-sizing: border-box; padding: 24px 14px 24px 16px; display: flex; flex-direction: column; justify-content: safe center; gap: 18px; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; perspective: 700px; perspective-origin: 0 50%; }
+.st-strip::-webkit-scrollbar { display: none; }
 .st-card { position: relative; display: flex; flex-direction: column; gap: 6px; width: 190px; padding: 8px; border-radius: 14px; text-align: left;
   background: linear-gradient(160deg, var(--shell-glass-2), var(--shell-glass-3)); border: 1px solid var(--shell-line);
   box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
@@ -18,6 +20,13 @@ body.out .st-card { transition-delay: 0s; transition-duration: .18s; }
 body.in .st-card:hover { transform: translateX(6px) rotateY(4deg) scale(1.04); border-color: color-mix(in srgb, var(--accent) 70%, transparent); transition-delay: 0s; }
 /* Picked: it flies out toward the middle of the screen as the window comes forward. */
 body.in .st-card.picked { transform: translateX(260px) rotateY(0deg) scale(1.5); opacity: 0; transition: transform .2s ease-in, opacity .2s ease-in; }
+/* Minimized: a little dimmer, until the pointer is on it. */
+body.in .st-card.away:not(:hover) { opacity: .78; }
+/* Just minimized: it flies in from the middle of the screen, big, and lands
+   (stage.js; the strip's window covers the screen meanwhile). */
+body.in .st-card.flying { transform: var(--fly); opacity: 1; transition: none; z-index: 2; box-shadow: 0 30px 80px rgba(0, 0, 0, .6); }
+body.in .st-card.flying.landed { transform: translateX(0) rotateY(24deg); transition: transform .6s cubic-bezier(.22, .8, .25, 1), box-shadow .6s; box-shadow: 0 12px 30px rgba(0, 0, 0, .45); }
+body.arriving .st-strip { overflow: visible; }
 .st-thumb { display: block; width: 100%; height: 104px; border-radius: 9px; background: rgba(255, 255, 255, .06) center / cover no-repeat; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
 .st-name { display: flex; align-items: center; gap: 6px; font-weight: 600; min-width: 0; }
 .st-name > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

@@ -275,7 +275,63 @@ wheel.addEventListener('contextmenu', (e) => {
   if (id) api.shellMenu({ kind: 'intent', id });
 });
 $('#sm-backdrop').addEventListener('pointerdown', close);
-$('#sm-dot').addEventListener('click', () => (W.open ? close() : api.shellWheel({ open: true })));
+// The dot: a click opens the wheel; dragged, it follows the pointer and stays
+// where it's dropped (main keeps the spot). On Windows the dot's window moves
+// under the pointer (screen terms); on Scorpion OS the page moves the host's
+// panel, which carries the pointer along, so each move counts from the press.
+const dotEl = $('#sm-dot');
+let dotDrag = null;
+let dragged = false;
+dotEl.addEventListener('pointerdown', (e) => {
+  if (W.open || e.button !== 0 || !api.shellDot) return;
+  dotDrag = { sx: e.screenX, sy: e.screenY, cx: e.clientX, cy: e.clientY, moved: false, at: null, frame: 0 };
+  try { dotEl.setPointerCapture(e.pointerId); } catch { /* gone */ }
+  api.shellDot({ phase: 'get' }).then((c) => { if (dotDrag) dotDrag.at = c; }).catch(() => {});
+});
+const keepOnScreen = (p, at) => {
+  const half = at.size / 2;
+  return { x: Math.min(Math.max(p.x, half), at.w - half), y: Math.min(Math.max(p.y, half), at.h - half) };
+};
+const hostDot = (p, at) => api.host?.({ type: 'dot', left: Math.round(p.x - at.size / 2), bottom: Math.round(at.h - p.y - at.size / 2) });
+dotEl.addEventListener('pointermove', (e) => {
+  const d = dotDrag;
+  if (!d?.at) return;
+  const inHost = Boolean(window.scorpionHost);
+  const dx = inHost ? e.clientX - d.cx : e.screenX - d.sx;
+  const dy = inHost ? e.clientY - d.cy : e.screenY - d.sy;
+  if (!d.moved && Math.hypot(dx, dy) < 6) return;
+  d.moved = true;
+  dotEl.classList.add('dragging');
+  if (d.frame) return; // one move a frame (about 60 a second)
+  d.frame = setTimeout(() => {
+    d.frame = 0;
+    if (inHost) {
+      d.at = { ...d.at, ...keepOnScreen({ x: d.at.x + dx, y: d.at.y + dy }, d.at) };
+      hostDot(d.at, d.at);
+    } else {
+      d.to = { x: d.at.x + dx, y: d.at.y + dy };
+      api.shellDot({ phase: 'move', ...d.to }).catch(() => {});
+    }
+  }, 16);
+});
+const endDrag = async (e) => {
+  const d = dotDrag;
+  dotDrag = null;
+  if (!d?.moved) return;
+  dragged = true; // the click that follows isn't one
+  dotEl.classList.remove('dragging');
+  const inHost = Boolean(window.scorpionHost);
+  const to = inHost ? d.at : { x: d.at.x + (e.screenX - d.sx), y: d.at.y + (e.screenY - d.sy) };
+  const kept = await api.shellDot({ phase: 'end', x: to.x, y: to.y }).catch(() => null);
+  if (inHost && kept) hostDot(kept, d.at);
+};
+dotEl.addEventListener('pointerup', endDrag);
+dotEl.addEventListener('pointercancel', endDrag);
+dotEl.addEventListener('click', () => {
+  if (dragged) { dragged = false; return; }
+  if (W.open) close(); else api.shellWheel({ open: true });
+});
+dotEl.title = 'Summon the intent wheel (Win+Shift+Space opens it where your pointer is). Drag it to put it anywhere';
 
 document.addEventListener('keydown', (e) => {
   if (!W.open) return;
@@ -310,7 +366,15 @@ async function toggleStage() {
 
 api.onWheelOpen?.((centre) => { clearTimeout(closing); open(centre); });
 api.onWheelClose?.(() => close());
-api.onSettingsChanged?.((s) => { if (s?.theme) document.documentElement.dataset.theme = s.theme; if (s && 'stage' in s) showStage(s.stage); });
+// Scorpion OS: the host's dot panel goes where the dot was dropped (or back to its corner).
+const placeHostDot = () => { if (window.scorpionHost && !W.open) api.shellDot?.({ phase: 'get' }).then((c) => hostDot(c, c)).catch(() => {}); };
+let lastDotAt;
+api.onSettingsChanged?.((s) => {
+  if (s?.theme) document.documentElement.dataset.theme = s.theme;
+  if (s && 'stage' in s) showStage(s.stage);
+  if (s && JSON.stringify(s.dotAt ?? null) !== lastDotAt) { lastDotAt = JSON.stringify(s.dotAt ?? null); placeHostDot(); }
+});
+placeHostDot();
 api.onPerfChanged?.((level) => { document.documentElement.dataset.perf = level; });
 api.state().then((st) => {
   if (st?.platform === 'win32' && api.shellStage) { $('#sm-stage').hidden = false; showStage(st.settings?.stage); }

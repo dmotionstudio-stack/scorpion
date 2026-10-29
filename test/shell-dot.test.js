@@ -15,7 +15,7 @@ class FakeWindow extends EventEmitter {
   }
   loadURL(u) { this.url = u; setImmediate(() => { this.webContents.emit('did-finish-load'); this.emit('ready-to-show'); }); }
   setAlwaysOnTop() {} setBounds(b) { this.bounds = b; } showInactive() { this.visible = true; } show() { this.visible = true; }
-  hide() { this.visible = false; } focus() {} blur() {} moveTop() {} isDestroyed() { return this.destroyed; }
+  hide() { this.visible = false; } focus() {} blur() {} moveTop() {} setIgnoreMouseEvents() {} isDestroyed() { return this.destroyed; }
   destroy() { this.destroyed = true; this.emit('closed'); }
 }
 let cursor = { x: 500, y: 400 };
@@ -63,4 +63,39 @@ test("Stage's strip slides in at the left edge and out when the pointer leaves",
   assert.equal(strip.visible, false);
   shell.setStage(false);
   assert.ok(strip.destroyed);
+});
+
+test('the dot stays where it was dropped, whole inside the screen', () => {
+  const bounds = { x: 0, y: 0, width: 1600, height: 900 };
+  const area = { x: 0, y: 0, width: 1600, height: 852 };
+  assert.deepEqual(shell.dotCentre(null, bounds, area), { x: 52, y: 800 }); // its corner
+  assert.deepEqual(shell.dotCentre({ x: 0.5, y: 0.25 }, bounds, area), { x: 800, y: 225 });
+  assert.deepEqual(shell.dotCentre({ x: 1, y: 1 }, bounds, area), { x: 1600 - 44, y: 852 - 44 }); // not under the taskbar
+  assert.deepEqual(shell.dotCentre({ x: -1, y: 0 }, bounds, area), { x: 44, y: 44 });
+});
+
+test('dragged, the dot follows and its spot is given back as fractions', opts, async () => {
+  shell.setFloatingDot(true);
+  await tick();
+  const dot = made.filter((w) => w.url.endsWith('summon.html') && !w.destroyed).at(-1);
+  const r = shell.dragDot({ phase: 'move', x: 400, y: 300 });
+  assert.deepEqual(dot.bounds, { x: 356, y: 256, width: 88, height: 88 });
+  assert.deepEqual(r.at, { x: 0.25, y: 300 / 900 });
+  shell.setFloatingDot(false);
+});
+
+test('minimized, the rail floats with the dot and hides until the pointer reaches the edge', opts, async () => {
+  shell.initShell({ BrowserWindow: FakeWindow, screen, preload: 'p', dataDir: '.', getMainWindow: () => null, showView() {}, getLayout: () => 'orbit', perf: () => 'full', autoHide: () => true, railAway: () => true });
+  cursor = { x: 800, y: 400 };
+  shell.setFloatingDot(true);
+  await new Promise((r) => setTimeout(r, 300));
+  const rail = made.filter((w) => w.url.endsWith('edge.html')).at(-1);
+  assert.ok(rail && rail.visible, 'the rail is up');
+  assert.deepEqual(rail.bounds, { x: 1600 - 76, y: 0, width: 76, height: 900 });
+  assert.deepEqual(rail.sent.at(-1), ['shell:rail', { hidden: true }]);
+  cursor = { x: 1599, y: 400 };
+  await new Promise((r) => setTimeout(r, 200));
+  assert.deepEqual(rail.sent.at(-1), ['shell:rail', { hidden: false }]);
+  shell.setFloatingDot(false);
+  assert.ok(rail.destroyed, 'back: the rail goes');
 });

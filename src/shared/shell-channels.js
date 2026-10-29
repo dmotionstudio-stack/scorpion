@@ -1,5 +1,5 @@
 // What Scorpion's shell pages (the edge rail, the summon dot and intent wheel,
-// notifications, the on-screen display) may use: each method of their
+// notifications, the on-screen display, Stage's strip) may use: each method of their
 // window.scorpion with its IPC channel, and the events they receive. The
 // Electron preload (preload.cjs) and the native shell host's bridge
 // (shell-bridge.js, over shell-api.js) both expose exactly these, so the same
@@ -24,6 +24,8 @@ export const SHELL_CALLS = {
   constPreview: 'const:preview',
   notifications: 'shell:notifications',
   notificationAct: 'shell:notificationAct',
+  shellStagePick: 'shell:stagePick',
+  shellDot: 'shell:dot',
 };
 export const SHELL_EVENTS = {
   onSettingsChanged: 'settings:changed',
@@ -33,6 +35,10 @@ export const SHELL_EVENTS = {
   onNotify: 'shell:notify',
   onNotificationsChanged: 'shell:notifications',
   onOsd: 'shell:osd',
+  onStageShow: 'stage:show',
+  onStageHide: 'stage:hide',
+  onStageArrive: 'stage:arrive',
+  onRail: 'shell:rail',
 };
 // Only these may come in from outside Electron (the shell host).
 export const SHELL_CHANNELS = new Set([...Object.values(SHELL_CALLS), 'shell:menuPick', 'shell:hostReady', 'shell:notifyIn', 'shell:notifyClosed']);

@@ -1770,6 +1770,8 @@ function wire() {
     // Typing on the intent wheel: the command palette, with what was typed.
     if (view === 'palette') { palette.open(query || ''); return; }
     // The "Updates ready" notice and "Software updates": Settings → This computer.
+    // The taskbar's Customize…: Settings → Windows and taskbar.
+    if (view === 'settings' && section === 'layout') { const go = () => { setView('settings'); requestAnimationFrame(() => $('#layout-field')?.scrollIntoView({ block: 'start' })); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
     if (view === 'settings' && section === 'system') { const go = () => { setView('settings'); systemSettings?.show(); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
     // The intent wheel's Talk: the orb, listening.
     if (view === 'orb' && talk) {

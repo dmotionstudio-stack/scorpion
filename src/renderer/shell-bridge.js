@@ -14,10 +14,12 @@
     shellTray: 'shell:tray', shellLaunch: 'shell:launch', shellVolume: 'shell:volume', shellMenu: 'shell:menu',
     shellGlance: 'shell:glance', shellRecent: 'shell:recent', shellIntent: 'shell:intent', shellIntents: 'shell:intents',
     shellWheel: 'shell:wheel', shellPalette: 'shell:palette', shellQuick: 'shell:quick', shellInstall: 'shell:install', constPreview: 'const:preview', notifications: 'shell:notifications', notificationAct: 'shell:notificationAct',
+    shellStagePick: 'shell:stagePick', shellDot: 'shell:dot',
   };
   const EVENTS = {
     onSettingsChanged: 'settings:changed', onPerfChanged: 'perf:changed', onWheelOpen: 'wheel:open', onWheelClose: 'wheel:close',
     onNotify: 'shell:notify', onNotificationsChanged: 'shell:notifications', onOsd: 'shell:osd',
+    onStageShow: 'stage:show', onStageHide: 'stage:hide', onStageArrive: 'stage:arrive', onRail: 'shell:rail',
   };
   // Where the pointer was last pressed: native menus open there.
   let point = { x: 0, y: 0 };

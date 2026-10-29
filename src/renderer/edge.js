@@ -15,8 +15,11 @@ async function applySettings(settings) {
   const s = settings || (await api.state().catch(() => null))?.settings;
   if (!s) return;
   if (s.theme) document.documentElement.dataset.theme = s.theme;
-  show = { network: true, battery: true, volume: true, clock: true, ...(s.taskbar?.show || {}) };
+  show = { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(s.taskbar?.show || {}) };
   $('#eg-net').hidden = show.network === false;
+  for (const k of ['notifications', 'mail', 'chat']) $(`[data-glance="${k}"]`).hidden = show[k] === false;
+  // Scorpion OS: the shell host hides the rail itself when it should.
+  api.host?.({ type: 'rail', autoHide: s.taskbar?.autoHide === true });
   $('#eg-volume').hidden = show.volume === false;
   $('#eg-clock').hidden = show.clock === false;
   refreshTray();
@@ -130,6 +133,10 @@ document.addEventListener('contextmenu', (e) => {
 });
 
 api.onSettingsChanged?.((s) => applySettings(s));
+// Auto-hide: the rail slides off the edge (a glowing line stays) and back.
+const setHidden = (hidden) => document.body.classList.toggle('rail-hidden', Boolean(hidden));
+api.onRail?.(({ hidden } = {}) => setHidden(hidden));
+window.scorpionRail = setHidden;
 applySettings();
 tick();
 refreshWindows();

@@ -268,7 +268,8 @@ export async function listWindows() {
   for (const t of tops) {
     if (/^Scorpion (taskbar|summon)$/.test(t.title)) continue;
     const app = await appForAppId(t.appId);
-    wins.push({ hwnd: handleOf(t), pid: 0, process: app?.name || t.appId, title: t.title || app?.name || t.appId, active: t.active, exe: app?.id || t.appId || null, appId: t.appId });
+    // key: the compositor's lasting identifier (lswt 2), when there is one.
+    wins.push({ hwnd: handleOf(t), key: t.id ? `id:${t.id}` : undefined, pid: 0, process: app?.name || t.appId, title: t.title || app?.name || t.appId, active: t.active, minimized: t.minimized, exe: app?.id || t.appId || null, appId: t.appId });
   }
   return wins;
 }
@@ -304,7 +305,7 @@ export async function closeApp(target) {
 export async function windowByHandle(hwnd, action) {
   const w = fromHandle(hwnd);
   if (!w) throw new Error('Unknown window');
-  if (action === 'focus' || action === 'minimize' || action === 'close') return toplevel(action, w);
+  if (action === 'focus' || action === 'minimize' || action === 'maximize' || action === 'close') return toplevel(action, w);
   throw new Error('Unknown window action');
 }
 

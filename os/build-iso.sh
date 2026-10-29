@@ -34,7 +34,6 @@ OUT="${OUT:-$OS_DIR/out}"
 CHROOT="$WORK/chroot"
 IMAGE="$WORK/image"
 ISO="$OUT/scorpion-os-$VERSION-amd64.iso"
-LOGO="$REPO_DIR/resources/icon.png"
 
 log() { printf '\n==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -195,9 +194,10 @@ UBUNTU_CODENAME=noble
 LOGO=scorpion
 EOF
 ln -sf ../usr/lib/os-release "$CHROOT/etc/os-release"
-# The boot splash shows Scorpion's logo.
+# The boot splash shows Scorpion's logo, at a size made for it (Plymouth draws
+# it at its own pixel size, so the 1024-pixel app icon filled the screen).
 for f in /usr/share/plymouth/ubuntu-logo.png /usr/share/plymouth/themes/spinner/watermark.png /usr/share/plymouth/themes/spinner/bgrt-fallback.png; do
-  [ -e "$CHROOT$f" ] && install -m 644 "$LOGO" "$CHROOT$f"
+  [ -e "$CHROOT$f" ] && install -m 644 "$OS_DIR/rootfs/usr/share/scorpion/boot/logo.png" "$CHROOT$f"
 done
 mkdir -p "$CHROOT/etc/default/grub.d"
 cat > "$CHROOT/etc/default/grub.d/50-scorpion.cfg" <<'EOF'

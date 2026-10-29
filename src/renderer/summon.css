@@ -26,6 +26,10 @@ body.open .sm-dot { left: 52px; bottom: 52px; }
 .sm-ring.r3 { width: 60px; height: 60px; margin: -30px; opacity: .3; animation: sm-pulse 3.2s ease-out infinite; }
 @keyframes sm-pulse { from { transform: scale(.6); opacity: .6; } to { transform: scale(1.15); opacity: 0; } }
 .sm-dot:hover .sm-dot-core { transform: scale(1.35); }
+/* Dragged somewhere else (summon.js): it lifts while it moves. */
+.sm-dot { touch-action: none; }
+.sm-dot.dragging { cursor: grabbing; }
+.sm-dot.dragging .sm-dot-core { transform: scale(1.6); }
 .sm-dot:hover .sm-ring.r1 { border-color: var(--accent); }
 
 /* ---- The wheel ---- */

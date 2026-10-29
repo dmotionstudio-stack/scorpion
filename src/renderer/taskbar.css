@@ -14,6 +14,10 @@ body.taskbar {
   text-shadow: 0 0 6px var(--glow);
 }
 /* The glowing top edge, brighter in the middle like the orb's scan rings. */
+/* Auto-hide: down off the bottom edge, leaving a thin glowing line. */
+body.taskbar { transition: transform .22s cubic-bezier(.3, .8, .3, 1); }
+body.taskbar.rail-hidden { transform: translateY(calc(100% - 3px)); }
+html[data-perf="light"] body.taskbar { transition: none; }
 body.taskbar::before {
   content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; pointer-events: none;
   background: linear-gradient(90deg, transparent, var(--accent) 20%, var(--accent) 80%, transparent);

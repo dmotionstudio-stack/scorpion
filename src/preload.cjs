@@ -49,11 +49,16 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellIntent: invoke('shell:intent'),
   shellIntents: invoke('shell:intents'),
   shellWheel: invoke('shell:wheel'),
-  // Stage (Windows): on or off, a window picked from its strip, and the strip sliding in and out.
+  // Stage: on or off, a window picked from its strip, the strip sliding in and
+  // out, and a window just minimized flying into it.
   shellStage: invoke('shell:stage'),
   shellStagePick: invoke('shell:stagePick'),
   onStageShow: on('stage:show'),
   onStageHide: on('stage:hide'),
+  onStageArrive: on('stage:arrive'),
+  // The summon dot dragged somewhere else, and the rail hiding and coming back.
+  shellDot: invoke('shell:dot'),
+  onRail: on('shell:rail'),
   // The command palette: opened from the wheel, and its system entries run (src/shared/intents.js).
   shellPalette: invoke('shell:palette'),
   intentRun: invoke('intent:run'),

@@ -50,10 +50,11 @@ test('the outer ring spreads cards along the right-hand arc', () => {
 test("Stage's strip shows the other recent windows, newest first, at most five", async () => {
   const { stageWindows, STAGE_MAX } = await import('../src/renderer/stage-core.js');
   const list = [
-    { hwnd: '1', active: true }, { hwnd: '2' }, { hwnd: '3', self: true }, { hwnd: '4' }, { hwnd: '5' }, { hwnd: '6' }, { hwnd: '7' }, { hwnd: '8' }, {},
+    { hwnd: '1', active: true }, { hwnd: '2' }, { hwnd: '3', self: true }, { hwnd: '4', minimized: true }, { hwnd: '5' }, {},
+    ...Array.from({ length: 12 }, (_, i) => ({ hwnd: String(10 + i) })),
   ];
-  assert.deepEqual(stageWindows(list).map((w) => w.hwnd), ['2', '4', '5', '6', '7']);
-  assert.equal(STAGE_MAX, 5);
+  assert.deepEqual(stageWindows(list).map((w) => w.hwnd), ['2', '4', '5', '10', '11', '12', '13', '14', '15', '16']); // minimized ones too
+  assert.equal(STAGE_MAX, 10);
   assert.deepEqual(stageWindows(), []);
 });
 

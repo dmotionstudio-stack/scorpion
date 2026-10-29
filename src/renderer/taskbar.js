@@ -112,6 +112,8 @@ document.addEventListener('contextmenu', (e) => {
 });
 
 api.onSettingsChanged?.((s) => applySettings(s));
+// Auto-hide: the bar slides down off the screen (a glowing line stays) and back.
+api.onRail?.(({ hidden } = {}) => document.body.classList.toggle('rail-hidden', Boolean(hidden)));
 applySettings();
 tick();
 refreshWindows();

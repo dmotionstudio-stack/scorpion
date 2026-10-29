@@ -301,9 +301,67 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     $('#files-list').focus();
   }
 
+  // ---------- Settings → Windows and taskbar ----------
+  // How windows and the taskbar behave, your way: apps full screen, Stage,
+  // the summon dot and the rail while Scorpion is minimized, auto-hide, what
+  // the taskbar shows and which apps are pinned to it (in order).
+  const TASKBAR_ITEMS = [['clock', 'Clock'], ['network', 'Network'], ['battery', 'Battery'], ['notifications', 'Notifications'], ['mail', 'Mail'], ['chat', 'Chat'], ['volume', 'Volume']];
+  async function renderLayout() {
+    const box = $('#layout-settings');
+    if (!box) return;
+    const st = await api.state().catch(() => null);
+    const win = st?.platform === 'win32';
+    const s = S.settings;
+    const t = s.taskbar || {};
+    const show = t.show || {};
+    const pinned = t.pinned || [];
+    const check = (attr, on, label) => `<label class="toggle"><input type="checkbox" ${attr}${on ? ' checked' : ''}><span>${label}</span></label>`;
+    box.innerHTML = `
+      ${check('data-layout="appsFull"', s.appsFull !== false, 'Open apps full screen: an app\'s window fills the screen when it opens (its dialogs keep their size)')}
+      ${check('data-layout="stage"', s.stage !== false, 'Stage: touch the left edge of the screen and all your open apps slide in as live pictures; pick one and the window in front steps aside')}
+      ${check('data-layout="minimizeToStage"', s.minimizeToStage !== false, 'Minimizing a window flies it into Stage on the left')}
+      ${win ? check('data-layout="summonDot"', s.summonDot !== false, 'When Scorpion is minimized, keep its summon dot on the desktop (click it, or press Win+Shift+Space anywhere, for the intent wheel)') : ''}
+      ${win ? check('data-layout="railAway"', s.railAway !== false, 'And the rail with it: your open apps, clock and notifications down the right edge while Scorpion is minimized') : ''}
+      ${check('data-taskbar="autoHide"', t.autoHide === true, 'Hide the taskbar until the pointer touches its edge')}
+      <div class="row"><span class="muted small">The summon dot: drag it anywhere on the screen and it stays where you drop it.</span>${s.dotAt ? '<button class="btn small" type="button" id="dot-home">Put it back in the corner</button>' : ''}</div>
+      <p class="small">The taskbar shows</p>
+      <div class="row wrap">${TASKBAR_ITEMS.map(([k, label]) => check(`data-show="${k}"`, show[k] !== false, label)).join('')}</div>
+      <p class="small">Apps on the taskbar</p>
+      <ol class="pin-list">${pinned.map((p, i) => `<li><span>${esc(p.name)}</span>
+        <button class="btn small" type="button" data-pin-move="${i}" data-by="-1"${i ? '' : ' disabled'} aria-label="Move ${esc(p.name)} up">↑</button>
+        <button class="btn small" type="button" data-pin-move="${i}" data-by="1"${i < pinned.length - 1 ? '' : ' disabled'} aria-label="Move ${esc(p.name)} down">↓</button>
+        <button class="btn small" type="button" data-pin-remove="${i}">Remove</button></li>`).join('') || '<li class="muted small">None yet.</li>'}</ol>
+      <div class="row"><button class="btn small" type="button" id="pin-add">Add apps…</button><span class="muted small">In Apps, right-click an app to add it; right-click an open window on the taskbar to pin it.</span></div>`;
+    const save = async (patch) => { try { S.settings = await api.updateSettings(patch); } catch (err) { toast(errText(err), 'error'); } renderLayout(); };
+    const saveTaskbar = (patch) => save({ taskbar: { ...(S.settings.taskbar || {}), ...patch } });
+    for (const b of box.querySelectorAll('[data-layout]')) {
+      b.onchange = async () => {
+        if (b.dataset.layout === 'stage') { try { S.settings.stage = await api.shellStage(b.checked); } catch (err) { toast(errText(err), 'error'); } renderLayout(); return; }
+        save({ [b.dataset.layout]: b.checked });
+      };
+    }
+    for (const b of box.querySelectorAll('[data-taskbar]')) b.onchange = () => saveTaskbar({ [b.dataset.taskbar]: b.checked });
+    for (const b of box.querySelectorAll('[data-show]')) b.onchange = () => saveTaskbar({ show: { ...(S.settings.taskbar?.show || {}), [b.dataset.show]: b.checked } });
+    for (const b of box.querySelectorAll('[data-pin-move]')) {
+      b.onclick = () => {
+        const list = [...pinned];
+        const i = Number(b.dataset.pinMove);
+        const j = i + Number(b.dataset.by);
+        [list[i], list[j]] = [list[j], list[i]];
+        saveTaskbar({ pinned: list });
+      };
+    }
+    for (const b of box.querySelectorAll('[data-pin-remove]')) b.onclick = () => saveTaskbar({ pinned: pinned.filter((_, i) => i !== Number(b.dataset.pinRemove)) });
+    const add = $('#pin-add');
+    if (add) add.onclick = () => showApps();
+    const home = $('#dot-home');
+    if (home) home.onclick = async () => { await api.shellDot?.({ phase: 'reset' }).catch(() => {}); S.settings.dotAt = null; renderLayout(); };
+  }
+
   // ---------- Settings → Windows desktop ----------
   // The switch is the user's: nothing changes until they press the button.
   async function renderSettings() {
+    renderLayout();
     const st = await api.shellStatus().catch(() => null);
     $('#desktop-field').classList.toggle('hidden', !st?.supported);
     if (!st?.supported) return;
@@ -322,8 +380,6 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       <p class="muted small">Using Scorpion as your desktop changes only your own Windows account, removes nothing from Windows, and takes effect the next time you sign in. Your apps and files stay where they are: open them from Apps and Files, or ask Scorpion.</p>
       <p class="muted small">If anything goes wrong: press Ctrl+Alt+Delete, open Task Manager, choose Run new task and type <code>explorer.exe</code> to get the Windows desktop back. If Scorpion fails to start three times in a row, Windows' own desktop starts instead.</p>
       <label class="toggle"><input type="checkbox" id="taskbar-always"${S.settings.taskbarAlwaysOn ? ' checked' : ''}${st.mode === 'shell' || st.isScorpion ? ' disabled' : ''}><span>Use Scorpion's holographic taskbar instead of the Windows taskbar whenever Scorpion runs (no sign-out needed; the Windows taskbar comes back when Scorpion quits${st.isScorpion ? '; as your desktop Scorpion always has its own' : ''})</span></label>
-      <label class="toggle"><input type="checkbox" data-orb-setting="summonDot"${S.settings.summonDot !== false ? ' checked' : ''}><span>When Scorpion is minimized, keep its summon dot in the corner of the desktop: click it (or press Win+Shift+Space anywhere) for the intent wheel; its centre brings the orb back</span></label>
-      <label class="toggle"><input type="checkbox" id="stage-on"${S.settings.stage ? ' checked' : ''}><span>Stage: touch the left edge of the screen and your recent windows slide in; pick one and the window in front steps aside</span></label>
       <label class="toggle"><input type="checkbox" data-orb-setting="orbDesktop"${S.settings.orbDesktop !== false ? ' checked' : ''}><span>Show the orb as the desktop (otherwise the Home page)</span></label>
       <label class="toggle"><input type="checkbox" data-orb-setting="orbApps"${S.settings.orbApps !== false ? ' checked' : ''}><span>Open apps inside the orb (Windows): the app in front fills a panel next to the orb; Pop out gives it its normal window</span></label>
       <label class="toggle"><input type="checkbox" data-orb-setting="orbGreet"${S.settings.orbGreet !== false ? ' checked' : ''}><span>Greet me by name when I sign in (uses the camera briefly; needs face recognition from People)</span></label>
@@ -333,8 +389,6 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       box.onchange = async () => { S.settings = await api.updateSettings({ [box.dataset.orbSetting]: box.checked }); };
     }
     const act = (id, fn) => { const b = $(`#${id}`); if (b) b.onclick = async () => { b.disabled = true; try { await fn(); } catch (err) { toast(errText(err), 'error'); } renderSettings(); }; };
-    const stageBox = $('#stage-on');
-    if (stageBox) stageBox.onchange = async () => { try { S.settings.stage = await api.shellStage(stageBox.checked); } catch (err) { toast(errText(err), 'error'); stageBox.checked = Boolean(S.settings.stage); } };
     const bar = $('#taskbar-always');
     if (bar) bar.onchange = async () => { bar.disabled = true; try { await api.shellTaskbar(bar.checked); S.settings.taskbarAlwaysOn = bar.checked; } catch (err) { toast(errText(err), 'error'); } renderSettings(); };
     act('desktop-on', async () => {
