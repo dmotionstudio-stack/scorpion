@@ -32,13 +32,19 @@
     return out.value;
   }
   const listeners = {};
+  const emit = (ch, data) => { for (const fn of listeners[ch] || []) fn(data); };
+  // In the shell host the events come from the host, which keeps the one
+  // connection for every panel (WebKit gives a site six connections at once;
+  // a connection held open by each panel left none for their calls).
+  // Elsewhere (a plain browser) the page listens itself.
+  window.scorpionEvent = emit;
   let source = null;
   const connect = () => {
     source = new EventSource(`${base}/events`);
-    for (const ch of Object.values(EVENTS)) source.addEventListener(ch, (e) => { for (const fn of listeners[ch] || []) fn(JSON.parse(e.data)); });
+    for (const ch of Object.values(EVENTS)) source.addEventListener(ch, (e) => emit(ch, JSON.parse(e.data)));
     source.onerror = () => { source.close(); setTimeout(connect, 2000); }; // Scorpion restarting
   };
-  connect();
+  if (!window.webkit?.messageHandlers?.scorpionShell) connect();
   const api = { host };
   for (const [name, ch] of Object.entries(CALLS)) api[name] = (arg) => call(ch, arg);
   for (const [name, ch] of Object.entries(EVENTS)) api[name] = (fn) => { (listeners[ch] ||= []).push(fn); return () => { listeners[ch] = listeners[ch].filter((f) => f !== fn); }; };

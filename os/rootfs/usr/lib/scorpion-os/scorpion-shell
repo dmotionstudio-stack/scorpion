@@ -28,6 +28,7 @@ import json
 import os
 import sys
 import threading
+import time
 import urllib.request
 
 # WebKitGTK's GPU paths draw nothing where the graphics driver can't do them
@@ -392,6 +393,7 @@ class Host:
         stage.connect("enter-notify-event", lambda *_: self.stage_keep())
         stage.connect("leave-notify-event", self.on_stage_leave)
         self.say_ready()
+        self.listen()
         self.ready = True
         # Scorpion restarted: a new address and key, so the pages load again.
         monitor = Gio.File.new_for_path(INFO).monitor_file(Gio.FileMonitorFlags.NONE, None)
@@ -406,6 +408,42 @@ class Host:
             for p in self.panels.values():
                 p.load()
             self.say_ready()
+
+    def listen(self):
+        """Scorpion's shell events, passed to every panel (shell-bridge.js's
+        window.scorpionEvent): one connection held here. WebKit lets the
+        panels' site have six connections at once, so a connection held open
+        by each panel left none for their calls once there were six panels."""
+        def run():
+            while True:
+                if not api.base and not api.load():
+                    time.sleep(2)
+                    continue
+                try:
+                    with urllib.request.urlopen(f"{api.base}/events") as res:
+                        event, data = None, []
+                        for raw in res:
+                            line = raw.decode("utf-8").rstrip("\r\n")
+                            if line.startswith("event: "):
+                                event = line[7:]
+                            elif line.startswith("data: "):
+                                data.append(line[6:])
+                            elif not line:
+                                if event and data:
+                                    GLib.idle_add(self.dispatch, event, "\n".join(data))
+                                event, data = None, []
+                except Exception as err:  # Scorpion restarting, or gone
+                    log("events", err)
+                api.base = None  # look for Scorpion's address again
+                time.sleep(2)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def dispatch(self, event, data):
+        code = f"window.scorpionEvent && window.scorpionEvent({json.dumps(event)}, {data})"
+        for p in self.panels.values():
+            p.js(code)
+        return False
 
     def say_ready(self, tries=0):
         """Tells Scorpion its panels are here (it then hides its own); again
