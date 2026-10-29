@@ -40,7 +40,8 @@ body.shown .sm-backdrop { opacity: 1; }
 body.shown .sm-wheel { transform: scale(var(--scale, 1)); opacity: 1; }
 /* Opened from the dot: the wheel grows out of it (transform-origin set by summon.js) and shrinks back. */
 body.from-dot .sm-wheel { transition: transform .3s cubic-bezier(.2, .9, .25, 1.06), opacity .18s; }
-body.from-dot:not(.shown) .sm-wheel { transform: scale(calc(var(--scale, 1) * .05)); }
+body.from-dot:not(.shown) .sm-wheel { transform: translate(0, 0) scale(calc(var(--scale, 1) * .05)); }
+body.from-dot.shown .sm-wheel { transform: translate(var(--fix-x, 0), var(--fix-y, 0)) scale(var(--scale, 1)); }
 .sm-art { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .sm-layer { position: absolute; inset: 0; pointer-events: none; }
 .sm-layer > * { pointer-events: auto; }

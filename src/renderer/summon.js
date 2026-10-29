@@ -144,7 +144,12 @@ function place() {
   const dot = W.centre.dot;
   document.body.classList.toggle('from-dot', Boolean(dot));
   if (dot) {
-    el.style.transformOrigin = `${dot.x - (x - EXTENT)}px ${dot.y - (y - EXTENT)}px`;
+    const ox = dot.x - (x - EXTENT), oy = dot.y - (y - EXTENT);
+    el.style.transformOrigin = `${ox}px ${oy}px`;
+    // Scaled down on a small screen, it would also slide toward the dot: this
+    // keeps its centre where it was placed.
+    el.style.setProperty('--fix-x', `${(1 - W.scale) * (EXTENT - ox)}px`);
+    el.style.setProperty('--fix-y', `${(1 - W.scale) * (EXTENT - oy)}px`);
     const d = $('#sm-dot');
     d.style.left = `${dot.x}px`;
     d.style.top = `${dot.y - 32}px`; // its margin centres it sideways only

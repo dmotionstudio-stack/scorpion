@@ -1402,8 +1402,9 @@ function setStage(on) {
 async function snapScreen() {
   if (process.platform === 'linux') {
     const { execFile } = await import('node:child_process');
-    const jpeg = await new Promise((resolve, reject) => execFile('grim', ['-s', '0.25', '-t', 'jpeg', '-q', '70', '-'], { encoding: 'buffer', maxBuffer: 8 << 20, timeout: 2000 }, (err, out) => (err ? reject(err) : resolve(out))));
-    return jpeg.length ? `data:image/jpeg;base64,${jpeg.toString('base64')}` : null;
+    // PNG, quickly packed (Ubuntu's grim has no JPEG).
+    const png = await new Promise((resolve, reject) => execFile('grim', ['-s', '0.25', '-l', '1', '-'], { encoding: 'buffer', maxBuffer: 8 << 20, timeout: 2000 }, (err, out) => (err ? reject(err) : resolve(out))));
+    return png.length ? `data:image/png;base64,${png.toString('base64')}` : null;
   }
   const d = screen.getPrimaryDisplay();
   const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(d.size.width / 4), height: Math.round(d.size.height / 4) } });
