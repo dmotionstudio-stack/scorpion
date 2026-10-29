@@ -160,12 +160,11 @@ class Panel(Gtk.Window):
         win = self.get_window()
         if not win or cairo is None:
             return
-        if rect is None:
-            win.input_shape_combine_region(None, 0, 0)
-        else:
-            x, y, w, h = rect
-            region = cairo.Region(cairo.RectangleInt(x, y, w, h)) if w > 0 and h > 0 else cairo.Region()
-            win.input_shape_combine_region(region, 0, 0)
+        # (GDK takes no "none" here from Python: everywhere is a region as
+        # big as any screen.)
+        x, y, w, h = rect if rect is not None else (0, 0, 1 << 15, 1 << 15)
+        region = cairo.Region(cairo.RectangleInt(x, y, w, h)) if w > 0 and h > 0 else cairo.Region()
+        win.input_shape_combine_region(region, 0, 0)
 
     def js(self, code):
         self.view.evaluate_javascript(code, -1, None, None, None, None, None)
