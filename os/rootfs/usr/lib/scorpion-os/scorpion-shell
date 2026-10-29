@@ -343,7 +343,7 @@ class EdgeStrip(Gtk.Window):
         GtkLayerShell.set_exclusive_zone(self, -1)
         self.set_size_request(EDGE, -1)
         self.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK)
-        self.connect("enter-notify-event", lambda *_: on_enter())
+        self.connect("enter-notify-event", lambda *_: (log("edge strip: the pointer"), on_enter()))
         self.connect("draw", lambda _w, cr: True)  # draws nothing
 
 
@@ -542,6 +542,7 @@ class Host:
         p.show_all()
         p.clicks(None)
         p.js("window.scorpionStage && window.scorpionStage.show()")
+        self.stage_probe("show")
 
     def stage_keep(self):
         if self.stage_timer:
@@ -581,6 +582,7 @@ class Host:
         p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.RIGHT, E.TOP, E.BOTTOM}, width=-1, height=-1, exclusive=-1)
         p.show_all()
         p.clicks((0, 0, 0, 0))
+        self.stage_probe("arriving")
 
     def stage_arrived(self):
         """Landed: back to a strip, which stays a moment, then slides away
@@ -592,6 +594,17 @@ class Host:
         p.clicks(None)
         self.stage_keep()
         self.stage_timer = GLib.timeout_add(1400, self.stage_hide)
+        self.stage_probe("arrived")
+
+    def stage_probe(self, why):
+        """For the log: how Stage's panel and page are, a moment later."""
+        p = self.panels["stage"]
+
+        def later():
+            log("stage probe", why, p.get_visible(), p.get_allocated_width(), p.get_allocated_height(), p.view.get_allocated_width(), p.view.get_allocated_height())
+            p.js("window.webkit.messageHandlers.scorpionShell.postMessage(JSON.stringify({type: 'stage', probe: [innerWidth, innerHeight, document.body.className, document.querySelectorAll('.st-card').length, getComputedStyle(document.querySelector('.st-card') || document.body).opacity, document.visibilityState]}))")
+            return False
+        GLib.timeout_add(400, later)
 
     def menu(self, panel, msg):
         """A native menu at the pointer, from Scorpion's description."""
