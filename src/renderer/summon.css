@@ -115,6 +115,7 @@ body.shown .sm-tile, body.shown .sm-arcs path { animation: sm-tile-in .46s cubic
 /* Stage on or off (Windows), under the hint. */
 .sm-stage { position: absolute; left: 50%; top: calc(50% + 342px); transform: translateX(-50%); display: flex; align-items: center; gap: 9px; padding: 6px 15px 6px 11px; border-radius: 999px; font-size: 12.5px;
   background: rgba(12, 16, 24, .72); border: 1px solid var(--shell-line); transition: border-color .15s, box-shadow .15s; }
+.sm-stage[hidden] { display: none; }
 .sm-stage:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .sm-stage[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent); }
 .sm-stage-icon { position: relative; width: 18px; height: 16px; }
