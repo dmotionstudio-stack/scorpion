@@ -533,6 +533,7 @@ class Host:
             self.stage_hide(now=True)
 
     def stage_show(self):
+        log("stage: the left edge", self.stage_on, self.stage_shown, self.wheel_open)
         if not self.stage_on or self.stage_shown or self.wheel_open:
             return
         log("stage: in from the edge")
@@ -561,6 +562,7 @@ class Host:
         self.stage_timer = GLib.timeout_add(400, self.stage_hide)
 
     def stage_hide(self, now=False):
+        log("stage: away", self.stage_shown)
         self.stage_timer = 0
         if not self.stage_shown:
             return False
@@ -596,6 +598,7 @@ class Host:
     def stage_arrived(self):
         """Landed: back to a strip, which stays a moment, then slides away
         unless the pointer is on it."""
+        log("stage: landed", self.stage_shown)
         if not self.stage_shown:
             return False
         p = self.panels["stage"]
