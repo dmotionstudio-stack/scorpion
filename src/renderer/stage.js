@@ -59,7 +59,12 @@ async function arrive({ hwnd } = {}) {
   }
   document.body.classList.add('arriving');
   document.body.classList.remove('out');
-  await fill();
+  // The host is told it landed whatever happens, or it would keep waiting.
+  const landed = () => {
+    document.body.classList.remove('arriving');
+    api.host?.({ type: 'stage', arrived: true });
+  };
+  try { await fill(); } catch { landed(); return; }
   const card = strip.querySelector(`[data-hwnd="${CSS.escape(String(hwnd))}"]`);
   if (card && document.documentElement.dataset.perf !== 'light' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     // Its place in the strip without its slide (layout, not the transform);
@@ -76,9 +81,8 @@ async function arrive({ hwnd } = {}) {
   }
   document.body.classList.add('in');
   setTimeout(() => {
-    document.body.classList.remove('arriving');
     card?.classList.remove('flying', 'landed');
-    api.host?.({ type: 'stage', arrived: true });
+    landed();
   }, FLIGHT_MS);
 }
 window.scorpionStage = { show, hide, arrive };
@@ -101,8 +105,10 @@ api.onStageArrive?.(arrive);
 const tellHost = (s) => api.host?.({ type: 'stage', enabled: s?.stage !== false, arrive: s?.minimizeToStage !== false });
 api.onSettingsChanged?.((s) => { if (s?.theme) document.documentElement.dataset.theme = s.theme; tellHost(s); });
 api.onPerfChanged?.((level) => { document.documentElement.dataset.perf = level; });
-api.state().then((st) => {
+// Scorpion may not answer yet when the host loads this page: asked again until it does.
+const start = () => api.state().then((st) => {
   if (st?.settings?.theme) document.documentElement.dataset.theme = st.settings.theme;
   document.documentElement.dataset.perf = st?.perf || 'full';
   tellHost(st?.settings);
-}).catch(() => {});
+}).catch(() => setTimeout(start, 2000));
+start();

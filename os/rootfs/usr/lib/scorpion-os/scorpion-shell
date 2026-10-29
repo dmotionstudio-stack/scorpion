@@ -521,6 +521,8 @@ class Host:
     # ---------- Stage ----------
     def stage_mode(self, on):
         """Stage on: an invisible strip along the left edge slides it in."""
+        if on != self.stage_on:
+            log("stage", "on" if on else "off")
         self.stage_on = on
         if on and not self.stage_strip:
             self.stage_strip = EdgeStrip(E.LEFT, self.stage_show)
@@ -533,6 +535,7 @@ class Host:
     def stage_show(self):
         if not self.stage_on or self.stage_shown or self.wheel_open:
             return
+        log("stage: in from the edge")
         self.stage_shown = True
         p = self.panels["stage"]
         self.place_strip(p)
@@ -576,9 +579,13 @@ class Host:
         """A window just minimized flies in: for the flight the panel covers
         the screen and lets every click through."""
         if not self.stage_on or self.wheel_open:
+            log("stage: a window was minimized; Stage is", "on" if self.stage_on else "off", "the wheel is open" if self.wheel_open else "")
             return
+        log("stage: a window flies in")
         self.stage_keep()
         self.stage_shown = True
+        # Landed (the page says), or given up on after three seconds.
+        self.stage_timer = GLib.timeout_add(3000, self.stage_arrived)
         p = self.panels["stage"]
         # The screen's own size: asked to stretch, a panel shown again kept 1 x 1.
         w, h = self.get_screen_size()
@@ -590,12 +597,13 @@ class Host:
         """Landed: back to a strip, which stays a moment, then slides away
         unless the pointer is on it."""
         if not self.stage_shown:
-            return
+            return False
         p = self.panels["stage"]
         self.place_strip(p)
         p.clicks(None)
         self.stage_keep()
         self.stage_timer = GLib.timeout_add(1400, self.stage_hide)
+        return False
 
     def menu(self, panel, msg):
         """A native menu at the pointer, from Scorpion's description."""
