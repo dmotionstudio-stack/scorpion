@@ -98,3 +98,35 @@ export function sectorPath(a0, a1, r0, r1, gap = 0) {
   const large = a1 - a0 > 180 ? 1 : 0;
   return `M ${p(a0 + g1, r1)} A ${r1} ${r1} 0 ${large} 1 ${p(a1 - g1, r1)} L ${p(a1 - g0, r0)} A ${r0} ${r0} 0 ${large} 0 ${p(a0 + g0, r0)} Z`;
 }
+
+// A ring segment with rounded corners (the intents, and the recent windows'
+// tiles on the outer ring): sectorPath's shape with each corner eased by
+// `round` (in wheel units) along both its edges.
+export function tilePath(a0, a1, r0, r1, gap = 0, round = 0) {
+  const g0 = (gap / r0) * (180 / Math.PI) / 2;
+  const g1 = (gap / r1) * (180 / Math.PI) / 2;
+  const O0 = polar(a0 + g1, r1), O1 = polar(a1 - g1, r1), I1 = polar(a1 - g0, r0), I0 = polar(a0 + g0, r0);
+  const k = Math.min(round, (r1 - r0) / 2);
+  const d1 = (k / r1) * (180 / Math.PI), d0 = (k / r0) * (180 / Math.PI);
+  const toward = (p, q) => { const len = Math.hypot(q.x - p.x, q.y - p.y) || 1; return { x: p.x + ((q.x - p.x) * k) / len, y: p.y + ((q.y - p.y) * k) / len }; };
+  const f = (p) => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+  const large = a1 - a0 > 180 ? 1 : 0;
+  return `M ${f(polar(a0 + g1 + d1, r1))} A ${r1} ${r1} 0 ${large} 1 ${f(polar(a1 - g1 - d1, r1))}`
+    + ` Q ${f(O1)} ${f(toward(O1, I1))} L ${f(toward(I1, O1))} Q ${f(I1)} ${f(polar(a1 - g0 - d0, r0))}`
+    + ` A ${r0} ${r0} 0 ${large} 0 ${f(polar(a0 + g0 + d0, r0))} Q ${f(I0)} ${f(toward(I0, O0))}`
+    + ` L ${f(toward(O0, I0))} Q ${f(O0)} ${f(polar(a0 + g1 + d1, r1))} Z`;
+}
+
+// Where the recent windows' tiles sit on the outer ring: 36 degrees each, 4
+// apart, centred a little above the right-hand side (degrees clockwise from
+// up), each with a gentle tilt for its picture.
+export function tileSlots(n) {
+  return Array.from({ length: Math.max(0, n) }, (_, i) => {
+    const angle = 62 + (i - (n - 1) / 2) * 34;
+    return { angle, span: 32, tilt: Math.round((angle - 90) * 0.25) };
+  });
+}
+
+// Each kind of window's glow on the ring.
+const GLOWS = { Browser: '#4fa3ff', Document: '#4f8dff', Music: '#2fd47a', Chat: '#8d7bff', Mail: '#4fc3ff', Code: '#5ad1c8', Design: '#ff8fb1' };
+export const glowOf = (kind) => GLOWS[kind] || null;

@@ -5,7 +5,7 @@
 // and functions, used by both the main process and the pages.
 //
 // run: { view } a place in Scorpion's window; { ui } something the window
-// does itself; { main: 'settings' | 'control' | 'wheel', arg } done by the main
+// does itself; { main: 'settings' | 'control' | 'wheel' | 'stage', arg } done by the main
 // process (intent:run). only: the one platform an entry exists on; live:
 // only in Scorpion OS's live session (from the ISO or a USB stick).
 
@@ -35,6 +35,7 @@ export const INTENTS = [
   { id: 'browse', label: 'Browse the web', group: 'Do', keys: ['browse', 'browser', 'web', 'internet browser'], run: { main: 'wheel', arg: 'browse' } },
   { id: 'create', label: 'Draw something', group: 'Do', keys: ['create', 'draw', 'paint', 'drawing'], run: { main: 'wheel', arg: 'create' } },
   { id: 'focus', label: 'Focus timer', group: 'Do', keys: ['focus', 'timer', 'clock', 'stopwatch'], run: { main: 'wheel', arg: 'focus' } },
+  { id: 'stage', label: 'Stage on or off', group: 'Do', keys: ['stage', 'stage manager', 'one window at a time', 'recent windows strip'], run: { main: 'stage' }, only: 'win32' },
   { id: 'sidebar', label: 'Show or hide the sidebar', group: 'Do', keys: ['sidebar', 'toggle sidebar'], hint: 'Ctrl+B', run: { ui: 'sidebar' } },
   { id: 'welcome', label: 'Show the welcome again', group: 'Do', keys: ['welcome', 'tour', 'first start', 'tutorial'], run: { ui: 'welcome' } },
   // ---- the system ----

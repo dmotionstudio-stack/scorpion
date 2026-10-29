@@ -322,6 +322,8 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       <p class="muted small">Using Scorpion as your desktop changes only your own Windows account, removes nothing from Windows, and takes effect the next time you sign in. Your apps and files stay where they are: open them from Apps and Files, or ask Scorpion.</p>
       <p class="muted small">If anything goes wrong: press Ctrl+Alt+Delete, open Task Manager, choose Run new task and type <code>explorer.exe</code> to get the Windows desktop back. If Scorpion fails to start three times in a row, Windows' own desktop starts instead.</p>
       <label class="toggle"><input type="checkbox" id="taskbar-always"${S.settings.taskbarAlwaysOn ? ' checked' : ''}${st.mode === 'shell' || st.isScorpion ? ' disabled' : ''}><span>Use Scorpion's holographic taskbar instead of the Windows taskbar whenever Scorpion runs (no sign-out needed; the Windows taskbar comes back when Scorpion quits${st.isScorpion ? '; as your desktop Scorpion always has its own' : ''})</span></label>
+      <label class="toggle"><input type="checkbox" data-orb-setting="summonDot"${S.settings.summonDot !== false ? ' checked' : ''}><span>When Scorpion is minimized, keep its summon dot in the corner of the desktop: click it (or press Win+Shift+Space anywhere) for the intent wheel; its centre brings the orb back</span></label>
+      <label class="toggle"><input type="checkbox" id="stage-on"${S.settings.stage ? ' checked' : ''}><span>Stage: touch the left edge of the screen and your recent windows slide in; pick one and the window in front steps aside</span></label>
       <label class="toggle"><input type="checkbox" data-orb-setting="orbDesktop"${S.settings.orbDesktop !== false ? ' checked' : ''}><span>Show the orb as the desktop (otherwise the Home page)</span></label>
       <label class="toggle"><input type="checkbox" data-orb-setting="orbApps"${S.settings.orbApps !== false ? ' checked' : ''}><span>Open apps inside the orb (Windows): the app in front fills a panel next to the orb; Pop out gives it its normal window</span></label>
       <label class="toggle"><input type="checkbox" data-orb-setting="orbGreet"${S.settings.orbGreet !== false ? ' checked' : ''}><span>Greet me by name when I sign in (uses the camera briefly; needs face recognition from People)</span></label>
@@ -331,6 +333,8 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       box.onchange = async () => { S.settings = await api.updateSettings({ [box.dataset.orbSetting]: box.checked }); };
     }
     const act = (id, fn) => { const b = $(`#${id}`); if (b) b.onclick = async () => { b.disabled = true; try { await fn(); } catch (err) { toast(errText(err), 'error'); } renderSettings(); }; };
+    const stageBox = $('#stage-on');
+    if (stageBox) stageBox.onchange = async () => { try { S.settings.stage = await api.shellStage(stageBox.checked); } catch (err) { toast(errText(err), 'error'); stageBox.checked = Boolean(S.settings.stage); } };
     const bar = $('#taskbar-always');
     if (bar) bar.onchange = async () => { bar.disabled = true; try { await api.shellTaskbar(bar.checked); S.settings.taskbarAlwaysOn = bar.checked; } catch (err) { toast(errText(err), 'error'); } renderSettings(); };
     act('desktop-on', async () => {

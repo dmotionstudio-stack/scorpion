@@ -1,8 +1,9 @@
-/* The summon dot and the intent wheel (summon.html): frosted dark glass
-   segments around Scorpion's button, the chosen one lit in the theme's
-   accent, recent windows as tilted cards on the outer ring, and a soft
-   pulsing dot in the corner. The window itself is transparent (shell.js). */
-:root { --accent: #5aa9ff; --accent-2: #2f7fe0; --text: #e9eef6; }
+/* The summon dot and the intent wheel (summon.html): rounded steel-blue
+   glass segments around Scorpion's dark, blue-rimmed button, the chosen one
+   glowing coral, recent windows as rounded tiles with live pictures on a
+   dark outer ring, and a soft pulsing dot in the corner. The window itself
+   is transparent (shell.js). */
+:root { --accent: #5aa9ff; --accent-2: #2f7fe0; --text: #e9eef6; --flick: #ff8a73; /* the warm colour of a flick */ }
 html, body.summon { margin: 0; height: 100%; background: transparent; overflow: hidden; }
 body.summon {
   --ink: var(--shell-ink);
@@ -32,62 +33,104 @@ body.open .sm-dot { left: 52px; bottom: 52px; }
 .sm-wheel { position: absolute; width: 850px; height: 850px; display: none; transform: scale(calc(var(--scale, 1) * .92)); opacity: 0; transition: transform .18s cubic-bezier(.2, .9, .3, 1.2), opacity .14s; }
 body.open .sm-backdrop, body.open .sm-wheel { display: block; }
 body.shown .sm-backdrop { opacity: 1; }
+/* Frosted: the screen's picture, blurred and dimmed, under the usual shade. */
+.sm-backdrop.frosted { overflow: hidden; background: none; }
+.sm-backdrop.frosted::before { content: ""; position: absolute; inset: -40px; background: var(--shot) 40px 40px / var(--shot-size) no-repeat; filter: blur(20px) saturate(1.25) brightness(.7); }
+.sm-backdrop.frosted::after { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(4, 7, 12, .12), rgba(4, 7, 12, .45)); }
 body.shown .sm-wheel { transform: scale(var(--scale, 1)); opacity: 1; }
+/* Opened from the dot: the wheel grows out of it (transform-origin set by summon.js) and shrinks back. */
+body.from-dot .sm-wheel { transition: transform .3s cubic-bezier(.2, .9, .25, 1.06), opacity .18s; }
+body.from-dot:not(.shown) .sm-wheel { transform: scale(calc(var(--scale, 1) * .05)); }
 .sm-art { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .sm-layer { position: absolute; inset: 0; pointer-events: none; }
 .sm-layer > * { pointer-events: auto; }
 
-.sm-halo { fill: rgba(10, 14, 22, .42); stroke: rgba(255, 255, 255, .05); }
-.sm-track { fill: none; stroke: rgba(150, 175, 215, .18); stroke-width: 20; }
-.sm-ticks line { stroke: rgba(190, 210, 240, .28); stroke-width: 1.2; }
-.sm-arcs path { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; opacity: .7; filter: drop-shadow(0 0 6px var(--accent)); }
-.sm-seg { fill: url(#sm-glass); stroke: rgba(255, 255, 255, .16); stroke-width: 1.2; transition: fill .12s, stroke .12s; }
-.sm-seg.hot { fill: url(#sm-hot); stroke: var(--accent); filter: drop-shadow(0 0 14px color-mix(in srgb, var(--accent) 70%, transparent)); }
-.sm-hot-a { stop-color: color-mix(in srgb, var(--accent) 32%, rgba(20, 24, 32, .65)); }
-.sm-hot-b { stop-color: color-mix(in srgb, var(--accent) 64%, rgba(20, 24, 32, .4)); }
-.sm-head { fill: var(--accent); }
-.sm-arrow { stroke: var(--accent); stroke-width: 4; stroke-linecap: round; opacity: 0; filter: drop-shadow(0 0 6px var(--accent)); }
+/* The dark disc the windows sit on, its rim, and the bed under the segments. */
+.sm-halo { fill: rgba(9, 13, 21, .66); stroke: rgba(160, 190, 230, .14); stroke-width: 1.5; }
+.sm-rim { fill: none; stroke: rgba(150, 180, 220, .16); stroke-width: 1.2; }
+.sm-ticks line { stroke: rgba(170, 195, 230, .2); stroke-width: 1; }
+.sm-bed { fill: rgba(6, 9, 15, .55); }
+.sm-arcs path { fill: none; stroke: var(--glow, var(--accent)); stroke-width: 4.5; stroke-linecap: round; opacity: .85; filter: drop-shadow(0 0 7px var(--glow, var(--accent))); }
+.sm-seg { fill: url(#sm-glass); stroke: rgba(170, 210, 255, .4); stroke-width: 1.3; transition: fill .12s, stroke .12s; }
+/* The glass's lit outer edge; on the chosen segment it glows warm white. */
+.sm-rim-lit { fill: none; stroke: rgba(205, 228, 255, .55); stroke-width: 2; stroke-linecap: round; pointer-events: none; transform-box: view-box; transform-origin: 50% 50%; filter: drop-shadow(0 0 3px rgba(160, 205, 255, .6)); transition: stroke .12s; }
+.sm-rim-lit.hot { stroke: #fff1ea; stroke-width: 2.6; filter: drop-shadow(0 0 6px #ffb39f); }
+.sm-sheen { fill: url(#sm-sheen); pointer-events: none; }
+.sm-seg.hot { fill: url(#sm-hot); stroke: #ffcabd; stroke-width: 2.4; filter: drop-shadow(0 0 10px rgba(255, 140, 115, .9)) drop-shadow(0 0 26px rgba(255, 120, 95, .55)); }
+.sm-hot-a { stop-color: rgba(150, 70, 72, .94); }
+.sm-hot-m { stop-color: rgba(238, 126, 108, .96); }
+.sm-hot-b { stop-color: rgba(255, 184, 160, .98); }
+.sm-core-ring { fill: none; stroke: color-mix(in srgb, var(--accent) 75%, transparent); stroke-width: 2.5; filter: drop-shadow(0 0 8px var(--accent)); pointer-events: none; }
+.sm-head { fill: var(--flick); }
+.sm-arrow { stroke: #ff9c84; stroke-width: 4.5; stroke-linecap: round; opacity: 0; filter: drop-shadow(0 0 6px var(--flick)); }
+/* The entrance: the segments sweep in around the centre, then the labels. */
+.sm-seg { transform-box: view-box; transform-origin: 50% 50%; }
+body.shown .sm-seg, body.shown .sm-rim-lit { animation: sm-seg-in .34s cubic-bezier(.2, .9, .3, 1.1) both; animation-delay: calc(var(--i) * 28ms + 30ms); }
+@keyframes sm-seg-in { from { opacity: 0; transform: rotate(-16deg) scale(.72); } }
+body.shown .sm-intent { animation: sm-fade-in .28s ease-out both; animation-delay: calc(var(--i) * 28ms + 110ms); }
+@keyframes sm-fade-in { from { opacity: 0; } }
+/* Picked: the segment pulses out once before the wheel closes. */
+body.shown .sm-seg.fired { animation: sm-fire .2s ease-out both; }
+@keyframes sm-fire { 50% { transform: scale(1.07); } to { transform: scale(1.04); } }
 .sm-arrow.on { opacity: 1; }
 
-.sm-intent { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 10px; border-radius: 14px; font-size: 17px; font-weight: 500; text-shadow: 0 1px 6px rgba(0, 0, 0, .6); transition: transform .12s; }
-.sm-intent svg { width: 34px; height: 34px; fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 1px 4px rgba(0, 0, 0, .5)); }
+.sm-intent { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px; border-radius: 14px; font-size: 19px; font-weight: 500; text-shadow: 0 1px 6px rgba(0, 0, 0, .6); transition: transform .12s; }
+.sm-intent svg { width: 36px; height: 36px; fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 1px 4px rgba(0, 0, 0, .5)); }
 .sm-intent.hot { transform: translate(-50%, -50%) scale(1.07); }
 .sm-intent.fired { transform: translate(-50%, -50%) scale(1.16); }
 .sm-intent:focus-visible { outline-offset: 0; }
 
 .sm-core { position: absolute; left: 50%; top: 50%; width: 140px; height: 140px; margin: -70px; border-radius: 50%; display: grid; place-items: center;
-  background: radial-gradient(circle at 50% 40%, rgba(40, 52, 72, .95), rgba(12, 16, 24, .96));
-  border: 1px solid rgba(255, 255, 255, .14);
-  box-shadow: 0 0 0 6px rgba(120, 150, 200, .08), 0 0 30px color-mix(in srgb, var(--accent) 30%, transparent), inset 0 1px 0 rgba(255, 255, 255, .1); transition: box-shadow .15s; }
-.sm-core:hover { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent), 0 0 40px color-mix(in srgb, var(--accent) 50%, transparent), inset 0 1px 0 rgba(255, 255, 255, .1); }
-.sm-logo { width: 62px; height: 62px; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 60%, transparent)); }
+  background: radial-gradient(circle at 50% 45%, #13233a, #070c16 72%);
+  border: 0; box-shadow: inset 0 0 26px color-mix(in srgb, var(--accent) 28%, transparent), 0 0 34px color-mix(in srgb, var(--accent) 30%, transparent); transition: box-shadow .15s; }
+.sm-core:hover { box-shadow: inset 0 0 30px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 46px color-mix(in srgb, var(--accent) 50%, transparent); }
+.sm-logo { width: 62px; height: 62px; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 80%, transparent)); }
 
 .sm-hint { position: absolute; left: 50%; top: calc(50% + 300px); transform: translateX(-50%); white-space: nowrap; padding: 7px 16px; border-radius: 999px; font-size: 13px; color: var(--ink);
   background: rgba(12, 16, 24, .72); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 20%, transparent); pointer-events: none; }
 
-/* Recent windows: frosted cards with a live picture, tilted along the ring. */
+/* Recent windows: rounded tiles on the outer ring (drawn in the SVG), with
+   their names over the dark inner part of each. */
+.sm-tile { cursor: pointer; transform-box: view-box; transform-origin: 50% 50%; transition: transform .14s, opacity .18s; }
+.sm-tile-bed { fill: rgba(22, 30, 44, .88); }
+.sm-tile-pic { fill: rgba(255, 255, 255, .06); }
+.sm-tile-edge { fill: none; stroke: rgba(190, 215, 245, .24); stroke-width: 1.3; transition: stroke .14s; }
+.sm-tile.hot .sm-tile-edge { stroke: var(--accent); stroke-width: 2; filter: drop-shadow(0 0 8px var(--accent)); }
+.sm-tile.hot { transform: scale(1.02); }
+/* They swing in along the ring after the segments, one after another. */
+body.shown .sm-tile, body.shown .sm-arcs path { animation: sm-tile-in .46s cubic-bezier(.2, .9, .3, 1.06) both; animation-delay: calc(var(--i) * 50ms + 90ms); }
+.sm-arcs path { transform-box: view-box; transform-origin: 50% 50%; }
+@keyframes sm-tile-in { from { opacity: 0; transform: rotate(-28deg) scale(.86); } }
+/* Picked: the tile swells toward you as its window comes forward. */
+.sm-tile.launch { animation: none; transform: scale(1.12); opacity: 0; transition: transform .18s ease-in, opacity .18s ease-in; }
 .sm-cards { position: absolute; inset: 0; pointer-events: none; }
-.sm-card { position: absolute; width: 226px; height: 84px; display: flex; gap: 10px; align-items: center; padding: 8px; box-sizing: border-box; text-align: left; pointer-events: auto;
-  transform: translate(-50%, -50%) rotate(var(--tilt)); border-radius: 14px;
-  background: linear-gradient(160deg, var(--shell-glass-2), var(--shell-glass-3)); border: 1px solid var(--shell-line);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .45); transition: transform .14s, border-color .14s;
-  animation: sm-card-in .28s cubic-bezier(.2, .9, .3, 1.1) both; animation-delay: calc(var(--i) * 30ms); }
-@keyframes sm-card-in { from { opacity: 0; transform: translate(-50%, -50%) rotate(var(--tilt)) scale(.85); } }
-.sm-card:hover, .sm-card:focus-visible { transform: translate(-50%, -50%) rotate(var(--tilt)) scale(1.05); border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
-.sm-thumb { flex: none; width: 76px; height: 66px; border-radius: 9px; background: rgba(255, 255, 255, .06) center / cover no-repeat; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
-.sm-card-text { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sm-card { position: absolute; width: 140px; display: flex; flex-direction: column; gap: 1px; padding: 0 4px; border-radius: 8px; text-align: left; pointer-events: auto;
+  transform: translate(-50%, -50%) rotate(var(--tilt, 0deg));
+  animation: sm-fade-in .3s ease-out both; animation-delay: calc(var(--i) * 50ms + 260ms); }
+.sm-card.launch { animation: none; opacity: 0; transition: opacity .12s; }
 .sm-card-title { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sm-card-icon { flex: none; width: 16px; height: 16px; object-fit: contain; }
 .sm-card-sub { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Stage on or off (Windows), under the hint. */
+.sm-stage { position: absolute; left: 50%; top: calc(50% + 342px); transform: translateX(-50%); display: flex; align-items: center; gap: 9px; padding: 6px 15px 6px 11px; border-radius: 999px; font-size: 12.5px;
+  background: rgba(12, 16, 24, .72); border: 1px solid var(--shell-line); transition: border-color .15s, box-shadow .15s; }
+.sm-stage:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.sm-stage[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent); }
+.sm-stage-icon { position: relative; width: 18px; height: 16px; }
+.sm-stage-icon i { position: absolute; left: 0; width: 7px; height: 4px; border-radius: 1.5px; background: var(--dim); }
+.sm-stage-icon i:nth-child(1) { top: 0; } .sm-stage-icon i:nth-child(2) { top: 6px; } .sm-stage-icon i:nth-child(3) { top: 12px; }
+.sm-stage-icon::after { content: ""; position: absolute; right: 0; top: 1px; width: 9px; height: 14px; border-radius: 2px; border: 1.5px solid var(--ink); box-sizing: border-box; }
+.sm-stage[aria-pressed="true"] .sm-stage-icon i { background: var(--accent); }
 
 .sm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* Performance → Light: the dot rests, and the wheel opens without its entrance. */
 html[data-perf="light"] .sm-ring.r3 { animation: none; }
-html[data-perf="light"] .sm-card { animation: none; }
-html[data-perf="light"] .sm-seg.hot, html[data-perf="light"] .sm-arcs path, html[data-perf="light"] .sm-arrow { filter: none; }
+html[data-perf="light"] .sm-card, html[data-perf="light"] body.shown .sm-tile, html[data-perf="light"] body.shown .sm-arcs path, html[data-perf="light"] body.shown .sm-seg, html[data-perf="light"] body.shown .sm-intent { animation: none; }
+html[data-perf="light"] .sm-seg.hot, html[data-perf="light"] .sm-arcs path, html[data-perf="light"] .sm-arrow, html[data-perf="light"] .sm-core-ring { filter: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .sm-wheel, .sm-backdrop, .sm-card, .sm-seg, .sm-intent { transition: none; animation: none; }
+  .sm-wheel, .sm-backdrop, .sm-card, .sm-seg, .sm-intent, .sm-tile, body.shown .sm-seg, body.shown .sm-intent, body.shown .sm-tile, body.shown .sm-arcs path, body.from-dot .sm-wheel { transition: none; animation: none; }
   .sm-ring.r3 { animation: none; }
 }

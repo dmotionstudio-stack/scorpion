@@ -119,6 +119,7 @@ app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 let win = null;
 let tray = null;
 let quitting = false;
+let leaving = false; // before-quit has begun (the windows hiding then isn't "away")
 const startHidden = process.argv.includes('--hidden');
 // Started at sign-in to open the orb (Settings → General → When I sign in).
 const startOrb = process.argv.includes('--orb');
@@ -279,8 +280,15 @@ function createWindow() {
   // Another app in use: Scorpion stops pinning itself on top, so that app can
   // come in front (keeping it on top regardless made the two fight: flicker).
   win.on('blur', () => { if (fullMode) win.setAlwaysOnTop(false); });
+  // Minimized or in the tray: the summon dot floats on the Windows desktop.
+  const away = (on) => desktop.setFloatingDot(on && !leaving && store.getSettings().summonDot !== false);
+  win.on('minimize', () => away(true));
+  win.on('hide', () => away(true));
+  win.on('restore', () => away(false));
+  win.on('show', () => away(false));
   win.loadURL('scorpion://app/index.html');
   if (!startHidden || process.env.SCORPION_SCREENSHOT) win.once('ready-to-show', () => win.show());
+  else away(true);
 
   // With scheduled agents on, closing the window keeps Scorpion running in the tray.
   win.on('close', (e) => {
@@ -1304,7 +1312,8 @@ async function runIntent(id) {
   const launch = (a) => winctl.launchApp(a, { viaExplorer: desktop.shellMode() !== 'shell' });
   const chosen = taskbarSettings().intents[id];
   if (chosen?.id) return launch(chosen);
-  if (id === 'home') return showView('desktop');
+  // The wheel's centre: the desktop, or (Scorpion only minimized) back to the orb.
+  if (id === 'home') return showView(desktop.shellMode() === 'shell' || process.platform !== 'win32' ? 'desktop' : 'orb');
   if (id === 'talk') return showView('orb', { talk: true });
   if (id === 'files') return showView('files');
   if (id === 'browse') return openDefault('http', process.platform === 'linux' ? 'https://duckduckgo.com' : 'https://www.bing.com');
@@ -1324,6 +1333,7 @@ async function runNamedIntent(id) {
   // Scorpion OS's updates are Scorpion's own (Settings → This computer).
   if (kind === 'settings' && it.run.arg === 'update' && process.platform === 'linux') return showView('settings', { section: 'system' });
   if (kind === 'settings') return winctl.openSettings(it.run.arg);
+  if (kind === 'stage') return setStage(!store.getSettings().stage);
   if (kind === 'control' && MAIN_CONTROLS.includes(it.run.arg)) return winctl.systemControl(it.run.arg);
   if (kind === 'wheel') return runIntent(it.run.arg);
   if (kind === 'install') return winctl.startInstaller();
@@ -1377,6 +1387,22 @@ function registerWheelKey() {
     try { if (globalShortcut.register(key, open)) { wheelKey = key; break; } } catch { /* taken */ }
   }
   return wheelKey;
+}
+// Stage (Windows only): kept in the settings, and the pages told.
+function setStage(on) {
+  if (process.platform !== 'win32') throw new Error('Stage is on Windows for now.');
+  const s = store.updateSettings({ stage: Boolean(on) });
+  desktop.setStage(s.stage);
+  send('settings:changed', s);
+  return s.stage;
+}
+// A small picture of the main screen (a quarter size: it is only shown blurred,
+// behind the intent wheel). It stays on this computer.
+async function snapScreen() {
+  const d = screen.getPrimaryDisplay();
+  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(d.size.width / 4), height: Math.round(d.size.height / 4) } });
+  const s = sources.find((x) => String(x.display_id) === String(d.id)) || sources[0];
+  return s && !s.thumbnail.isEmpty() ? s.thumbnail.toDataURL() : null;
 }
 // Pin an app (a Start menu app id, or a program's path) to the taskbar, or unpin it.
 function setPinned({ id, name, on }) {
@@ -1661,6 +1687,13 @@ function registerIpc() {
   });
   h('window:fullMode', (on) => setFullMode(on));
   h('window:isFullMode', () => fullMode && Boolean(win?.isFullScreen()));
+  // The orb's Minimize on Windows: the window goes and the summon dot takes over.
+  h('window:minimize', () => {
+    if (!win || win.isDestroyed()) return false;
+    if (fullMode) setFullMode(false);
+    win.minimize();
+    return true;
+  });
   h('voice:micAccess', async () => {
     if (process.platform !== 'darwin') return true;
     if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true;
@@ -1832,6 +1865,16 @@ function registerIpc() {
     return shell.openExternal(RAIL_LINKS[what]);
   });
   h('shell:window', ({ hwnd, action }) => winctl.windowByHandle(String(hwnd), action));
+  // Stage: on or off (the wheel, Settings, the palette), and a window picked
+  // from its strip comes forward while the one in front steps aside.
+  h('shell:stage', (on) => setStage(on));
+  h('shell:stagePick', async (hwnd) => {
+    desktop.hideStage();
+    const front = (await shellWindows()).find((w) => w.active && !w.self && w.hwnd !== String(hwnd));
+    await winctl.windowByHandle(String(hwnd), 'focus');
+    if (front) await winctl.windowByHandle(front.hwnd, 'minimize').catch(() => {});
+    return true;
+  });
   // live: running from the ISO or a USB stick (the rail then offers Install).
   h('shell:tray', async () => ({ ...(await desktop.trayStatus()), live: process.platform === 'linux' && winctl.isLiveSession() }));
   h('shell:install', () => winctl.startInstaller());
@@ -2162,7 +2205,7 @@ function ensureTrayHint() {
 app.whenReady().then(async () => {
   if (!primary) return;
   store.initStore(app.getPath('userData'));
-  desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf });
+  desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf, snapScreen });
   // Performance follows the power cable when "Light on battery" is on.
   applyPerf();
   powerMonitor.on('on-battery', applyPerf);
@@ -2177,6 +2220,7 @@ app.whenReady().then(async () => {
   });
   registerSummon();
   registerWheelKey();
+  if (process.platform === 'win32' && store.getSettings().stage) desktop.setStage(true);
   appFrame.initFrame({
     dataDir: app.getPath('userData'),
     panelToScreen: (r) => {
@@ -2262,6 +2306,9 @@ app.on('before-quit', (e) => {
   // Leaving the desktop: put the screen area back (and the Windows desktop,
   // when Scorpion was it) before quitting.
   if (appFrame.framed()) { e.preventDefault(); appFrame.setPanel(null).finally(() => app.quit()); return; }
+  leaving = true;
+  desktop.setFloatingDot(false);
+  desktop.setStage(false);
   if (desktop.shellMode()) { e.preventDefault(); for (const w of BrowserWindow.getAllWindows()) w.hide(); desktop.stopShell().finally(() => app.quit()); return; }
   winctl.stopPsKept();
   quitting = true; scheduler.stopScheduler(); for (const m of mcp.allStatus()) mcp.disconnect(m.id); tg?.stop(); for (const c of running.values()) c.abort(); engine.shutdown(); });

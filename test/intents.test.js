@@ -24,6 +24,7 @@ test('every entry is complete and points at something that exists', () => {
     } else if (main === 'control') assert.ok(MAIN_CONTROLS.includes(arg) && win.ACTIONS.includes(arg), arg);
     else if (main === 'wheel') assert.ok(WHEEL.some((w) => w.id === arg), `the wheel has no "${arg}"`);
     else if (main === 'install') assert.ok(it.live && it.only === 'linux');
+    else if (main === 'stage') assert.equal(it.only, 'win32');
     else assert.fail(`${it.id} runs nothing`);
   }
 });

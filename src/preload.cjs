@@ -49,6 +49,11 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellIntent: invoke('shell:intent'),
   shellIntents: invoke('shell:intents'),
   shellWheel: invoke('shell:wheel'),
+  // Stage (Windows): on or off, a window picked from its strip, and the strip sliding in and out.
+  shellStage: invoke('shell:stage'),
+  shellStagePick: invoke('shell:stagePick'),
+  onStageShow: on('stage:show'),
+  onStageHide: on('stage:hide'),
   // The command palette: opened from the wheel, and its system entries run (src/shared/intents.js).
   shellPalette: invoke('shell:palette'),
   intentRun: invoke('intent:run'),
@@ -191,6 +196,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   setFullScreen: invoke('window:fullscreen'),
   setFullMode: invoke('window:fullMode'),
   isFullMode: invoke('window:isFullMode'),
+  windowMinimize: invoke('window:minimize'),
   onFullMode: on('fullmode:changed'),
   onVoiceDownload: on('voice:download'),
 

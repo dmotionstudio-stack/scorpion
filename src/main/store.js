@@ -59,6 +59,8 @@ const DEFAULT_SETTINGS = {
   performanceOnBattery: false, // Light while running on battery
   welcomeDone: false, // the spoken first start was shown (welcome.js)
   access: { bigText: false, screenReader: false, keyboard: false }, // accessibility (main.js applyAccess)
+  summonDot: true, // Windows: the summon dot floats over the desktop while Scorpion's window is away
+  stage: false, // Windows: Stage, the recent windows' strip from the left edge
   updatesAnnounced: '', // Scorpion OS: the set of updates last announced (updates.js), so each is said once
   handsAlwaysOn: true, // hand gestures on (camera; off while minimized); on Windows the hand is the mouse everywhere
   wakeWord: false, // saying "Scorpion" starts listening while the orb is open

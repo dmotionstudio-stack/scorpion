@@ -46,3 +46,27 @@ test('the outer ring spreads cards along the right-hand arc', () => {
   assert.ok(ringSlots(6).every((s) => s.angle >= -60 && s.angle <= 190));
   assert.match(sectorPath(0, 60, 70, 230, 6), /^M .* A 230 230 0 0 1 .* L .* A 70 70 0 0 0 .* Z$/);
 });
+
+test("Stage's strip shows the other recent windows, newest first, at most five", async () => {
+  const { stageWindows, STAGE_MAX } = await import('../src/renderer/stage-core.js');
+  const list = [
+    { hwnd: '1', active: true }, { hwnd: '2' }, { hwnd: '3', self: true }, { hwnd: '4' }, { hwnd: '5' }, { hwnd: '6' }, { hwnd: '7' }, { hwnd: '8' }, {},
+  ];
+  assert.deepEqual(stageWindows(list).map((w) => w.hwnd), ['2', '4', '5', '6', '7']);
+  assert.equal(STAGE_MAX, 5);
+  assert.deepEqual(stageWindows(), []);
+});
+
+test('the recent windows sit as rounded tiles along the outer ring', async () => {
+  const { tileSlots, tilePath, glowOf } = await import('../src/renderer/wheel-core.js');
+  assert.deepEqual(tileSlots(0), []);
+  assert.deepEqual(tileSlots(4).map((s) => s.angle), [11, 45, 79, 113]);
+  assert.deepEqual(tileSlots(1)[0], { angle: 62, span: 32, tilt: -7 });
+  assert.equal(tileSlots(6).length, 6);
+  const d = tilePath(0, 60, 86, 232, 10, 16);
+  assert.match(d, /^M [-\d.]+ [-\d.]+ A 232 232 0 0 1 /);
+  assert.equal((d.match(/ Q /g) || []).length, 4); // four rounded corners
+  assert.ok(!/NaN/.test(d));
+  assert.equal(glowOf('Music'), '#2fd47a');
+  assert.equal(glowOf('Spreadsheet'), null);
+});

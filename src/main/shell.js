@@ -19,12 +19,23 @@ const WIN = process.platform === 'win32';
 const TASKBAR_HEIGHT = 48;
 const RAIL_WIDTH = 76;
 const DOT = 88; // the summon dot's window, bottom left
-let deps = null; // { BrowserWindow, screen, preload, dataDir, getMainWindow, showView, getLayout, perf }
+let deps = null; // { BrowserWindow, screen, preload, dataDir, getMainWindow, showView, getLayout, perf, snapScreen }
 let taskbar = null;
 let summon = null; // the summon dot, which opens into the intent wheel
 let wheelOpen = false;
 let held = false; // a menu or dialog from the wheel is up: it stays open
 let layout = 'orbit'; // 'orbit' (edge rail + wheel) | 'bar'
+// On the normal Windows desktop the dot floats on its own while Scorpion's
+// window is minimized or hidden ("summon anywhere"), and Win+Shift+Space opens
+// the wheel whenever Scorpion runs.
+let floating = false;
+// Stage (Windows): the recent windows as a strip of live pictures that slides
+// in from the screen's left edge when the pointer touches it (stage.html).
+const STAGE_W = 230;
+let stage = null;
+let stageOn = false;
+let stageShown = false;
+let stageWatch = 0;
 // Scorpion OS's native shell host shows the rail, the dot and the wheel as
 // layer-shell panels (os/.../scorpion-shell); then Scorpion makes none itself.
 let hostMode = false;
@@ -64,13 +75,20 @@ function placeTaskbar() {
   }
   placeSummon();
 }
-// The dot in the bottom-left corner, or (open) the whole screen left of the rail.
+// The dot in the bottom-left corner (above a taskbar), or (open) the whole
+// screen left of the rail.
 function placeSummon() {
   if (!summon || summon.isDestroyed()) return;
   const r = deps.screen.getPrimaryDisplay().bounds;
+  const dot = dotSpot();
   summon.setBounds(wheelOpen
-    ? { x: r.x, y: r.y, width: r.width - RAIL_WIDTH, height: r.height }
-    : { x: r.x + 8, y: r.y + r.height - DOT - 8, width: DOT, height: DOT });
+    ? { x: r.x, y: r.y, width: r.width - (railUp() ? RAIL_WIDTH : 0), height: r.height }
+    : { x: dot.x - DOT / 2, y: dot.y - DOT / 2, width: DOT, height: DOT });
+}
+// The dot's centre on the screen.
+function dotSpot() {
+  const a = deps.screen.getPrimaryDisplay().workArea;
+  return { x: a.x + 8 + DOT / 2, y: a.y + a.height - 8 - DOT / 2 };
 }
 
 // On Linux the window manager places a new window itself (labwc centres it);
@@ -95,15 +113,23 @@ function createWindows() {
   taskbar.loadURL(`scorpion://app/${layout === 'bar' ? 'taskbar' : 'edge'}.html`);
   taskbar.once('ready-to-show', () => { placeTaskbar(); taskbar.showInactive(); placeAgain(); });
   taskbar.on('closed', () => { taskbar = null; });
-  if (layout === 'orbit') {
-    summon = new deps.BrowserWindow(windowOptions('Scorpion summon'));
-    summon.setAlwaysOnTop(true, 'pop-up-menu');
-    summon.loadURL('scorpion://app/summon.html');
-    summon.once('ready-to-show', () => { placeSummon(); summon.showInactive(); placeAgain(); });
-    summon.on('blur', () => { if (wheelOpen && !held) summon.webContents.send('wheel:close'); });
-    summon.on('closed', () => { summon = null; wheelOpen = false; });
-  }
+  if ((layout === 'orbit' || floating) && (!summon || summon.isDestroyed())) makeSummon();
+  else if (railUp()) { placeSummon(); summon.showInactive(); } // the floating dot was already there
 }
+// The summon dot's window (the wheel opens in it). With the rail it shows at
+// once; floating, only while Scorpion's window is away.
+function makeSummon() {
+  summon = new deps.BrowserWindow(windowOptions('Scorpion summon'));
+  summon.setAlwaysOnTop(true, 'pop-up-menu');
+  summon.loadURL('scorpion://app/summon.html');
+  summon.loaded = new Promise((resolve) => summon.webContents.once('did-finish-load', resolve));
+  summon.once('ready-to-show', () => { placeSummon(); if (dotWanted()) summon.showInactive(); placeAgain(); });
+  summon.on('blur', () => { if (wheelOpen && !held) summon.webContents.send('wheel:close'); });
+  summon.on('closed', () => { summon = null; wheelOpen = false; });
+}
+// The rail is up (Scorpion as the desktop, orbit layout): then so is the dot.
+const railUp = () => Boolean(mode) && layout === 'orbit';
+const dotWanted = () => railUp() || floating;
 function destroyWindows() {
   taskbar?.destroy();
   taskbar = null;
@@ -114,15 +140,31 @@ function destroyWindows() {
 
 // The intent wheel: open (centred on a point of the screen, or its middle) or
 // back to the dot.
-export function openWheel(at) {
+// On the normal Windows desktop the dot's window is made when first needed.
+// The page hears where the dot is, so the wheel can grow out of it and
+// shrink back into it.
+export async function openWheel(at) {
   const r = deps.screen.getPrimaryDisplay().bounds;
   if (hostMode) { shellEvent('wheel:open', at ? { x: at.x - r.x, y: at.y - r.y } : null); return true; }
+  if (!summon || summon.isDestroyed()) {
+    if (!WIN) return false;
+    makeSummon();
+  }
+  await summon.loaded;
   if (!summon || summon.isDestroyed()) return false;
+  hideStage(true);
+  // Frosted glass: a small picture of the screen, taken before the wheel
+  // shows, which the page blurs behind it (not in Light, nor if it's slow).
+  const shot = WIN && deps.snapScreen && deps.perf?.() !== 'light'
+    ? await Promise.race([deps.snapScreen().catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), 250))])
+    : null;
   wheelOpen = true;
   summon.setAlwaysOnTop(true, 'screen-saver');
   placeSummon();
-  const centre = at ? { x: at.x - r.x, y: at.y - r.y } : { x: (r.width - RAIL_WIDTH) / 2, y: r.height / 2 };
-  summon.webContents.send('wheel:open', centre);
+  const spot = dotSpot();
+  const dot = dotWanted() ? { x: spot.x - r.x, y: spot.y - r.y } : null;
+  const centre = at ? { x: at.x - r.x, y: at.y - r.y } : { x: (r.width - (railUp() ? RAIL_WIDTH : 0)) / 2, y: r.height / 2 };
+  summon.webContents.send('wheel:open', { ...centre, dot, backdrop: shot ? { src: shot, w: r.width, h: r.height } : null });
   summon.show();
   summon.focus();
   return true;
@@ -134,7 +176,63 @@ export function closeWheel() {
   summon.setAlwaysOnTop(true, 'pop-up-menu');
   placeSummon();
   summon.blur();
+  if (!dotWanted()) summon.hide();
   return true;
+}
+// Scorpion's window went away (minimized, or to the tray) or came back: on
+// the normal Windows desktop the dot floats while it's away.
+export function setFloatingDot(on) {
+  floating = WIN && Boolean(on);
+  if (hostMode || railUp()) return;
+  if (floating) {
+    if (!summon || summon.isDestroyed()) makeSummon();
+    else if (!wheelOpen) { placeSummon(); summon.showInactive(); }
+  } else if (summon && !summon.isDestroyed() && !wheelOpen) summon.hide();
+}
+
+// ---------- Stage ----------
+// The pointer at the screen's left edge slides the strip in; moving well
+// away from it slides it out. The pointer is only watched while Stage is on.
+export function setStage(on) {
+  stageOn = WIN && Boolean(on);
+  clearInterval(stageWatch);
+  stageWatch = 0;
+  if (!stageOn) { hideStage(true); stage?.destroy(); stage = null; return false; }
+  stageWatch = setInterval(watchStage, deps.perf?.() === 'light' ? 250 : 120);
+  return true;
+}
+function makeStage() {
+  stage = new deps.BrowserWindow({ ...windowOptions('Scorpion stage'), focusable: false });
+  stage.setAlwaysOnTop(true, 'pop-up-menu');
+  stage.loadURL('scorpion://app/stage.html');
+  stage.loaded = new Promise((resolve) => stage.webContents.once('did-finish-load', resolve));
+  stage.on('closed', () => { stage = null; stageShown = false; });
+}
+async function showStage() {
+  if (!stage || stage.isDestroyed()) makeStage();
+  stageShown = true;
+  const a = deps.screen.getPrimaryDisplay().workArea;
+  stage.setBounds({ x: a.x, y: a.y, width: STAGE_W, height: a.height });
+  await stage.loaded;
+  if (!stageShown || !stage || stage.isDestroyed()) return;
+  stage.webContents.send('stage:show');
+  stage.showInactive();
+}
+// Slides out (the page animates), then the window goes.
+export function hideStage(now = false) {
+  if (!stageShown) return;
+  stageShown = false;
+  if (!stage || stage.isDestroyed()) return;
+  stage.webContents.send('stage:hide');
+  setTimeout(() => { if (!stageShown && stage && !stage.isDestroyed()) stage.hide(); }, now ? 0 : 220);
+}
+function watchStage() {
+  if (wheelOpen) return;
+  const p = deps.screen.getCursorScreenPoint();
+  const a = deps.screen.getPrimaryDisplay().workArea;
+  const level = p.y >= a.y && p.y < a.y + a.height;
+  if (!stageShown && level && p.x <= a.x + 1) showStage().catch(() => {});
+  else if (stageShown && (p.x > a.x + STAGE_W + 40 || !level)) hideStage();
 }
 export function holdWheel(on) { held = Boolean(on); }
 // The native shell host came up (or went away): its panels, or Scorpion's own windows.
@@ -219,6 +317,7 @@ export async function stopShell() {
   win.setShellActive(false);
   deps.screen.removeListener('display-metrics-changed', placeTaskbar);
   destroyWindows();
+  if (floating) makeSummon(); // the rail goes; a floating dot stays
   clearInterval(keeper);
   keeper = 0;
   await restoreWorkArea();
