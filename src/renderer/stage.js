@@ -52,7 +52,7 @@ function hide() {
 // size and lands in its place (the window covers the screen meanwhile).
 const FLIGHT_MS = 650;
 async function arrive({ hwnd } = {}) {
-  // Scorpion OS: the host's panel grows to the whole screen first.
+  // Scorpion OS: the host shows the strip first.
   if (window.scorpionHost) {
     api.host({ type: 'stage', arriving: true });
     await new Promise((resolve) => setTimeout(resolve, 150));
@@ -70,11 +70,14 @@ async function arrive({ hwnd } = {}) {
     // Its place in the strip without its slide (layout, not the transform);
     // it grows from its left edge (transform-origin), so three times its size
     // puts its middle one and a half widths along.
+    // On Scorpion OS the flight stays inside the strip (its panel doesn't
+    // cover the screen), so the card starts less big there.
+    const s = window.scorpionHost ? 1.8 : 3;
     const left = card.offsetLeft;
     const top = card.offsetTop - strip.scrollTop;
     const w = card.offsetWidth;
     const h = card.offsetHeight;
-    card.style.setProperty('--fly', `translate(${innerWidth / 2 - (left + 1.5 * w)}px, ${innerHeight / 2 - (top + h / 2)}px) scale(3)`);
+    card.style.setProperty('--fly', `translate(${innerWidth / 2 - (left + (s / 2) * w)}px, ${innerHeight / 2 - (top + h / 2)}px) scale(${s})`);
     card.classList.add('flying');
     card.getBoundingClientRect(); // starts from there
     setTimeout(() => card.classList.add('landed'), 30);

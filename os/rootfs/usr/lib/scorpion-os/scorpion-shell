@@ -533,7 +533,6 @@ class Host:
             self.stage_hide(now=True)
 
     def stage_show(self):
-        log("stage: the left edge", self.stage_on, self.stage_shown, self.wheel_open)
         if not self.stage_on or self.stage_shown or self.wheel_open:
             return
         log("stage: in from the edge")
@@ -543,6 +542,10 @@ class Host:
         p.show_all()
         p.clicks(None)
         p.js("window.scorpionStage && window.scorpionStage.show()")
+        # The pointer touched the edge but may never move onto the strip (then
+        # no "left" ever comes): it goes again unless the pointer arrives on it.
+        self.stage_keep()
+        self.stage_timer = GLib.timeout_add(1500, self.stage_hide)
 
     def place_strip(self, p):
         """Stage as a strip down the left edge, its height given (a panel
@@ -562,7 +565,6 @@ class Host:
         self.stage_timer = GLib.timeout_add(400, self.stage_hide)
 
     def stage_hide(self, now=False):
-        log("stage: away", self.stage_shown)
         self.stage_timer = 0
         if not self.stage_shown:
             return False
@@ -578,8 +580,9 @@ class Host:
         return False
 
     def stage_arriving(self):
-        """A window just minimized flies in: for the flight the panel covers
-        the screen and lets every click through."""
+        """A window just minimized flies in. Here the flight stays inside the
+        strip: a panel grown to the whole screen didn't shrink back, and took
+        every click and key while it showed."""
         if not self.stage_on or self.wheel_open:
             log("stage: a window was minimized; Stage is", "on" if self.stage_on else "off", "the wheel is open" if self.wheel_open else "")
             return
@@ -589,21 +592,15 @@ class Host:
         # Landed (the page says), or given up on after three seconds.
         self.stage_timer = GLib.timeout_add(3000, self.stage_arrived)
         p = self.panels["stage"]
-        # The screen's own size: asked to stretch, a panel shown again kept 1 x 1.
-        w, h = self.get_screen_size()
-        p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.TOP}, width=w, height=h, exclusive=-1)
+        self.place_strip(p)
         p.show_all()
-        p.clicks((0, 0, 0, 0))
+        p.clicks(None)
 
     def stage_arrived(self):
         """Landed: back to a strip, which stays a moment, then slides away
         unless the pointer is on it."""
-        log("stage: landed", self.stage_shown)
         if not self.stage_shown:
             return False
-        p = self.panels["stage"]
-        self.place_strip(p)
-        p.clicks(None)
         self.stage_keep()
         self.stage_timer = GLib.timeout_add(1400, self.stage_hide)
         return False

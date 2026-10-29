@@ -140,6 +140,8 @@ flatpak
 
 # --- the installer (removed from the installed system) ---
 calamares
+# its slideshow (show.qml) is QtQuick: without this, "Timer is not a type" and a blank page
+qml-module-qtquick2
 squashfs-tools
 rsync
 cryptsetup
