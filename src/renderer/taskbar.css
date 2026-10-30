@@ -3,6 +3,7 @@
    accent, a glowing edge, scan lines, a slow light sweep, and glowing
    monospace text and icons. The window itself is transparent (shell.js). */
 html, body.taskbar { background: transparent; }
+html { height: 100%; }
 /* With no background of its own, html would take body's and paint it over the
    whole window, which stays put when the bar slides away (auto-hide). */
 html { background-image: linear-gradient(transparent, transparent); }
@@ -112,3 +113,33 @@ body.tb-style-solid::before { background: var(--border, #333); box-shadow: none;
 body.tb-style-solid .tb-ico, body.tb-style-solid .tb-logo, body.tb-style-solid .tb-win img { filter: none; }
 body.tb-style-solid .tb-win { color: var(--text, #eee); }
 body.tb-style-solid .tb-win.active { background: var(--panel-2, #222); border-color: var(--border, #333); box-shadow: none; }
+
+/* Along the top: the glowing line under it, and it hides upward. */
+body.taskbar.at-top { background: linear-gradient(to bottom, rgba(0, 0, 0, .82), rgba(0, 0, 0, .55)), linear-gradient(to bottom, color-mix(in srgb, var(--accent) 10%, transparent), transparent); }
+body.taskbar.at-top::before { top: auto; bottom: 0; }
+body.taskbar.at-top.rail-hidden { transform: translateY(calc(-100% + 3px)); }
+/* Down a side: one column of icons (names in the tooltips), the clock
+   without its date, and the glowing line along the inner edge. */
+body.taskbar.at-left, body.taskbar.at-right { height: 100%; box-sizing: border-box; flex-direction: column; padding: 8px 0; gap: 4px; }
+body.taskbar.at-left { background: linear-gradient(to right, rgba(0, 0, 0, .82), rgba(0, 0, 0, .55)); }
+body.taskbar.at-right { background: linear-gradient(to left, rgba(0, 0, 0, .82), rgba(0, 0, 0, .55)); }
+body.taskbar.at-left::before, body.taskbar.at-right::before { left: auto; right: 0; top: 0; bottom: 0; width: 1px; height: auto;
+  background: linear-gradient(to bottom, transparent, var(--accent) 20%, var(--accent) 80%, transparent); }
+body.taskbar.at-right::before { left: 0; right: auto; }
+body.taskbar.at-left.rail-hidden { transform: translateX(calc(-100% + 3px)); }
+body.taskbar.at-right.rail-hidden { transform: translateX(calc(100% - 3px)); }
+.at-left .tb-sweep, .at-right .tb-sweep { display: none; }
+.at-left .tb-start, .at-right .tb-start, .at-left .tb-tray, .at-right .tb-tray, .at-left .tb-pinned, .at-right .tb-pinned { flex-direction: column; }
+.at-left .tb-apps-area, .at-right .tb-apps-area { flex: 1; min-height: 0; width: 100%; flex-direction: column; margin: 4px 0 0; padding: 6px 0; border-left: 0; border-top: 1px solid var(--faint); }
+.at-left .tb-windows, .at-right .tb-windows { flex-direction: column; }
+.at-left .tb-win, .at-right .tb-win { flex: none; min-width: 0; width: 44px; justify-content: center; padding: 0; }
+.at-left .tb-win .tb-title, .at-right .tb-win .tb-title { display: none; }
+.at-left .tb-pin, .at-right .tb-pin { max-width: none; }
+.at-left .tb-win::after, .at-right .tb-win::after { left: auto; right: 2px; top: 50%; bottom: auto; width: 2px; height: 6px; transform: translateY(-50%); }
+.at-right .tb-win::after { left: 2px; right: auto; }
+.at-left .tb-win.active::after, .at-right .tb-win.active::after { width: 2px; height: 22px; }
+.at-left .tb-sep, .at-right .tb-sep { width: 26px; height: 1px; margin: 2px 0; }
+.at-left .tb-item, .at-right .tb-item { flex-direction: column; gap: 0; font-size: 10px; padding: 4px 0; }
+.at-left .tb-clock, .at-right .tb-clock { align-items: center; text-align: center; padding: 0 2px; letter-spacing: 0; }
+.at-left #tb-time, .at-right #tb-time { font-size: 12px; }
+.at-left #tb-date, .at-right #tb-date { display: none; }

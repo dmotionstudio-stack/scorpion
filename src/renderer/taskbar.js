@@ -1,4 +1,5 @@
-// The taskbar along the bottom of the screen while Scorpion is the Windows
+// The taskbar along the bottom of the screen (or the top, or down a side:
+// Settings, or Position on its right-click menu) while Scorpion is the Windows
 // desktop (or stands in for the Windows taskbar): Scorpion, Apps and Files,
 // the pinned apps and the open windows with their icons, then network,
 // battery, volume, the clock and the power menu. Right-click an empty part of
@@ -21,6 +22,8 @@ async function applySettings(settings) {
   b.add(`tb-style-${look.style}`, `tb-size-${look.size}`);
   b.toggle('tb-icons-only', !look.labels);
   b.toggle('tb-centered', Boolean(look.center));
+  const edge = ['bottom', 'top', 'left', 'right'].includes(look.edge) ? look.edge : 'bottom';
+  for (const e of ['bottom', 'top', 'left', 'right']) b.toggle(`at-${e}`, e === edge);
   for (const [k, el] of [['network', '#tb-net'], ['volume', '#tb-volume'], ['clock', '#tb-clock']]) $(el).hidden = look.show[k] === false;
   $('#tb-battery').dataset.off = look.show.battery === false ? '1' : '';
   refreshTray();

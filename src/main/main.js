@@ -343,7 +343,7 @@ function setFullMode(on) {
 // In full mode Scorpion's screens stop short of its taskbar (which stays on
 // top): above the bar, or left of the edge rail.
 // On Scorpion OS Scorpion's window always stops at the rail (labwc doesn't shrink it).
-const taskbarInset = () => ((fullMode || process.platform === 'linux') && desktop.shellMode() ? desktop.taskbarInsets() : { bottom: 0, right: 0 });
+const taskbarInset = () => ((fullMode || process.platform === 'linux') && desktop.shellMode() ? desktop.taskbarInsets() : { top: 0, right: 0, bottom: 0, left: 0 });
 function sendTaskbarInset() { send('layout:taskbar', taskbarInset()); }
 
 // Full mode covers everything, so an app the user brings to the front (from
@@ -1902,7 +1902,14 @@ function registerIpc() {
   // The summon dot dragged (each move, then where it's dropped, which is
   // kept), asked where it is, or put back in its corner.
   h('shell:dot', (arg = {}) => {
-    if (arg.phase === 'reset') { store.updateSettings({ dotAt: null }); desktop.placeDot(); send('settings:changed', store.getSettings()); return desktop.dragDot({ phase: 'get' }); }
+    // Back to its corner, or into another one (Settings).
+    if (arg.phase === 'reset' || arg.phase === 'corner') {
+      const corner = ['tl', 'tr', 'bl', 'br'].includes(arg.corner) ? arg.corner : null;
+      store.updateSettings({ dotAt: corner ? { corner } : null });
+      desktop.placeDot();
+      send('settings:changed', store.getSettings());
+      return desktop.dragDot({ phase: 'get' });
+    }
     const r = desktop.dragDot(arg);
     if (arg.phase === 'end' && r?.at) send('settings:changed', store.updateSettings({ dotAt: r.at }));
     return r;
@@ -2046,15 +2053,18 @@ function registerIpc() {
       const set = (patch) => setTaskbarLook({ ...t, ...patch });
       const show = (k) => ({ label: { network: 'Network', battery: 'Battery', volume: 'Volume', clock: 'Clock', notifications: 'Notifications', mail: 'Mail', chat: 'Chat with Scorpion' }[k], type: 'checkbox', checked: t.show[k] !== false, click: () => set({ show: { ...t.show, [k]: t.show[k] === false } }) });
       const autoHide = { label: 'Hide automatically', type: 'checkbox', checked: t.autoHide === true, click: () => set({ autoHide: t.autoHide !== true }) };
-      const layoutMenu = { label: 'Layout', submenu: [['orbit', 'Edge rail with the intent wheel'], ['bar', 'Bar along the bottom']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.layout === v, click: () => set({ layout: v }) })) };
+      const edges = [['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']];
+      const here = desktop.railEdge();
+      const position = { label: 'Position', submenu: edges.map(([v, l]) => ({ label: l, type: 'radio', checked: here === v, click: () => set({ edge: v }) })) };
+      const layoutMenu = { label: 'Layout', submenu: [['orbit', 'Edge rail with the intent wheel'], ['bar', 'Classic bar']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.layout === v, click: () => set({ layout: v }) })) };
       if (t.layout !== 'bar') {
-        template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, autoHide,
+        template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, position, autoHide,
           { label: 'Show', submenu: ['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume'].map(show) },
           { type: 'separator' },
           item('Add or remove apps…', () => showView('apps')),
           item('Customize…', () => showView('settings', { section: 'layout' })),
           ...(t.pinned.length ? [item('Unpin all apps', () => setTaskbarLook({ ...t, pinned: [] }))] : [])];
-      } else template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, autoHide,
+      } else template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, position, autoHide,
         { label: 'Show app names', type: 'checkbox', checked: t.labels, click: () => set({ labels: !t.labels }) },
         { label: 'Center the apps', type: 'checkbox', checked: t.center, click: () => set({ center: !t.center }) },
         { label: 'Size', submenu: ['small', 'normal', 'large'].map((v) => ({ label: v[0].toUpperCase() + v.slice(1), type: 'radio', checked: t.size === v, click: () => set({ size: v }) })) },
@@ -2275,7 +2285,7 @@ app.whenReady().then(async () => {
   if (!primary) return;
   store.initStore(app.getPath('userData'));
   desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf, snapScreen,
-    dotAt: () => store.getSettings().dotAt || null, autoHide: () => taskbarSettings().autoHide === true, railAway: () => store.getSettings().railAway !== false });
+    dotAt: () => store.getSettings().dotAt || null, autoHide: () => taskbarSettings().autoHide === true, railAway: () => store.getSettings().railAway !== false, edge: () => taskbarSettings().edge || null });
   // Performance follows the power cable when "Light on battery" is on.
   applyPerf();
   powerMonitor.on('on-battery', applyPerf);

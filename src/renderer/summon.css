@@ -15,7 +15,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 /* ---- The dot: bottom left, in the small window or (open) the big one ---- */
-.sm-dot { position: absolute; left: 44px; bottom: 44px; width: 64px; height: 64px; margin: 0 0 -32px -32px; border-radius: 50%; display: grid; place-items: center; z-index: 5; }
+.sm-dot { position: absolute; left: 50%; bottom: 50%; width: 64px; height: 64px; margin: 0 0 -32px -32px; border-radius: 50%; display: grid; place-items: center; z-index: 5; scale: var(--dot-scale, 1); }
 body.open .sm-dot { left: 52px; bottom: 52px; }
 .sm-dot-core { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px; border-radius: 50%;
   background: radial-gradient(circle, #fff 0 25%, var(--accent) 60%);
@@ -39,7 +39,7 @@ body.open .sm-backdrop, body.open .sm-wheel { display: block; }
 body.shown .sm-backdrop { opacity: 1; }
 /* Frosted: the screen's picture, blurred and dimmed, under the usual shade. */
 .sm-backdrop.frosted { overflow: hidden; background: none; }
-.sm-backdrop.frosted::before { content: ""; position: absolute; inset: -40px; background: var(--shot) 40px 40px / var(--shot-size) no-repeat; filter: blur(20px) saturate(1.25) brightness(.7); }
+.sm-backdrop.frosted::before { content: ""; position: absolute; inset: -40px; background: var(--shot) calc(40px + var(--shot-x, 0px)) calc(40px + var(--shot-y, 0px)) / var(--shot-size) no-repeat; filter: blur(20px) saturate(1.25) brightness(.7); }
 .sm-backdrop.frosted::after { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(4, 7, 12, .12), rgba(4, 7, 12, .45)); }
 body.shown .sm-wheel { transform: scale(var(--scale, 1)); opacity: 1; }
 /* Opened from the dot: the wheel grows out of it (transform-origin set by summon.js) and shrinks back. */

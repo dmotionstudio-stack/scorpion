@@ -633,10 +633,11 @@ body:has(#interact:not(.hidden)) .hand-cam { top: 72px; right: 24px; bottom: aut
 /* Performance → Light: no frosted-glass blur (it costs the graphics card on every frame). */
 html[data-perf="light"] * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 
-/* Full screen with Scorpion's taskbar: the screens end above the bar (--tb-h)
-   or left of the edge rail (--tb-w), from main.js. */
-.app { height: calc(100vh - var(--tb-h, 0px)); width: calc(100vw - var(--tb-w, 0px)); }
-.interact { bottom: var(--tb-h, 0px); right: var(--tb-w, 0px); }
+/* Full screen with Scorpion's taskbar: the screens stop short of it on
+   whichever edge it is (from main.js: --tb-t top, --tb-w right, --tb-h bottom,
+   --tb-l left). */
+.app { height: calc(100vh - var(--tb-t, 0px) - var(--tb-h, 0px)); width: calc(100vw - var(--tb-l, 0px) - var(--tb-w, 0px)); margin: var(--tb-t, 0px) 0 0 var(--tb-l, 0px); }
+.interact { top: var(--tb-t, 0px); right: var(--tb-w, 0px); bottom: var(--tb-h, 0px); left: var(--tb-l, 0px); }
 
 /* The sidebar toggle (Ctrl+B): in the sidebar's top corner, or on its own when hidden. */
 .sidebar-toggle { position: fixed; z-index: 40; top: 16px; left: 222px; width: 30px; height: 30px; display: grid; place-items: center; padding: 0;

@@ -316,14 +316,23 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     const show = t.show || {};
     const pinned = t.pinned || [];
     const check = (attr, on, label) => `<label class="toggle"><input type="checkbox" ${attr}${on ? ' checked' : ''}><span>${label}</span></label>`;
+    // Buttons for one of several (the one chosen is highlighted).
+    const pick = (attr, now, options) => options.map(([v, label]) => `<button class="btn small${v === now ? ' primary' : ''}" type="button" ${attr}="${v}" aria-pressed="${v === now}">${label}</button>`).join('');
+    const edge = t.edge || (t.layout === 'bar' ? 'bottom' : 'right');
+    const stageSide = edge === 'left' ? 'right' : 'left'; // shell.js and stage.js say the same
+    const corner = s.dotAt?.corner || (s.dotAt ? null : 'bl');
     box.innerHTML = `
       ${check('data-layout="appsFull"', s.appsFull !== false, 'Open apps full screen: an app\'s window fills the screen when it opens (its dialogs keep their size)')}
-      ${check('data-layout="stage"', s.stage !== false, 'Stage: touch the left edge of the screen and all your open apps slide in as live pictures; pick one and the window in front steps aside')}
-      ${check('data-layout="minimizeToStage"', s.minimizeToStage !== false, 'Minimizing a window flies it into Stage on the left')}
+      ${check('data-layout="stage"', s.stage !== false, `Stage: touch the ${stageSide} edge of the screen and all your open apps slide in as live pictures; pick one and the window in front steps aside`)}
+      ${check('data-layout="minimizeToStage"', s.minimizeToStage !== false, `Minimizing a window flies it into Stage on the ${stageSide}`)}
       ${win ? check('data-layout="summonDot"', s.summonDot !== false, 'When Scorpion is minimized, keep its summon dot on the desktop (click it, or press Win+Shift+Space anywhere, for the intent wheel)') : ''}
-      ${win ? check('data-layout="railAway"', s.railAway !== false, 'And the rail with it: your open apps, clock and notifications down the right edge while Scorpion is minimized') : ''}
+      ${win ? check('data-layout="railAway"', s.railAway !== false, 'And the rail with it: your open apps, clock and notifications along the taskbar\'s edge while Scorpion is minimized') : ''}
       ${check('data-taskbar="autoHide"', t.autoHide === true, 'Hide the taskbar until the pointer touches its edge')}
-      <div class="row"><span class="muted small">The summon dot: drag it anywhere on the screen and it stays where you drop it.</span>${s.dotAt ? '<button class="btn small" type="button" id="dot-home">Put it back in the corner</button>' : ''}</div>
+      <p class="small">The taskbar's place on the screen</p>
+      <div class="row wrap" role="group" aria-label="The taskbar's place on the screen">${pick('data-edge', edge, [['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']])}</div>
+      <p class="small">The summon dot</p>
+      <div class="row wrap" role="group" aria-label="The summon dot's corner">${pick('data-corner', corner, [['tl', 'Top left'], ['tr', 'Top right'], ['bl', 'Bottom left'], ['br', 'Bottom right']])}</div>
+      <p class="muted small">Or drag it anywhere on the screen: it stays where you drop it, and dropped near a corner it settles into that corner. It grows or shrinks to suit your screen.</p>
       <p class="small">The taskbar shows</p>
       <div class="row wrap">${TASKBAR_ITEMS.map(([k, label]) => check(`data-show="${k}"`, show[k] !== false, label)).join('')}</div>
       <p class="small">Apps on the taskbar</p>
@@ -354,8 +363,14 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     for (const b of box.querySelectorAll('[data-pin-remove]')) b.onclick = () => saveTaskbar({ pinned: pinned.filter((_, i) => i !== Number(b.dataset.pinRemove)) });
     const add = $('#pin-add');
     if (add) add.onclick = () => showApps();
-    const home = $('#dot-home');
-    if (home) home.onclick = async () => { await api.shellDot?.({ phase: 'reset' }).catch(() => {}); S.settings.dotAt = null; renderLayout(); };
+    for (const b of box.querySelectorAll('[data-edge]')) b.onclick = () => saveTaskbar({ edge: b.dataset.edge });
+    for (const b of box.querySelectorAll('[data-corner]')) {
+      b.onclick = async () => {
+        await api.shellDot?.({ phase: 'corner', corner: b.dataset.corner }).catch(() => {});
+        S.settings.dotAt = { corner: b.dataset.corner };
+        renderLayout();
+      };
+    }
   }
 
   // ---------- Settings → Windows desktop ----------

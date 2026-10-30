@@ -132,7 +132,9 @@ function renderCards() {
 
 function place() {
   const vw = innerWidth, vh = innerHeight;
-  W.scale = Math.min(1, (Math.min(vw, vh) / 2 - 12) / EXTENT);
+  // Smaller to fit a small screen; a little bigger on a big one.
+  const grow = Math.min(1.35, Math.max(1, Math.min(vw, vh) / 1080));
+  W.scale = Math.min(grow, (Math.min(vw, vh) / 2 - 12) / EXTENT);
   const half = EXTENT * W.scale;
   const x = Math.min(Math.max(W.centre.x, half), vw - half);
   const y = Math.min(Math.max(W.centre.y, half), vh - half);
@@ -151,6 +153,7 @@ function place() {
     el.style.setProperty('--fix-x', `${(1 - W.scale) * (EXTENT - ox)}px`);
     el.style.setProperty('--fix-y', `${(1 - W.scale) * (EXTENT - oy)}px`);
     const d = $('#sm-dot');
+    if (dot.size) setDotScale(dot.size);
     d.style.left = `${dot.x}px`;
     d.style.top = `${dot.y - 32}px`; // its margin centres it sideways only
     d.style.bottom = 'auto';
@@ -166,6 +169,8 @@ async function open(centre) {
   if (shot?.src) {
     bd.style.setProperty('--shot', `url("${shot.src}")`);
     bd.style.setProperty('--shot-size', `${shot.w}px ${shot.h}px`);
+    bd.style.setProperty('--shot-x', `${shot.x || 0}px`);
+    bd.style.setProperty('--shot-y', `${shot.y || 0}px`);
   } else bd.style.removeProperty('--shot');
   W.open = true;
   W.focusIdx = -1;
@@ -292,7 +297,7 @@ const keepOnScreen = (p, at) => {
   const half = at.size / 2;
   return { x: Math.min(Math.max(p.x, half), at.w - half), y: Math.min(Math.max(p.y, half), at.h - half) };
 };
-const hostDot = (p, at) => api.host?.({ type: 'dot', left: Math.round(p.x - at.size / 2), bottom: Math.round(at.h - p.y - at.size / 2) });
+const hostDot = (p, at) => api.host?.({ type: 'dot', left: Math.round(p.x - at.size / 2), bottom: Math.round(at.h - p.y - at.size / 2), size: at.size });
 dotEl.addEventListener('pointermove', (e) => {
   const d = dotDrag;
   if (!d?.at) return;
@@ -381,5 +386,9 @@ api.state().then((st) => {
   if (st?.settings?.theme) document.documentElement.dataset.theme = st.settings.theme;
   document.documentElement.dataset.perf = st?.perf || 'full';
 }).catch(() => {});
-addEventListener('resize', () => { if (W.open) place(); });
+// The dot's look follows its window's size (bigger on a big screen: shell.js).
+const DOT_WINDOW = 88; // the window the dot's look is drawn for
+function setDotScale(size) { document.documentElement.style.setProperty('--dot-scale', String(size / DOT_WINDOW)); }
+addEventListener('resize', () => { if (W.open) place(); else setDotScale(innerWidth); });
+if (!W.open && innerWidth < 200) setDotScale(innerWidth);
 drawArt();

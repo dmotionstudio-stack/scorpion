@@ -2114,9 +2114,12 @@ if (handIsMouse() && S.settings.handsAlwaysOn !== false) startGestures();
 // Room for Scorpion's taskbar while Scorpion is full screen: at the bottom
 // for the bar, on the right for the edge rail.
 const setInset = (inset) => {
-  const { bottom = 0, right = 0 } = typeof inset === 'number' ? { bottom: inset } : inset || {};
-  document.documentElement.style.setProperty('--tb-h', `${bottom}px`);
-  document.documentElement.style.setProperty('--tb-w', `${right}px`);
+  const { top = 0, right = 0, bottom = 0, left = 0 } = typeof inset === 'number' ? { bottom: inset } : inset || {};
+  const root = document.documentElement.style;
+  root.setProperty('--tb-t', `${top}px`);
+  root.setProperty('--tb-w', `${right}px`);
+  root.setProperty('--tb-h', `${bottom}px`);
+  root.setProperty('--tb-l', `${left}px`);
 };
 setInset(S.taskbarInset);
 api.onTaskbarInset?.(setInset);

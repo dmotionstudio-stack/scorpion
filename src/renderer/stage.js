@@ -1,4 +1,5 @@
-// Stage: the strip that slides in from the screen's left edge with your open
+// Stage: the strip that slides in from the screen's left edge (the right one
+// while the taskbar is on the left) with your open
 // apps' windows, each a live picture, gently turned toward the middle of the
 // screen. Pick one and it flies onto the stage (comes forward) while the
 // window that was in front steps aside. A window just minimized flies the
@@ -72,12 +73,14 @@ async function arrive({ hwnd } = {}) {
     // puts its middle one and a half widths along.
     // On Scorpion OS the flight stays inside the strip (its panel doesn't
     // cover the screen), so the card starts less big there.
+    // From the right, it grows from its right edge instead.
     const s = window.scorpionHost ? 1.8 : 3;
-    const left = card.offsetLeft;
+    const left = card.offsetLeft + strip.offsetLeft;
     const top = card.offsetTop - strip.scrollTop;
     const w = card.offsetWidth;
     const h = card.offsetHeight;
-    card.style.setProperty('--fly', `translate(${innerWidth / 2 - (left + (s / 2) * w)}px, ${innerHeight / 2 - (top + h / 2)}px) scale(${s})`);
+    const middle = onRight() ? left + w - (s / 2) * w : left + (s / 2) * w;
+    card.style.setProperty('--fly', `translate(${innerWidth / 2 - middle}px, ${innerHeight / 2 - (top + h / 2)}px) scale(${s})`);
     card.classList.add('flying');
     card.getBoundingClientRect(); // starts from there
     setTimeout(() => card.classList.add('landed'), 30);
@@ -104,8 +107,13 @@ strip.addEventListener('click', (e) => {
 api.onStageShow?.(show);
 api.onStageHide?.(hide);
 api.onStageArrive?.(arrive);
-// The shell host shows Stage only while it's on.
-const tellHost = (s) => api.host?.({ type: 'stage', enabled: s?.stage !== false, arrive: s?.minimizeToStage !== false });
+// The shell host shows Stage only while it's on, and on which side.
+const sideOf = (s) => (s?.taskbar?.edge === 'left' ? 'right' : 'left');
+const onRight = () => document.body.classList.contains('st-right');
+const tellHost = (s) => {
+  document.body.classList.toggle('st-right', sideOf(s) === 'right');
+  api.host?.({ type: 'stage', enabled: s?.stage !== false, arrive: s?.minimizeToStage !== false, side: sideOf(s) });
+};
 api.onSettingsChanged?.((s) => { if (s?.theme) document.documentElement.dataset.theme = s.theme; tellHost(s); });
 api.onPerfChanged?.((level) => { document.documentElement.dataset.perf = level; });
 // Scorpion may not answer yet when the host loads this page: asked again until it does.

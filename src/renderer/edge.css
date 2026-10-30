@@ -68,6 +68,36 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; bo
 
 @media (prefers-reduced-motion: reduce) { .eg-app, .eg-item { transition: none; } .eg-app.launching img { animation: none; } }
 
+/* Down the left edge: the same, mirrored. */
+body.edge.at-left { border-left: 0; border-right: 1px solid var(--line);
+  background: linear-gradient(to bottom, var(--shell-glass), var(--shell-glass-3)), linear-gradient(to right, color-mix(in srgb, var(--accent) 6%, transparent), transparent); }
+body.edge.at-left::before { left: auto; right: -1px; }
+body.edge.at-left.rail-hidden { transform: translateX(calc(-100% + 3px)); }
+body.edge.at-left .eg-app.running::before { left: auto; right: -9px; }
+/* Along the top or bottom: one row, the glance and the footer set off by thin lines. */
+body.edge.at-top, body.edge.at-bottom { flex-direction: row; align-items: center; padding: 0 12px 0 16px; border-left: 0; }
+body.edge.at-bottom { border-top: 1px solid var(--line);
+  background: linear-gradient(to right, var(--shell-glass), var(--shell-glass-3)), linear-gradient(to top, color-mix(in srgb, var(--accent) 6%, transparent), transparent); }
+body.edge.at-top { border-bottom: 1px solid var(--line);
+  background: linear-gradient(to right, var(--shell-glass), var(--shell-glass-3)), linear-gradient(to bottom, color-mix(in srgb, var(--accent) 6%, transparent), transparent); }
+body.edge.at-top::before, body.edge.at-bottom::before { top: auto; bottom: auto; left: 8%; right: 8%; width: auto; height: 1px;
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--accent) 55%, transparent), transparent); }
+body.edge.at-bottom::before { top: -1px; }
+body.edge.at-top::before { bottom: -1px; }
+body.edge.at-bottom.rail-hidden { transform: translateY(calc(100% - 3px)); }
+body.edge.at-top.rail-hidden { transform: translateY(calc(-100% + 3px)); }
+.at-top .eg-clock, .at-bottom .eg-clock { padding: 0 14px 0 0; }
+.at-top .eg-glance, .at-bottom .eg-glance { flex-direction: row; gap: 2px; align-self: stretch; margin: 6px 0; padding: 0 10px; border-bottom: 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.at-top .eg-item, .at-bottom .eg-item { width: auto; min-width: 44px; padding: 3px 8px; }
+.at-top .eg-icon, .at-bottom .eg-icon { padding: 9px 10px; }
+.at-top .eg-apps, .at-bottom .eg-apps { flex-direction: row; align-self: stretch; overflow-x: auto; overflow-y: hidden; padding: 0 14px; min-width: 0; }
+.at-top .eg-sep, .at-bottom .eg-sep { width: 1px; height: 24px; margin: 0 4px; }
+.at-bottom .eg-app.running::before, .at-top .eg-app.running::before { left: 50%; top: -6px; width: 8px; height: 3px; margin: 0 0 0 -4px; }
+.at-top .eg-app.running::before { top: auto; bottom: -6px; }
+.at-bottom .eg-app.active::before, .at-top .eg-app.active::before { width: 18px; height: 3px; margin: 0 0 0 -9px; }
+.at-top .eg-foot, .at-bottom .eg-foot { flex-direction: row; align-self: stretch; margin: 6px 0; padding: 0 0 0 10px; border-top: 0; border-left: 1px solid var(--line); }
+.at-top .eg-install, .at-bottom .eg-install { flex-direction: row; gap: 6px; margin: 0 10px 0 0; padding: 6px 12px; }
+
 /* The bell's unread count (Scorpion OS: the native shell host collects notifications). */
 .eg-bell { position: relative; }
 .eg-badge { position: absolute; top: 4px; right: 14px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--accent); color: #000; font: 700 10px/16px "Segoe UI", system-ui, sans-serif; text-align: center; box-shadow: 0 0 8px var(--accent); }

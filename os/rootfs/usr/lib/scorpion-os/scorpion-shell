@@ -6,12 +6,14 @@ proper place for panels: the compositor places them, keeps them on top, and
 keeps the rail's strip free for other windows), each one of Scorpion's own
 pages in WebKitGTK:
 
-  edge.html    the rail down the right edge (reserves its 76 pixels, or
-               hides until the pointer touches the edge)
-  summon.html  the summon dot (bottom left, or wherever it was dragged),
-               opening into the intent wheel
+  edge.html    the rail down the right edge, or the left, or along the top
+               or bottom (reserves its room, or hides until the pointer
+               touches the edge)
+  summon.html  the summon dot (bottom left, in another corner, or wherever
+               it was dragged), opening into the intent wheel
   stage.html   Stage: the open apps' strip that slides in from the left edge
-  notify.html  notification cards and the list, beside the rail
+               (the right one while the rail is on the left)
+  notify.html  notification cards and the list, top right, clear of the rail
   quick.html   quick settings (Wi-Fi, Bluetooth, sound, brightness, battery)
   osd.html     the on-screen volume and brightness
 
@@ -50,8 +52,9 @@ try:
 except ImportError:
     cairo = None
 
-RAIL = 76
-DOT = 88
+RAIL = 76  # the rail down a side
+RAIL_ACROSS = 64  # the rail along the top or bottom
+DOT = 88  # the summon dot's panel, until its page says (it grows with the screen)
 STAGE = 230
 EDGE = 3  # the strip at a screen edge that brings a hidden panel back
 DEBUG = bool(os.environ.get("SCORPION_SHELL_DEBUG"))  # every message from the pages, in the log
@@ -61,6 +64,18 @@ QUICK_WIDTH = 360
 BESIDE_RAIL = {"notify": NOTIFY_WIDTH, "quick": QUICK_WIDTH}
 INFO = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "scorpion-shell.json")
 E = GtkLayerShell.Edge
+EDGES = {"left": E.LEFT, "right": E.RIGHT, "top": E.TOP, "bottom": E.BOTTOM}
+RAIL_AT = {"edge": "right"}  # which edge the rail is on (its page says, from Scorpion's settings)
+
+
+def rail_thickness(edge=None):
+    return RAIL_ACROSS if (edge or RAIL_AT["edge"]) in ("top", "bottom") else RAIL
+
+
+def beside_rail():
+    """The top and right margins of a panel in the top-right corner, clear of the rail."""
+    edge = RAIL_AT["edge"]
+    return {E.TOP: 8 + (rail_thickness() if edge == "top" else 0), E.RIGHT: 8 + (rail_thickness() if edge == "right" else 0)}
 
 
 def log(*args):
@@ -199,8 +214,9 @@ class Notice(Gtk.Window):
         GtkLayerShell.set_layer(self, GtkLayerShell.Layer.OVERLAY)
         GtkLayerShell.set_anchor(self, E.TOP, True)
         GtkLayerShell.set_anchor(self, E.RIGHT, True)
-        GtkLayerShell.set_margin(self, E.TOP, 8 + 96 * len(Notice.shown))
-        GtkLayerShell.set_margin(self, E.RIGHT, RAIL + 8)
+        margins = beside_rail()
+        GtkLayerShell.set_margin(self, E.TOP, margins[E.TOP] + 96 * len(Notice.shown))
+        GtkLayerShell.set_margin(self, E.RIGHT, margins[E.RIGHT])
         css = Gtk.CssProvider()
         css.load_from_data(self.CSS)
         Gtk.StyleContext.add_provider_for_screen(self.get_screen(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
@@ -339,10 +355,11 @@ class EdgeStrip(Gtk.Window):
         GtkLayerShell.init_for_window(self)
         GtkLayerShell.set_namespace(self, "scorpion-edge-strip")
         GtkLayerShell.set_layer(self, GtkLayerShell.Layer.OVERLAY)
-        for e in (E.TOP, E.BOTTOM, edge):
+        along = (E.LEFT, E.RIGHT) if edge in (E.TOP, E.BOTTOM) else (E.TOP, E.BOTTOM)
+        for e in (*along, edge):
             GtkLayerShell.set_anchor(self, e, True)
         GtkLayerShell.set_exclusive_zone(self, -1)
-        self.set_size_request(EDGE, -1)
+        self.set_size_request(-1, EDGE) if edge in (E.TOP, E.BOTTOM) else self.set_size_request(EDGE, -1)
         self.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK)
         self.connect("enter-notify-event", lambda *_: on_enter())
         self.connect("draw", lambda _w, cr: True)  # draws nothing
@@ -354,6 +371,7 @@ class Host:
         self.notifications = Notifications()
         self.ready = False
         self.dot = (8, 8)  # the summon dot's left and bottom margins
+        self.dot_size = DOT
         self.wheel_open = False
         # The rail hiding by itself, and whether it's hidden now.
         self.rail_hides = False
@@ -365,6 +383,7 @@ class Host:
         self.stage_shown = False
         self.stage_timer = 0
         self.stage_strip = None
+        self.stage_side = "left"
 
     def start(self):
         """Once Scorpion's shell API is up: the panels."""
@@ -374,10 +393,10 @@ class Host:
         # All on the overlay layer: Scorpion's full mode is a full-screen
         # window, which compositors draw above the top layer.
         overlay = GtkLayerShell.Layer.OVERLAY
-        self.panels["edge"] = Panel(self, "edge.html", layer=overlay, anchors={E.RIGHT, E.TOP, E.BOTTOM}, width=RAIL, height=-1, exclusive=RAIL)
+        self.panels["edge"] = Panel(self, "edge.html", layer=overlay, anchors={E.RIGHT, E.TOP, E.BOTTOM}, width=RAIL, height=-1, exclusive=RAIL)  # until its page says where (place_rail)
         self.panels["summon"] = Panel(self, "summon.html", layer=overlay, anchors={E.LEFT, E.BOTTOM}, width=DOT, height=DOT, margins={E.LEFT: 8, E.BOTTOM: 8})
-        self.panels["notify"] = Panel(self, "notify.html", layer=overlay, anchors={E.TOP, E.RIGHT}, width=NOTIFY_WIDTH, height=1, margins={E.TOP: 8, E.RIGHT: RAIL + 8})
-        self.panels["quick"] = Panel(self, "quick.html", layer=overlay, anchors={E.TOP, E.RIGHT}, width=QUICK_WIDTH, height=1, margins={E.TOP: 8, E.RIGHT: RAIL + 8})
+        self.panels["notify"] = Panel(self, "notify.html", layer=overlay, anchors={E.TOP, E.RIGHT}, width=NOTIFY_WIDTH, height=1, margins=beside_rail())
+        self.panels["quick"] = Panel(self, "quick.html", layer=overlay, anchors={E.TOP, E.RIGHT}, width=QUICK_WIDTH, height=1, margins=beside_rail())
         self.panels["osd"] = Panel(self, "osd.html", layer=overlay, anchors={E.BOTTOM}, width=340, height=90, margins={E.BOTTOM: 90})
         self.panels["stage"] = Panel(self, "stage.html", layer=overlay, anchors={E.LEFT, E.TOP, E.BOTTOM}, width=STAGE, height=-1, exclusive=-1)
         self.panels["edge"].show_all()
@@ -470,17 +489,42 @@ class Host:
     def place_dot(self):
         """The dot where it was dropped (its page says, from Scorpion's settings)."""
         left, bottom = self.dot
-        self.panels["summon"].place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.BOTTOM}, width=DOT, height=DOT, margins={E.LEFT: left, E.BOTTOM: bottom}, keyboard="none")
+        size = self.dot_size
+        self.panels["summon"].place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.BOTTOM}, width=size, height=size, margins={E.LEFT: left, E.BOTTOM: bottom}, keyboard="none")
+
+    # ---------- the rail's edge ----------
+    def place_rail(self, edge):
+        """The rail down the right or left edge, or along the top or bottom,
+        its size given (a panel placed again doesn't always stretch to the
+        edges it's anchored to); the panels in the top-right corner keep
+        clear of it."""
+        if edge not in EDGES:
+            return
+        changed = edge != RAIL_AT["edge"]
+        RAIL_AT["edge"] = edge
+        w, h = self.get_screen_size()
+        t = rail_thickness(edge)
+        across = edge in ("top", "bottom")
+        along = {E.LEFT, E.RIGHT} if across else {E.TOP, E.BOTTOM}
+        self.panels["edge"].place(layer=GtkLayerShell.Layer.OVERLAY, anchors={EDGES[edge], *along}, width=w if across else t, height=t if across else h, exclusive=0 if self.rail_hides else t)
+        for name in BESIDE_RAIL:
+            for side, margin in beside_rail().items():
+                GtkLayerShell.set_margin(self.panels[name], side, margin)
+        if changed:
+            log("rail:", edge)
+            if self.rail_hidden:
+                self.rail_hidden = False
+                self.rail_hide()
 
     # ---------- the rail hiding by itself ----------
     def rail_mode(self, hides):
         """Auto-hide on: the rail keeps no room and slides away until the
-        pointer touches the right edge (only its last few pixels take the
-        pointer meanwhile). Off: it keeps its room, always there."""
+        pointer touches its edge (only its last few pixels take the pointer
+        meanwhile). Off: it keeps its room, always there."""
         if hides == self.rail_hides:
             return
         self.rail_hides = hides
-        GtkLayerShell.set_exclusive_zone(self.panels["edge"], 0 if hides else RAIL)
+        GtkLayerShell.set_exclusive_zone(self.panels["edge"], 0 if hides else rail_thickness())
         if hides:
             self.rail_hide()
         else:
@@ -509,7 +553,10 @@ class Host:
             self.rail_hidden = False
             edge.js("window.scorpionRail && window.scorpionRail(false)")
             return False
-        edge.clicks((RAIL - EDGE, 0, EDGE, self.get_screen_height()))
+        # Only its last few pixels at the screen's edge take the pointer.
+        w, h = self.get_screen_size()
+        t = rail_thickness()
+        edge.clicks({"right": (t - EDGE, 0, EDGE, h), "left": (0, 0, EDGE, h), "top": (0, 0, w, EDGE), "bottom": (0, t - EDGE, w, EDGE)}[RAIL_AT["edge"]])
         return False
 
     def on_rail_leave(self, _w, event):
@@ -520,7 +567,7 @@ class Host:
 
     # ---------- Stage ----------
     def stage_mode(self, on):
-        """Stage on: an invisible strip along the left edge slides it in."""
+        """Stage on: an invisible strip along its edge slides it in."""
         if on != self.stage_on:
             log("stage", "on" if on else "off")
         self.stage_on = on
@@ -537,7 +584,7 @@ class Host:
     def new_strip(self):
         if self.stage_strip:
             self.stage_strip.destroy()
-        self.stage_strip = EdgeStrip(E.LEFT, self.stage_show)
+        self.stage_strip = EdgeStrip(EDGES[self.stage_side], self.stage_show)
         self.stage_strip.show_all()
         return False
 
@@ -557,10 +604,20 @@ class Host:
         self.stage_timer = GLib.timeout_add(1500, self.stage_hide)
 
     def place_strip(self, p):
-        """Stage as a strip down the left edge, its height given (a panel
-        shown again doesn't always stretch to the edges it's anchored to)."""
+        """Stage as a strip down its edge, its height given (a panel shown
+        again doesn't always stretch to the edges it's anchored to)."""
         _, h = self.get_screen_size()
-        p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.TOP}, width=STAGE, height=h, exclusive=-1)
+        p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={EDGES[self.stage_side], E.TOP}, width=STAGE, height=h, exclusive=-1)
+
+    def stage_from(self, side):
+        """Stage from the left edge, or the right (the rail on the left)."""
+        if side not in ("left", "right") or side == self.stage_side:
+            return
+        log("stage: from the", side)
+        self.stage_side = side
+        self.stage_hide(now=True)
+        if self.stage_strip:
+            self.new_strip()
 
     def stage_keep(self):
         if self.stage_timer:
@@ -655,8 +712,11 @@ class Host:
         x, y = int(msg.get("x", 0)), int(msg.get("y", 0))
         rect = Gdk.Rectangle()
         rect.x, rect.y, rect.width, rect.height = x, y, 1, 1
-        # From the rail, menus open to the left of the pointer.
-        anchor = Gdk.Gravity.NORTH_EAST if panel.page == "edge.html" else Gdk.Gravity.NORTH_WEST
+        # From the rail, menus open away from its edge (left of the pointer
+        # on the right edge, above it along the bottom).
+        anchor = Gdk.Gravity.NORTH_WEST
+        if panel.page == "edge.html":
+            anchor = {"right": Gdk.Gravity.NORTH_EAST, "bottom": Gdk.Gravity.SOUTH_WEST}.get(RAIL_AT["edge"], Gdk.Gravity.NORTH_WEST)
         m.popup_at_rect(panel.get_window(), rect, Gdk.Gravity.NORTH_WEST, anchor, None)
 
     def handle(self, panel, msg):
@@ -666,12 +726,18 @@ class Host:
         elif kind == "dot":
             # Dragged (each move), or placed from the settings.
             self.dot = (max(0, int(msg.get("left", 8))), max(0, int(msg.get("bottom", 8))))
+            if msg.get("size"):
+                self.dot_size = max(48, min(160, int(msg["size"])))
             if not self.wheel_open:
                 self.place_dot()
         elif kind == "rail":
             if "autoHide" in msg:
                 self.rail_mode(bool(msg.get("autoHide")))
+            if msg.get("edge"):
+                self.place_rail(str(msg["edge"]))
         elif kind == "stage":
+            if msg.get("side"):
+                self.stage_from(str(msg["side"]))
             if "enabled" in msg:
                 self.stage_mode(bool(msg.get("enabled")))
             if msg.get("visible") is False:

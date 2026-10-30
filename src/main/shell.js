@@ -16,13 +16,18 @@ import win from './system.js';
 import { shellEvent } from './shell-api.js';
 
 const WIN = process.platform === 'win32';
-const TASKBAR_HEIGHT = 48;
-const RAIL_WIDTH = 76;
-const DOT = 88; // the summon dot's window (bottom left, or wherever it was dragged)
-// deps.dotAt: where the dot was dropped ({ x, y } as fractions of the screen, or
-// null for the corner); deps.autoHide: the taskbar hides until the pointer
-// reaches its edge; deps.railAway: the rail comes with the floating dot.
-let deps = null; // { BrowserWindow, screen, preload, dataDir, getMainWindow, showView, getLayout, perf, snapScreen, dotAt, autoHide, railAway }
+const TASKBAR_HEIGHT = 48; // the bar along the top or bottom
+const BAR_SIDE = 60; // the bar down a side
+const RAIL_WIDTH = 76; // the rail down a side
+const RAIL_ACROSS = 64; // the rail along the top or bottom
+const EDGES = ['right', 'left', 'top', 'bottom'];
+const DOT = 88; // the summon dot's window on a 1080-pixel screen (dotSizeFor)
+// deps.dotAt: where the dot was dropped ({ x, y } as fractions of the screen,
+// { corner: 'tl' | 'tr' | 'bl' | 'br' }, or null for the bottom-left corner);
+// deps.autoHide: the taskbar hides until the pointer reaches its edge;
+// deps.railAway: the rail comes with the floating dot; deps.edge: the screen
+// edge the taskbar is on (null: the rail down the right, the bar along the bottom).
+let deps = null; // { BrowserWindow, screen, preload, dataDir, getMainWindow, showView, getLayout, perf, snapScreen, dotAt, autoHide, railAway, edge }
 let taskbar = null;
 let summon = null; // the summon dot, which opens into the intent wheel
 let wheelOpen = false;
@@ -40,6 +45,9 @@ let railHeld = 0; // until when it stays (a menu from it is open)
 // in from the screen's left edge when the pointer touches it (stage.html).
 // A window just minimized flies into it from the middle of the screen.
 const STAGE_W = 230;
+// From the right edge instead while the taskbar is on the left.
+const sideForStage = () => (railEdge() === 'left' ? 'right' : 'left');
+let stageSide = 'left';
 let stage = null;
 let stageOn = false;
 let stageShown = false;
@@ -60,16 +68,31 @@ export function raiseTaskbar() {
   if (taskbar && !taskbar.isDestroyed()) taskbar.moveTop();
   if (summon && !summon.isDestroyed()) summon.moveTop();
 }
-// The room Scorpion's taskbar takes: along the bottom, or down the right edge.
-// The native shell host (Scorpion OS) always draws the edge rail, over
-// Scorpion's window (XWayland windows aren't shrunk to leave it room).
-// Hiding by itself, it keeps no room.
+// The edge of the screen the taskbar is on (Settings, or a right-click on
+// it): by default the rail down the right, the bar along the bottom. The
+// native shell host (Scorpion OS) always draws the rail.
+export const railEdge = () => {
+  const e = deps?.edge?.();
+  return EDGES.includes(e) ? e : barLayout() && !hostMode ? 'bottom' : 'right';
+};
+const across = (e) => e === 'top' || e === 'bottom';
+// How thick it is on that edge.
+export const railThickness = (e = railEdge()) => (barLayout() && !hostMode ? (across(e) ? TASKBAR_HEIGHT : BAR_SIDE) : (across(e) ? RAIL_ACROSS : RAIL_WIDTH));
+// A rectangle less the taskbar's strip along its edge.
+function besideEdge(r, e = railEdge(), t = railThickness(e)) {
+  if (e === 'left') return { ...r, x: r.x + t, width: r.width - t };
+  if (e === 'top') return { ...r, y: r.y + t, height: r.height - t };
+  if (e === 'bottom') return { ...r, height: r.height - t };
+  return { ...r, width: r.width - t };
+}
+// The room Scorpion's taskbar takes, on its edge ({ top, right, bottom, left }).
+// The native shell host (Scorpion OS) draws the rail over Scorpion's window
+// (XWayland windows aren't shrunk to leave it room). Hiding by itself, it
+// keeps no room.
 export const taskbarInsets = () => {
-  const hides = Boolean(deps?.autoHide?.());
-  if (hostMode) return { bottom: 0, right: hides ? 0 : RAIL_WIDTH };
-  if (!mode && !railFloats) return { bottom: 0, right: 0 };
-  if (hides) return { bottom: 0, right: 0 };
-  return mode && layout === 'bar' ? { bottom: TASKBAR_HEIGHT, right: 0 } : { bottom: 0, right: RAIL_WIDTH };
+  const none = { top: 0, right: 0, bottom: 0, left: 0 };
+  if (deps?.autoHide?.() || (!hostMode && !mode && !railFloats)) return none;
+  return { ...none, [railEdge()]: railThickness() };
 };
 const file = (name) => path.join(deps.dataDir, name);
 
@@ -83,32 +106,58 @@ export function recordShellStart(now = Date.now()) {
 }
 export function clearShellStarts() { fs.rmSync(file('shell-starts.json'), { force: true }); }
 
-// The bar along the bottom only as Scorpion's desktop; floating, it's the rail.
+// The bar only as Scorpion's desktop; floating, it's the rail.
 const barLayout = () => Boolean(mode) && layout === 'bar';
+// What the taskbar runs along: the whole screen as the desktop; floating with
+// the dot, the area the Windows taskbar leaves (as it was before the rail
+// took its own room from it).
+function railBase() {
+  const d = deps.screen.getPrimaryDisplay();
+  if (mode || !WIN) return d.bounds;
+  const a = savedWorkArea;
+  return a ? { x: a.left, y: a.top, width: a.right - a.left, height: a.bottom - a.top } : d.workArea;
+}
+// The taskbar's strip along its edge.
+export function railRect(base, e = railEdge(), t = railThickness(e)) {
+  if (e === 'left') return { x: base.x, y: base.y, width: t, height: base.height };
+  if (e === 'top') return { x: base.x, y: base.y, width: base.width, height: t };
+  if (e === 'bottom') return { x: base.x, y: base.y + base.height - t, width: base.width, height: t };
+  return { x: base.x + base.width - t, y: base.y, width: t, height: base.height };
+}
 function placeTaskbar() {
-  const r = deps.screen.getPrimaryDisplay().bounds;
-  if (taskbar && !taskbar.isDestroyed()) {
-    taskbar.setBounds(barLayout()
-      ? { x: r.x, y: r.y + r.height - TASKBAR_HEIGHT, width: r.width, height: TASKBAR_HEIGHT }
-      : { x: r.x + r.width - RAIL_WIDTH, y: r.y, width: RAIL_WIDTH, height: r.height });
-  }
+  if (taskbar && !taskbar.isDestroyed()) taskbar.setBounds(railRect(railBase()));
   placeSummon();
 }
+// Where the wheel opens: the screen, less the rail's strip while it's up.
+const wheelArea = (r) => (railUp() ? besideEdge(r) : r);
 // The dot (in the bottom-left corner above a taskbar, or wherever it was
-// dropped), or (open) the whole screen left of the rail.
+// dropped), or (open) the whole screen beside the rail.
 function placeSummon() {
   if (!summon || summon.isDestroyed()) return;
   const r = deps.screen.getPrimaryDisplay().bounds;
   const dot = dotSpot();
-  summon.setBounds(wheelOpen
-    ? { x: r.x, y: r.y, width: r.width - (railUp() ? RAIL_WIDTH : 0), height: r.height }
-    : { x: Math.round(dot.x - DOT / 2), y: Math.round(dot.y - DOT / 2), width: DOT, height: DOT });
+  const size = dotSize();
+  summon.setBounds(wheelOpen ? wheelArea(r) : { x: Math.round(dot.x - size / 2), y: Math.round(dot.y - size / 2), width: size, height: size });
 }
-// The dot's centre: where it was dropped (as fractions of the screen), kept
-// whole inside the area apps use; or the bottom-left corner.
-export function dotCentre(at, bounds, area) {
-  const half = DOT / 2;
-  if (!at || !Number.isFinite(at.x) || !Number.isFinite(at.y)) return { x: area.x + 8 + half, y: area.y + area.height - 8 - half };
+// The dot's window grows with the screen (88 pixels on a 1080-pixel one) and
+// shrinks on a small one, within reason; an even size, so it has a middle.
+export const dotSizeFor = (b) => 2 * Math.round(Math.min(112, Math.max(64, Math.min(b.width, b.height) / 12.3)) / 2);
+const dotSize = () => dotSizeFor(deps.screen.getPrimaryDisplay().bounds);
+const CORNERS = { tl: [0, 0], tr: [1, 0], bl: [0, 1], br: [1, 1] };
+const MARGIN = 8; // between a dot in a corner and the edges
+// The dot's centre: in a corner of the area apps use; or where it was dropped
+// (as fractions of the screen), kept whole inside that area. Nowhere yet: the
+// bottom-left corner.
+export function dotCentre(at, bounds, area, size = DOT) {
+  const half = size / 2;
+  const free = !at || !Number.isFinite(at.x) || !Number.isFinite(at.y);
+  const corner = CORNERS[at?.corner] || (free ? CORNERS.bl : null);
+  if (corner) {
+    return {
+      x: Math.round(corner[0] ? area.x + area.width - MARGIN - half : area.x + MARGIN + half),
+      y: Math.round(corner[1] ? area.y + area.height - MARGIN - half : area.y + MARGIN + half),
+    };
+  }
   const x = bounds.x + at.x * bounds.width;
   const y = bounds.y + at.y * bounds.height;
   return {
@@ -116,36 +165,47 @@ export function dotCentre(at, bounds, area) {
     y: Math.round(Math.min(Math.max(y, area.y + half), area.y + area.height - half)),
   };
 }
+// The corner a dot dropped this close to (about its own size) snaps into, or null.
+export function nearCorner(c, area, size = DOT) {
+  for (const [name] of Object.entries(CORNERS)) {
+    const spot = dotCentre({ corner: name }, area, area, size);
+    if (Math.abs(c.x - spot.x) <= size && Math.abs(c.y - spot.y) <= size) return name;
+  }
+  return null;
+}
 function dotSpot() {
   const d = deps.screen.getPrimaryDisplay();
-  return dotCentre(deps.dotAt?.(), d.bounds, d.workArea);
+  return dotCentre(deps.dotAt?.(), d.bounds, d.workArea, dotSize());
 }
-// Scorpion OS: the screen left of the rail (the host's panels sit over it all).
+// Scorpion OS: the screen beside the rail (the host's panels sit over it all).
 function hostArea() {
   const r = deps.screen.getPrimaryDisplay().bounds;
-  return { x: 0, y: 0, width: r.width - (deps.autoHide?.() ? 0 : RAIL_WIDTH), height: r.height };
+  const all = { x: 0, y: 0, width: r.width, height: r.height };
+  return deps.autoHide?.() ? all : besideEdge(all);
 }
 // The dot dragged: it follows (Windows; on Scorpion OS the page moves the
 // host's panel itself), and where it's dropped is kept (as fractions of the
-// screen, so it stays put when the resolution changes). 'get': where it is,
-// in the screen's own terms.
+// screen, so it stays put when the resolution changes; near a corner, that
+// corner). 'get': where it is, in the screen's own terms.
 export function dragDot({ phase, x, y } = {}) {
   const r = deps.screen.getPrimaryDisplay().bounds;
-  if (phase === 'get') {
-    // On Windows in screen terms (what a move sends back); on Scorpion OS from the screen's corner.
-    const c = hostMode ? dotCentre(deps.dotAt?.(), { ...r, x: 0, y: 0 }, hostArea()) : dotSpot();
-    return { x: c.x, y: c.y, w: r.width, h: r.height, size: DOT };
-  }
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const size = dotSize();
   const area = hostMode ? hostArea() : deps.screen.getPrimaryDisplay().workArea;
   const bounds = hostMode ? { ...r, x: 0, y: 0 } : r;
-  const c = dotCentre({ x: (x - bounds.x) / bounds.width, y: (y - bounds.y) / bounds.height }, bounds, area);
-  if (!hostMode && summon && !summon.isDestroyed() && !wheelOpen) {
-    summon.setBounds({ x: Math.round(c.x - DOT / 2), y: Math.round(c.y - DOT / 2), width: DOT, height: DOT });
+  if (phase === 'get') {
+    // On Windows in screen terms (what a move sends back); on Scorpion OS from the screen's corner.
+    const c = dotCentre(deps.dotAt?.(), bounds, area, size);
+    return { x: c.x, y: c.y, w: r.width, h: r.height, size };
   }
-  return { at: { x: (c.x - bounds.x) / bounds.width, y: (c.y - bounds.y) / bounds.height }, x: c.x, y: c.y };
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  let c = dotCentre({ x: (x - bounds.x) / bounds.width, y: (y - bounds.y) / bounds.height }, bounds, area, size);
+  const corner = phase === 'end' ? nearCorner(c, area, size) : null;
+  if (corner) c = dotCentre({ corner }, bounds, area, size);
+  if (!hostMode && summon && !summon.isDestroyed() && !wheelOpen) {
+    summon.setBounds({ x: Math.round(c.x - size / 2), y: Math.round(c.y - size / 2), width: size, height: size });
+  }
+  return { at: corner ? { corner } : { x: (c.x - bounds.x) / bounds.width, y: (c.y - bounds.y) / bounds.height }, x: c.x, y: c.y, size };
 }
-
 // On Linux the window manager places a new window itself (labwc centres it);
 // a move asked for once it's on screen is honoured, so the rail and the dot
 // ask again.
@@ -217,13 +277,14 @@ async function snapBackdrop(r, wait) {
 export async function openWheel(at) {
   const r = deps.screen.getPrimaryDisplay().bounds;
   // Scorpion OS: the host's summon surface grows to the whole screen (rail
-  // included) once the page asks, so the page hears the centre left of the
+  // included) once the page asks, so the page hears the centre beside the
   // rail and where the dot sits, both in screen terms.
   if (hostMode) {
     const backdrop = await snapBackdrop(r, 400);
     const area = hostArea();
-    const centre = at ? { x: at.x - r.x, y: at.y - r.y } : { x: area.width / 2, y: area.height / 2 };
-    shellEvent('wheel:open', { ...centre, dot: dotCentre(deps.dotAt?.(), { ...r, x: 0, y: 0 }, area), backdrop });
+    const centre = at ? { x: at.x - r.x, y: at.y - r.y } : { x: area.x + area.width / 2, y: area.y + area.height / 2 };
+    const size = dotSize();
+    shellEvent('wheel:open', { ...centre, dot: { ...dotCentre(deps.dotAt?.(), { ...r, x: 0, y: 0 }, area, size), size }, backdrop });
     return true;
   }
   if (!summon || summon.isDestroyed()) {
@@ -237,10 +298,14 @@ export async function openWheel(at) {
   wheelOpen = true;
   summon.setAlwaysOnTop(true, 'screen-saver');
   placeSummon();
+  // In the open window's terms (it starts beside a rail on the left or top);
+  // the screen's picture is shifted to match.
+  const w = wheelArea(r);
   const spot = dotSpot();
-  const dot = dotWanted() ? { x: spot.x - r.x, y: spot.y - r.y } : null;
-  const centre = at ? { x: at.x - r.x, y: at.y - r.y } : { x: (r.width - (railUp() ? RAIL_WIDTH : 0)) / 2, y: r.height / 2 };
-  summon.webContents.send('wheel:open', { ...centre, dot, backdrop: shot });
+  const dot = dotWanted() ? { x: spot.x - w.x, y: spot.y - w.y, size: dotSize() } : null;
+  const centre = at ? { x: at.x - w.x, y: at.y - w.y } : { x: w.width / 2, y: w.height / 2 };
+  const backdrop = shot && { ...shot, x: r.x - w.x, y: r.y - w.y };
+  summon.webContents.send('wheel:open', { ...centre, dot, backdrop });
   summon.show();
   summon.focus();
   return true;
@@ -280,10 +345,12 @@ function setFloatingRail(on) {
   }
   watchPointer();
 }
-// Settings changed (auto-hide, the rail with the dot): the rail and the room
-// it keeps follow.
+// Settings changed (auto-hide, the rail with the dot, its edge): the rail,
+// the room it keeps and Stage's side follow.
 export function refreshRail() {
   if (floating && !mode && !hostMode) setFloatingRail(Boolean(deps.railAway?.()));
+  if (!hostMode) placeTaskbar();
+  if (stageSide !== sideForStage()) { hideStage(true); stageSide = sideForStage(); }
   if (mode && !hostMode) win.setWorkArea(wantedArea()).catch(() => {});
   else if (railFloats && !hostMode) (deps.autoHide?.() ? (savedWorkArea ? restoreWorkArea() : Promise.resolve()) : reserveWorkArea()).catch(() => {});
   if (!deps.autoHide?.() && railHidden) showRail();
@@ -291,7 +358,8 @@ export function refreshRail() {
 }
 
 // ---------- Stage ----------
-// The pointer at the screen's left edge slides the strip in; moving well
+// The pointer at the screen's left edge (the right, with the taskbar on the
+// left; stage.js follows the same setting) slides the strip in; moving well
 // away from it slides it out. The pointer is only watched while Stage (or
 // the taskbar's auto-hide) is on. On Scorpion OS the shell host shows the
 // strip as a panel and watches the edge itself.
@@ -310,10 +378,11 @@ function makeStage() {
 }
 const stripBounds = () => {
   const a = deps.screen.getPrimaryDisplay().workArea;
-  return { x: a.x, y: a.y, width: STAGE_W, height: a.height };
+  return { x: stageSide === 'right' ? a.x + a.width - STAGE_W : a.x, y: a.y, width: STAGE_W, height: a.height };
 };
 async function showStage() {
   if (!stage || stage.isDestroyed()) makeStage();
+  stageSide = sideForStage();
   stageShown = true;
   stage.setBounds(stripBounds());
   await stage.loaded;
@@ -373,13 +442,19 @@ function lookAtPointer() {
   const r = d.bounds;
   if (stageOn && !arriving) {
     const level = p.y >= a.y && p.y < a.y + a.height;
-    if (!stageShown && level && p.x <= a.x + 1) showStage().catch(() => {});
-    else if (stageShown && Date.now() > stageStay && (p.x > a.x + STAGE_W + 40 || !level)) hideStage();
+    // How far in from Stage's edge the pointer is.
+    const inward = sideForStage() === 'right' ? a.x + a.width - 1 - p.x : p.x - a.x;
+    if (!stageShown && level && inward <= 1) showStage().catch(() => {});
+    else if (stageShown && Date.now() > stageStay && (inward > STAGE_W + 40 || !level)) hideStage();
   }
   if (hidesNow()) {
-    const bar = barLayout();
-    const atEdge = bar ? p.y >= r.y + r.height - 2 : p.x >= r.x + r.width - 2;
-    const away = bar ? p.y < r.y + r.height - TASKBAR_HEIGHT - 30 : p.x < r.x + r.width - RAIL_WIDTH - 30;
+    // How far in from the taskbar's outer edge the pointer is (beyond it,
+    // over the Windows taskbar for one floating along the bottom: below 0).
+    const e = railEdge();
+    const s = railRect(railBase(), e);
+    const depth = { left: p.x - s.x, right: s.x + s.width - 1 - p.x, top: p.y - s.y, bottom: s.y + s.height - 1 - p.y }[e];
+    const atEdge = depth >= 0 && depth <= 2;
+    const away = depth > railThickness(e) + 30 || depth < -2;
     if (railHidden && atEdge) showRail();
     else if (!railHidden && away && Date.now() > railHeld) hideRail();
   }
@@ -426,10 +501,10 @@ export async function relayout() {
 // The rail floating with the dot (the Windows taskbar still there) takes its
 // room from the area as it was, not from the whole screen.
 const wantedArea = () => {
-  const { bottom, right } = taskbarInsets();
-  if (!mode && savedWorkArea) return { ...savedWorkArea, right: savedWorkArea.right - right };
+  const inset = taskbarInsets();
   const b = deps.screen.getPrimaryDisplay().bounds;
-  return { left: b.x, top: b.y, right: b.x + b.width - right, bottom: b.y + b.height - bottom };
+  const from = !mode && savedWorkArea ? savedWorkArea : { left: b.x, top: b.y, right: b.x + b.width, bottom: b.y + b.height };
+  return { left: from.left + inset.left, top: from.top + inset.top, right: from.right - inset.right, bottom: from.bottom - inset.bottom };
 };
 // On Linux the session's window manager (labwc) keeps the room instead (its rc.xml margins).
 async function reserveWorkArea() {

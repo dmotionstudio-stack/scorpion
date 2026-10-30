@@ -41,3 +41,19 @@ html[data-perf="light"] .st-card { transition-duration: .01s; transition-delay: 
   .st-card, .st-empty { transition: opacity .12s; transform: none; }
   body.in .st-card, body.in .st-card:hover, body.in .st-card.picked { transform: none; }
 }
+
+/* From the right edge (the taskbar on the left): mirrored. */
+body.stage.st-right { perspective-origin: 100% 50%; }
+.st-right .st-strip { margin-left: auto; padding: 24px 16px 24px 14px; align-items: flex-end; perspective-origin: 100% 50%; }
+.st-right .st-card { transform-origin: right center; transform: translateX(120%) rotateY(-28deg); text-align: right; }
+.st-right .st-name { flex-direction: row-reverse; }
+body.in.st-right .st-card { transform: translateX(0) rotateY(-24deg); }
+body.in.st-right .st-card:hover { transform: translateX(-6px) rotateY(-4deg) scale(1.04); }
+body.in.st-right .st-card.picked { transform: translateX(-260px) rotateY(0deg) scale(1.5); }
+body.in.st-right .st-card.flying { transform: var(--fly); }
+body.in.st-right .st-card.flying.landed { transform: translateX(0) rotateY(-24deg); }
+.st-right .st-empty { transform: translateX(120%); }
+body.in.st-right .st-empty { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .st-right .st-card, body.in.st-right .st-card, body.in.st-right .st-card:hover, body.in.st-right .st-card.picked { transform: none; }
+}

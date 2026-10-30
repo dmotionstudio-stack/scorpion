@@ -1,8 +1,9 @@
-// The edge rail: Scorpion's taskbar down the right edge of the screen, for a
-// glance (the clock, battery, network, notifications, mail and chat), the
-// pinned apps and the open windows, then volume and power. The summon dot in
-// the bottom-left corner opens the intent wheel (summon.js). Right-click an
-// empty part of it to customize it (or go back to the bar along the bottom).
+// The edge rail: Scorpion's taskbar down the right edge of the screen (or the
+// left, or along the top or bottom: Settings, or Position on its right-click
+// menu), for a glance (the clock, battery, network, notifications, mail and
+// chat), the pinned apps and the open windows, then volume and power. The
+// summon dot opens the intent wheel (summon.js). Right-click an empty part of
+// it to customize it (or switch to the classic bar).
 const api = window.scorpion;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -10,16 +11,19 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 let windows = [];
 let pinned = []; // [{ id, name, icon }]
 let show = {};
+const EDGES = ['right', 'left', 'top', 'bottom'];
 
 async function applySettings(settings) {
   const s = settings || (await api.state().catch(() => null))?.settings;
   if (!s) return;
   if (s.theme) document.documentElement.dataset.theme = s.theme;
+  const edge = EDGES.includes(s.taskbar?.edge) ? s.taskbar.edge : 'right';
+  for (const e of EDGES) document.body.classList.toggle(`at-${e}`, e === edge);
   show = { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(s.taskbar?.show || {}) };
   $('#eg-net').hidden = show.network === false;
   for (const k of ['notifications', 'mail', 'chat']) $(`[data-glance="${k}"]`).hidden = show[k] === false;
   // Scorpion OS: the shell host hides the rail itself when it should.
-  api.host?.({ type: 'rail', autoHide: s.taskbar?.autoHide === true });
+  api.host?.({ type: 'rail', autoHide: s.taskbar?.autoHide === true, edge });
   $('#eg-volume').hidden = show.volume === false;
   $('#eg-clock').hidden = show.clock === false;
   refreshTray();
