@@ -1,7 +1,7 @@
 {
   "name": "scorpion",
   "productName": "Scorpion",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Offline AI assistant and agent. Runs local GGUF models with llama.cpp - no API key, no internet.",
   "type": "module",
   "main": "src/main/main.js",
