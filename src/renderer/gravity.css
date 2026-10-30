@@ -151,6 +151,18 @@ body.rail-hidden .gr-line::after { animation: none; }
 
 /* ---- Underneath: OPEN, the name, the status ---- */
 .gr-foot { position: absolute; left: 0; right: 0; bottom: 0; height: 56px; display: flex; align-items: center; padding: 0 30px 0 26px; z-index: 2; }
+/* Summon at the left end: a small sapphire orb, its core breathing (the intent wheel opens from it). */
+.gr-summon { flex: none; width: 42px; height: 42px; margin-right: 10px; display: grid; place-items: center; border-radius: 50%; color: #bfe0ff;
+  background: radial-gradient(circle at 38% 32%, #6fb2ff, #1d4fc4 55%, #071436 90%); box-shadow: 0 0 14px rgba(70, 140, 255, .55), inset -4px -5px 10px rgba(0, 0, 0, .45);
+  transition: transform .3s cubic-bezier(.3, .8, .3, 1.4), box-shadow .3s; }
+.gr-summon:hover { transform: translateY(-2px) scale(1.07); box-shadow: 0 0 22px rgba(90, 160, 255, .85), inset -4px -5px 10px rgba(0, 0, 0, .45); }
+.gr-sum { width: 28px; height: 28px; overflow: visible; }
+.sum-ring { fill: none; stroke: currentColor; stroke-width: 1.1; opacity: .8; }
+.sum-core { fill: #fff; filter: drop-shadow(0 0 4px #9fd0ff); animation: sum-breathe 2.6s ease-in-out infinite; transform-origin: 12px 12px; }
+@keyframes sum-breathe { 50% { transform: scale(1.35); opacity: .75; } }
+html[data-perf="light"] .sum-core { animation: none; }
+@media (prefers-reduced-motion: reduce) { .sum-core { animation: none; } }
+.gr-launch { margin-left: 4px; }
 .gr-open { display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 12px 0 4px; border-radius: 12px; transition: background .2s; }
 .gr-open:hover { background: rgba(120, 170, 255, .08); }
 .gr-tri { width: 38px; height: 34px; filter: drop-shadow(0 0 6px rgba(90, 160, 255, .8)); transition: transform .4s cubic-bezier(.3, .8, .3, 1.4); }
@@ -170,7 +182,9 @@ button.gr-ico:hover { background: rgba(120, 170, 255, .1); }
 .gr-meter-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: #f4f8ff; box-shadow: 0 0 8px rgba(160, 200, 255, .8); }
 .gr-meter-knob { position: absolute; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: #fff; box-shadow: 0 0 8px rgba(160, 200, 255, .9); }
 .gr-battery.low { color: #ff8a7a; }
-.gr-clock { font: 300 31px/1 "Segoe UI Light", "Segoe UI", var(--font-ui, sans-serif); letter-spacing: .02em; color: #f2f6fd; padding: 4px 6px; border-radius: 8px; }
+.gr-clock { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; color: #f2f6fd; padding: 3px 6px; border-radius: 8px; }
+.gr-time { font: 300 28px/1 "Segoe UI Light", "Segoe UI", var(--font-ui, sans-serif); letter-spacing: .02em; }
+.gr-date { font: 400 11px/1 var(--font-ui, "Segoe UI", sans-serif); color: var(--gr-dim); letter-spacing: .04em; }
 .gr-clock:hover { background: rgba(120, 170, 255, .08); }
 
 /* ---- An app's card: its recent windows, or what to do with it ---- */

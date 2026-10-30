@@ -101,7 +101,12 @@ function render() {
 function layout() {
   const row = $('#gr-stones');
   const n = Math.max(1, current.length);
-  document.body.classList.toggle('narrow', innerWidth / z < 1180);
+  // The name in the middle steps aside when it would touch what's either side of it.
+  document.body.classList.remove('narrow');
+  const title = $('.gr-title').getBoundingClientRect();
+  const left = $('.gr-launch[data-view="files"]').getBoundingClientRect();
+  const right = $('.gr-status').getBoundingClientRect();
+  document.body.classList.toggle('narrow', title.left - 16 * z < left.right || title.right + 16 * z > right.left);
   const room = row.clientWidth || innerWidth / z - 300;
   const grow = SIZES[look.size] || 1;
   const s = Math.max(0.55, Math.min(grow, room / (n * 114 + 100 + 26 * (n - 1))));
@@ -380,8 +385,11 @@ document.addEventListener('mousemove', (e) => {
 });
 
 // ---------- underneath ----------
+// The same on every taskbar: hours and minutes, and a short date.
 function tick() {
-  $('#gr-clock').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\s*[AaPp]\.?[Mm]\.?$/, '');
+  const now = new Date();
+  $('#gr-time').textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\s*[AaPp]\.?[Mm]\.?$/, '');
+  $('#gr-date').textContent = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 }
 async function refreshTray() {
   const t = await api.shellTray().catch(() => ({}));
@@ -399,7 +407,10 @@ async function refreshTray() {
     $('#gr-battery').classList.toggle('low', t.battery <= 15 && !t.charging);
   }
 }
-$('#gr-open').addEventListener('click', () => (api.shellShow ? api.shellShow('desktop') : api.shellWheel({ open: true })));
+$('#gr-summon').addEventListener('click', () => api.shellWheel({ open: true, centre: true }));
+$('#gr-open').addEventListener('click', () => api.shellShow('desktop'));
+for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => api.shellShow(b.dataset.view));
+$('#gr-power').addEventListener('click', () => api.shellMenu({ kind: 'power' }));
 $('#gr-clock').addEventListener('click', () => api.shellMenu({ kind: 'clock' }));
 $('#gr-volume').addEventListener('click', () => (host ? api.host({ type: 'panel', name: 'quick', section: 'sound' }) : api.shellVolume('mute')));
 $('#gr-volume').addEventListener('wheel', (e) => { e.preventDefault(); api.shellVolume(e.deltaY < 0 ? 'up' : 'down'); }, { passive: false });

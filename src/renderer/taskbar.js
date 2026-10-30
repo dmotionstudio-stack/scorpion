@@ -57,8 +57,9 @@ async function refreshWindows() {
 
 function tick() {
   const now = new Date();
-  $('#tb-time').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  $('#tb-date').textContent = now.toLocaleDateString();
+  // The same on every taskbar: hours and minutes, and a short date.
+  $('#tb-time').textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\s*[AaPp]\.?[Mm]\.?$/, '');
+  $('#tb-date').textContent = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 async function refreshTray() {
@@ -75,6 +76,7 @@ async function refreshTray() {
   }
 }
 
+$('#tb-summon').addEventListener('click', () => api.shellWheel({ open: true, centre: true }));
 $('#tb-home').addEventListener('click', () => api.shellShow('desktop'));
 $('#tb-apps').addEventListener('click', () => api.shellShow('apps'));
 $('#tb-files').addEventListener('click', () => api.shellShow('files'));

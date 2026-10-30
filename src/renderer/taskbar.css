@@ -53,7 +53,7 @@ html[data-perf="light"] .tb-home::after { animation: none; }
 @keyframes tb-turn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .tb-home::after { animation: none; } }
 .tb-logo { width: 24px; height: 24px; filter: drop-shadow(0 0 4px var(--glow)); }
-.tb-ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 3px var(--glow)); }
+.tb-ico { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 3px var(--glow)); }
 .tb-fill { fill: currentColor; stroke: none; }
 .tb-windows { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; padding: 0 6px; margin-left: 4px; position: relative; z-index: 1;
   border-left: 1px solid var(--faint); }
@@ -144,3 +144,11 @@ body.taskbar.at-right.rail-hidden { transform: translateX(calc(100% - 3px)); }
 .at-left .tb-clock, .at-right .tb-clock { align-items: center; text-align: center; padding: 0 2px; letter-spacing: 0; }
 .at-left #tb-time, .at-right #tb-time { font-size: 12px; }
 .at-left #tb-date, .at-right #tb-date { display: none; }
+
+/* Summon: the dot, small, its core breathing (the intent wheel opens from here). */
+.tb-sum { width: 24px; height: 24px; overflow: visible; }
+.sum-ring { fill: none; stroke: currentColor; stroke-width: 1.3; }
+.sum-core { fill: var(--accent); filter: drop-shadow(0 0 4px var(--accent)); animation: sum-breathe 2.6s ease-in-out infinite; transform-origin: 12px 12px; }
+@keyframes sum-breathe { 50% { transform: scale(1.35); opacity: .75; } }
+html[data-perf="light"] .sum-core { animation: none; }
+@media (prefers-reduced-motion: reduce) { .sum-core { animation: none; } }

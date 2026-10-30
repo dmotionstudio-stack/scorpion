@@ -150,3 +150,24 @@ body.edge.eg-style-neon .eg-app.active { box-shadow: 0 0 14px color-mix(in srgb,
 /* Solid: an opaque panel, no glow. */
 body.edge.eg-style-solid { background: var(--panel, #17181b); }
 body.edge.eg-style-solid::before { display: none; }
+
+/* ---- Its start: Summon (the dot, small; the intent wheel opens from it),
+   then Scorpion, Apps and Files ---- */
+.eg-start { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0 0 12px; margin: 0 12px 10px; border-bottom: 1px solid var(--line); }
+.eg-summon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; color: color-mix(in srgb, var(--accent) 60%, var(--ink));
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%); transition: background .15s, transform .15s; }
+.eg-summon:hover { background: radial-gradient(circle, color-mix(in srgb, var(--accent) 32%, transparent), transparent 72%); transform: scale(1.06); }
+.eg-sum { width: 30px; height: 30px; overflow: visible; }
+.sum-ring { fill: none; stroke: currentColor; stroke-width: 1.2; }
+.sum-core { fill: var(--accent); filter: drop-shadow(0 0 4px var(--accent)); animation: sum-breathe 2.6s ease-in-out infinite; transform-origin: 12px 12px; }
+@keyframes sum-breathe { 50% { transform: scale(1.35); opacity: .75; } }
+html[data-perf="light"] .sum-core { animation: none; }
+@media (prefers-reduced-motion: reduce) { .sum-core { animation: none; } }
+.eg-launch { display: flex; gap: 0; width: 100%; justify-content: space-between; }
+.eg-launch .eg-item { width: auto; flex: 1; padding: 6px 0; }
+.eg-launch .eg-item svg { width: 18px; height: 18px; }
+.at-top .eg-start, .at-bottom .eg-start { flex-direction: row; align-self: stretch; padding: 0 12px 0 0; margin: 6px 12px 6px 0; border-bottom: 0; border-right: 1px solid var(--line); }
+.at-top .eg-launch, .at-bottom .eg-launch { width: auto; gap: 2px; }
+.at-top .eg-launch .eg-item, .at-bottom .eg-launch .eg-item { flex: none; padding: 9px 8px; }
+body.eg-size-small .eg-summon { width: 40px; height: 40px; }
+body.eg-size-large .eg-summon { width: 54px; height: 54px; }

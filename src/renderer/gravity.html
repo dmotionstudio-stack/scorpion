@@ -31,6 +31,7 @@
     </div>
     <div class="gr-horizon" aria-hidden="true"><span class="gr-line"></span><span class="gr-water"></span></div>
     <footer class="gr-foot">
+      <button class="gr-summon" id="gr-summon" title="Summon: the intent wheel (Win+Shift+Space)"><svg class="gr-sum" viewBox="0 0 24 24" aria-hidden="true"><circle class="sum-ring" cx="12" cy="12" r="10.2"/><circle class="sum-ring" cx="12" cy="12" r="6.4" opacity=".6"/><circle class="sum-core" cx="12" cy="12" r="2.8"/></svg></button>
       <button class="gr-open" id="gr-open" title="Scorpion">
         <svg class="gr-tri" viewBox="0 0 48 42" aria-hidden="true">
           <defs><linearGradient id="gr-tri-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#cfe6ff"/><stop offset="1" stop-color="#3f86ff"/></linearGradient></defs>
@@ -39,6 +40,8 @@
         </svg>
         <span>OPEN</span>
       </button>
+      <button class="gr-ico gr-launch" data-view="apps" title="Apps"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg></button>
+      <button class="gr-ico gr-launch" data-view="files" title="Files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
       <div class="gr-title" aria-hidden="true">Scorpion</div>
       <div class="gr-status">
         <span class="gr-ico" id="gr-signal" title="Network"><svg viewBox="0 0 26 20" aria-hidden="true"><path d="M3 18v-2M8 18v-5M13 18v-8M18 18v-11M23 18V4"/></svg></span>
@@ -48,7 +51,8 @@
         <button class="gr-ico" data-glance="chat" title="Chat with Scorpion"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4c4.7 0 8.5 3.1 8.5 7s-3.8 7-8.5 7c-1 0-2-.1-2.9-.4L5 19.5l1.2-3.6C4.5 14.6 3.5 12.9 3.5 11 3.5 7.1 7.3 4 12 4z"/></svg></button>
         <button class="gr-ico" id="gr-volume" title="Volume: click to mute, scroll to change"><svg viewBox="0 0 26 20" aria-hidden="true"><path d="M3 7.5h4l5-4.5v14l-5-4.5H3z"/><path d="M15.5 6.5a5 5 0 0 1 0 7M18.5 3.5a9.5 9.5 0 0 1 0 13"/></svg></button>
         <span class="gr-battery" id="gr-battery" hidden><span id="gr-battery-pct"></span><span class="gr-meter"><span class="gr-meter-fill" id="gr-battery-fill"></span><span class="gr-meter-knob" id="gr-battery-knob"></span></span></span>
-        <button class="gr-clock" id="gr-clock" title="Calendar"></button>
+        <button class="gr-clock" id="gr-clock" title="Calendar"><span class="gr-time" id="gr-time"></span><span class="gr-date" id="gr-date"></span></button>
+        <button class="gr-ico" id="gr-power" title="Power"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg></button>
       </div>
     </footer>
   </div>

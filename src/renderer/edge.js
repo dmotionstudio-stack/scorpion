@@ -100,6 +100,8 @@ for (const b of document.querySelectorAll('[data-glance]')) b.addEventListener('
 const setBadge = (s) => { const n = s?.unread || 0; $('#eg-badge').hidden = !n; $('#eg-badge').textContent = n > 9 ? '9+' : String(n); };
 if (api.notifications) { api.notifications().then(setBadge).catch(() => {}); api.onNotificationsChanged?.(setBadge); }
 $('#eg-clock').addEventListener('click', () => api.shellMenu({ kind: 'clock' }));
+$('#eg-summon').addEventListener('click', () => api.shellWheel({ open: true, centre: true }));
+for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => api.shellShow?.(b.dataset.view));
 $('#eg-power').addEventListener('click', () => api.shellMenu({ kind: 'power' }));
 $('#eg-volume').addEventListener('click', () => (window.scorpionHost ? quick('sound') : api.shellVolume('mute')));
 // The installer takes a while to appear, so the button says it's coming.

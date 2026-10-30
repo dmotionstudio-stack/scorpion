@@ -26,6 +26,7 @@ export const SHELL_CALLS = {
   notificationAct: 'shell:notificationAct',
   shellStagePick: 'shell:stagePick',
   shellDot: 'shell:dot',
+  shellShow: 'shell:show',
 };
 export const SHELL_EVENTS = {
   onSettingsChanged: 'settings:changed',
