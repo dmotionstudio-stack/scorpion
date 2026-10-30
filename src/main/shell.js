@@ -1,8 +1,9 @@
 // Scorpion as the Windows desktop ("shell"). When Windows starts Scorpion at
 // sign-in (scorpion --shell), Scorpion shows its home screen as the desktop
 // and its taskbar: by default a glance rail along the right edge (edge.html)
-// with a summon dot that opens the intent wheel (summon.html), or the classic
-// bar along the bottom (taskbar.html; right-click the taskbar → Layout). 'bar' (Settings: the holographic taskbar
+// with a summon dot that opens the intent wheel (summon.html), the classic
+// bar along the bottom (taskbar.html), or the Scorpion taskbar, apps as stones on
+// a horizon along the bottom (gravity.html; right-click the taskbar → Layout). 'bar' (Settings: the holographic taskbar
 // whenever Scorpion runs) takes over from the Windows taskbar on the normal
 // Windows desktop: the Windows one is hidden while Scorpion's runs and comes
 // back when it stops.
@@ -32,7 +33,11 @@ let taskbar = null;
 let summon = null; // the summon dot, which opens into the intent wheel
 let wheelOpen = false;
 let held = false; // a menu or dialog from the wheel is up: it stays open
-let layout = 'orbit'; // 'orbit' (edge rail + wheel) | 'bar'
+let layout = 'orbit'; // 'orbit' (edge rail + wheel) | 'bar' | 'gravity'
+const LAYOUTS = ['orbit', 'bar', 'gravity'];
+const layoutOf = (l) => (LAYOUTS.includes(l) ? l : 'orbit');
+let tall = false; // the Scorpion taskbar's window taller while an app's card is open
+let taskbarPage = null; // which page the taskbar's window shows
 // On the normal Windows desktop the dot floats on its own while Scorpion's
 // window is minimized or hidden ("summon anywhere"), and Win+Shift+Space opens
 // the wheel whenever Scorpion runs.
@@ -72,12 +77,22 @@ export function raiseTaskbar() {
 // it): by default the rail down the right, the bar along the bottom. The
 // native shell host (Scorpion OS) always draws the rail.
 export const railEdge = () => {
+  if (gravityOn() || hostGravity()) return 'bottom'; // the horizon is along the bottom
   const e = deps?.edge?.();
   return EDGES.includes(e) ? e : barLayout() && !hostMode ? 'bottom' : 'right';
 };
 const across = (e) => e === 'top' || e === 'bottom';
 // How thick it is on that edge.
-export const railThickness = (e = railEdge()) => (barLayout() && !hostMode ? (across(e) ? TASKBAR_HEIGHT : BAR_SIDE) : (across(e) ? RAIL_ACROSS : RAIL_WIDTH));
+export const railThickness = (e = railEdge()) => (gravityOn() || hostGravity() ? gravityHeight() : barLayout() && !hostMode ? (across(e) ? TASKBAR_HEIGHT : BAR_SIDE) : (across(e) ? RAIL_ACROSS : RAIL_WIDTH));
+// The Scorpion taskbar (as the desktop, or floating with the dot): its height
+// grows with the screen (gravity.js scales its drawing to it).
+const gravityOn = () => !hostMode && layoutOf(mode ? layout : deps?.getLayout?.()) === 'gravity';
+// Scorpion OS: the shell host shows it (gravity.js asks it for the same height).
+const hostGravity = () => hostMode && layoutOf(deps?.getLayout?.()) === 'gravity';
+export const gravityHeightFor = (h) => Math.round(Math.min(200, Math.max(140, h * 0.19)));
+const gravityHeight = () => gravityHeightFor(deps.screen.getPrimaryDisplay().bounds.height);
+// While an app's card is open the Scorpion taskbar's window reaches up this much more.
+const tallBy = () => Math.round(gravityHeight() * 1.6);
 // A rectangle less the taskbar's strip along its edge.
 function besideEdge(r, e = railEdge(), t = railThickness(e)) {
   if (e === 'left') return { ...r, x: r.x + t, width: r.width - t };
@@ -125,7 +140,10 @@ export function railRect(base, e = railEdge(), t = railThickness(e)) {
   return { x: base.x + base.width - t, y: base.y, width: t, height: base.height };
 }
 function placeTaskbar() {
-  if (taskbar && !taskbar.isDestroyed()) taskbar.setBounds(railRect(railBase()));
+  if (taskbar && !taskbar.isDestroyed()) {
+    const r = railRect(railBase());
+    taskbar.setBounds(tall && gravityOn() ? { ...r, y: r.y - tallBy(), height: r.height + tallBy() } : r);
+  }
   placeSummon();
 }
 // Where the wheel opens: the screen, less the rail's strip while it's up.
@@ -221,7 +239,7 @@ const windowOptions = (title) => ({
   webPreferences: { preload: deps.preload, contextIsolation: true, nodeIntegration: false, sandbox: true },
 });
 function createWindows() {
-  layout = deps.getLayout?.() === 'bar' ? 'bar' : 'orbit';
+  layout = layoutOf(deps.getLayout?.());
   if (hostMode) return;
   taskbar?.destroy(); // a floating rail makes way for the desktop's own
   railFloats = false;
@@ -229,11 +247,14 @@ function createWindows() {
   if ((layout === 'orbit' || floating) && (!summon || summon.isDestroyed())) makeSummon();
   else if (railUp()) { placeSummon(); summon.showInactive(); } // the floating dot was already there
 }
+const pageWanted = () => (gravityOn() ? 'gravity' : barLayout() ? 'taskbar' : 'edge');
 function makeTaskbar() {
   railHidden = false;
+  tall = false;
+  taskbarPage = pageWanted();
   taskbar = new deps.BrowserWindow(windowOptions('Scorpion taskbar'));
   taskbar.setAlwaysOnTop(true, 'pop-up-menu');
-  taskbar.loadURL(`scorpion://app/${barLayout() ? 'taskbar' : 'edge'}.html`);
+  taskbar.loadURL(`scorpion://app/${taskbarPage}.html`);
   taskbar.once('ready-to-show', () => { placeTaskbar(); taskbar.showInactive(); placeAgain(); watchPointer(); });
   taskbar.on('closed', () => { taskbar = null; });
 }
@@ -349,6 +370,7 @@ function setFloatingRail(on) {
 // the room it keeps and Stage's side follow.
 export function refreshRail() {
   if (floating && !mode && !hostMode) setFloatingRail(Boolean(deps.railAway?.()));
+  if (railFloats && !mode && taskbar && !taskbar.isDestroyed() && taskbarPage !== pageWanted()) { taskbar.destroy(); makeTaskbar(); }
   if (!hostMode) placeTaskbar();
   if (stageSide !== sideForStage()) { hideStage(true); stageSide = sideForStage(); }
   if (mode && !hostMode) win.setWorkArea(wantedArea()).catch(() => {});
@@ -447,7 +469,7 @@ function lookAtPointer() {
     if (!stageShown && level && inward <= 1) showStage().catch(() => {});
     else if (stageShown && Date.now() > stageStay && (inward > STAGE_W + 40 || !level)) hideStage();
   }
-  if (hidesNow()) {
+  if (hidesNow() && !tall) {
     // How far in from the taskbar's outer edge the pointer is (beyond it,
     // over the Windows taskbar for one floating along the bottom: below 0).
     const e = railEdge();
@@ -475,6 +497,21 @@ function showRail() {
 }
 // A menu from the taskbar is open: it stays while it is (at most a minute).
 export function holdRail(on) { railHeld = on ? Date.now() + 60_000 : Date.now() + 800; }
+// The Scorpion taskbar: clicks through its empty sky to the apps under it (the
+// pointer's moves still reach its page, to notice a stone), or not.
+export function passClicks(on) {
+  if (!taskbar || taskbar.isDestroyed() || railHidden || taskbarPage !== 'gravity') return false;
+  taskbar.setIgnoreMouseEvents(Boolean(on), { forward: true });
+  return true;
+}
+// Its window reaches up for an app's card, and back down.
+export function setTall(on) {
+  if (taskbarPage !== 'gravity' || tall === Boolean(on)) return false;
+  tall = Boolean(on);
+  if (tall) taskbar?.setIgnoreMouseEvents(false);
+  placeTaskbar();
+  return true;
+}
 export function holdWheel(on) { held = Boolean(on); }
 // The dot back where the settings say (dropped somewhere, or its corner).
 export function placeDot() { if (!hostMode && !wheelOpen) placeSummon(); }
@@ -488,7 +525,7 @@ export function useHost(on) {
 export const hostActive = () => hostMode;
 // A different layout: the windows are made again, and the reserved room follows.
 export async function relayout() {
-  if (!mode || (deps.getLayout?.() === 'bar' ? 'bar' : 'orbit') === layout) return false;
+  if (!mode || layoutOf(deps.getLayout?.()) === layout) return false;
   destroyWindows();
   createWindows();
   await win.setWorkArea(wantedArea()).catch(() => {});

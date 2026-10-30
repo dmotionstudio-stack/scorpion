@@ -156,3 +156,24 @@ test('the rail on the left: it floats there, and Stage comes in from the right',
   assert.deepEqual(strip.bounds, { x: 1600 - 230, y: 0, width: 230, height: 852 });
   shell.setStage(false);
 });
+
+test('the Scorpion taskbar is sized for the screen', () => {
+  assert.equal(shell.gravityHeightFor(900), 171);
+  assert.equal(shell.gravityHeightFor(1080), 200);
+  assert.equal(shell.gravityHeightFor(720), 140);
+});
+
+test('minimized, the Scorpion taskbar floats along the bottom above the Windows taskbar, and reaches up for a card', opts, async () => {
+  shell.initShell({ BrowserWindow: FakeWindow, screen, preload: 'p', dataDir: '.', getMainWindow: () => null, showView() {}, getLayout: () => 'gravity', perf: () => 'full', autoHide: () => true, railAway: () => true, edge: () => 'left' });
+  shell.setFloatingDot(true);
+  await new Promise((r) => setTimeout(r, 300));
+  const rail = made.filter((w) => w.url.endsWith('gravity.html')).at(-1);
+  assert.ok(rail, 'the Scorpion taskbar page');
+  assert.equal(shell.railEdge(), 'bottom'); // whatever edge is set for the other layouts
+  assert.deepEqual(rail.bounds, { x: 0, y: 852 - 171, width: 1600, height: 171 });
+  assert.equal(shell.setTall(true), true);
+  assert.deepEqual(rail.bounds, { x: 0, y: 852 - 171 - 274, width: 1600, height: 171 + 274 });
+  shell.setTall(false);
+  assert.deepEqual(rail.bounds, { x: 0, y: 852 - 171, width: 1600, height: 171 });
+  shell.setFloatingDot(false);
+});

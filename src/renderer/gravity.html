@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' scorpion:; img-src 'self' scorpion: data:; style-src 'self' scorpion: 'unsafe-inline'">
+  <title>Scorpion taskbar</title>
+  <link rel="stylesheet" href="themes.css">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="gravity.css">
+  <script src="shell-bridge.js"></script>
+  <script type="module" src="gravity.js"></script>
+</head>
+<body class="gravity">
+  <div class="gr-rail" id="gr-rail">
+    <div class="gr-scene" id="gr-scene">
+      <svg class="gr-orbits" id="gr-orbits" aria-hidden="true"></svg>
+      <div class="gr-stones" id="gr-stones" role="list" aria-label="Your apps"></div>
+      <div class="gr-hints" id="gr-hints" aria-hidden="true">
+        <div class="gr-hint gr-hint-defer" id="gr-hint-defer"><span>raise <i>=</i> defer</span><svg viewBox="0 0 12 34"><path d="M6 33V3M1.5 8 6 2.5 10.5 8"/></svg></div>
+        <div class="gr-hint gr-hint-orbit" id="gr-hint-orbit"><span>orbit <i>=</i> related work</span></div>
+        <div class="gr-hint gr-hint-focus" id="gr-hint-focus"><span>drop <i>=</i> focus</span><svg viewBox="0 0 12 34"><path d="M6 1v30M1.5 26 6 31.5 10.5 26"/></svg></div>
+      </div>
+      <section class="gr-pop" id="gr-pop" hidden aria-label="App">
+        <header class="gr-pop-head"><h2 id="gr-pop-title"></h2><button class="gr-pop-x" id="gr-pop-x" aria-label="Close"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg></button></header>
+        <nav class="gr-tabs" role="tablist">
+          <button role="tab" class="gr-tab" data-tab="recent" aria-selected="true">Recent</button>
+          <button role="tab" class="gr-tab" data-tab="actions" aria-selected="false">Actions</button>
+        </nav>
+        <div class="gr-pop-body" id="gr-pop-body"></div>
+      </section>
+    </div>
+    <div class="gr-horizon" aria-hidden="true"><span class="gr-line"></span><span class="gr-water"></span></div>
+    <footer class="gr-foot">
+      <button class="gr-open" id="gr-open" title="Scorpion">
+        <svg class="gr-tri" viewBox="0 0 48 42" aria-hidden="true">
+          <defs><linearGradient id="gr-tri-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#cfe6ff"/><stop offset="1" stop-color="#3f86ff"/></linearGradient></defs>
+          <path d="M24 3 45 39H3Z" fill="none" stroke="url(#gr-tri-g)" stroke-width="2.6" stroke-linejoin="round"/>
+          <path d="M24 15 35 34H13Z" fill="none" stroke="url(#gr-tri-g)" stroke-width="1.4" stroke-linejoin="round" opacity=".55"/>
+        </svg>
+        <span>OPEN</span>
+      </button>
+      <div class="gr-title" aria-hidden="true">Scorpion</div>
+      <div class="gr-status">
+        <span class="gr-ico" id="gr-signal" title="Network"><svg viewBox="0 0 26 20" aria-hidden="true"><path d="M3 18v-2M8 18v-5M13 18v-8M18 18v-11M23 18V4"/></svg></span>
+        <span class="gr-ico" id="gr-wifi" title="Network"><svg viewBox="0 0 26 20" aria-hidden="true"><path d="M2 7.5a16 16 0 0 1 22 0M5.5 11a11 11 0 0 1 15 0M9 14.5a6 6 0 0 1 8 0"/><circle cx="13" cy="17.6" r="1.4"/></svg></span>
+        <button class="gr-ico" id="gr-volume" title="Volume: click to mute, scroll to change"><svg viewBox="0 0 26 20" aria-hidden="true"><path d="M3 7.5h4l5-4.5v14l-5-4.5H3z"/><path d="M15.5 6.5a5 5 0 0 1 0 7M18.5 3.5a9.5 9.5 0 0 1 0 13"/></svg></button>
+        <span class="gr-battery" id="gr-battery" hidden><span id="gr-battery-pct"></span><span class="gr-meter"><span class="gr-meter-fill" id="gr-battery-fill"></span><span class="gr-meter-knob" id="gr-battery-knob"></span></span></span>
+        <button class="gr-clock" id="gr-clock" title="Calendar"></button>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

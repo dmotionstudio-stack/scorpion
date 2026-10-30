@@ -59,6 +59,9 @@ contextBridge.exposeInMainWorld('scorpion', {
   // The summon dot dragged somewhere else, and the rail hiding and coming back.
   shellDot: invoke('shell:dot'),
   onRail: on('shell:rail'),
+  // The Scorpion taskbar: clicks through its empty sky, and taller for an app's card.
+  shellPass: invoke('shell:pass'),
+  shellTall: invoke('shell:tall'),
   // The command palette: opened from the wheel, and its system entries run (src/shared/intents.js).
   shellPalette: invoke('shell:palette'),
   intentRun: invoke('intent:run'),

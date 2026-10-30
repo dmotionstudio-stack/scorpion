@@ -22,7 +22,9 @@ async function applySettings(settings) {
   show = { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(s.taskbar?.show || {}) };
   $('#eg-net').hidden = show.network === false;
   for (const k of ['notifications', 'mail', 'chat']) $(`[data-glance="${k}"]`).hidden = show[k] === false;
-  // Scorpion OS: the shell host hides the rail itself when it should.
+  // Scorpion OS: the shell host hides the rail itself when it should (and
+  // shows the Scorpion taskbar in its place when that's the layout).
+  if (window.scorpionHost && (s.taskbar?.layout || 'gravity') === 'gravity') { api.host({ type: 'rail', page: 'gravity.html' }); return; }
   api.host?.({ type: 'rail', autoHide: s.taskbar?.autoHide === true, edge });
   $('#eg-volume').hidden = show.volume === false;
   $('#eg-clock').hidden = show.clock === false;

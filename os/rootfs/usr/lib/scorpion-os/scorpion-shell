@@ -8,7 +8,8 @@ pages in WebKitGTK:
 
   edge.html    the rail down the right edge, or the left, or along the top
                or bottom (reserves its room, or hides until the pointer
-               touches the edge)
+               touches the edge); or in its place gravity.html, the Scorpion
+               taskbar: apps as stones on a horizon along the bottom
   summon.html  the summon dot (bottom left, in another corner, or wherever
                it was dragged), opening into the intent wheel
   stage.html   Stage: the open apps' strip that slides in from the left edge
@@ -65,10 +66,14 @@ BESIDE_RAIL = {"notify": NOTIFY_WIDTH, "quick": QUICK_WIDTH}
 INFO = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "scorpion-shell.json")
 E = GtkLayerShell.Edge
 EDGES = {"left": E.LEFT, "right": E.RIGHT, "top": E.TOP, "bottom": E.BOTTOM}
-RAIL_AT = {"edge": "right"}  # which edge the rail is on (its page says, from Scorpion's settings)
+# Which edge the rail is on, and how thick its page wants it (the Scorpion
+# taskbar: taller), as its page says from Scorpion's settings.
+RAIL_AT = {"edge": "right", "size": None}
 
 
 def rail_thickness(edge=None):
+    if RAIL_AT["size"]:
+        return RAIL_AT["size"]
     return RAIL_ACROSS if (edge or RAIL_AT["edge"]) in ("top", "bottom") else RAIL
 
 
@@ -378,6 +383,7 @@ class Host:
         self.rail_hidden = False
         self.rail_timer = 0
         self.rail_held = False  # a menu from it is open
+        self.rail_tall = False  # the Scorpion taskbar reaching up for an app's card
         # Stage: on, shown, a window flying in, and its edge strip.
         self.stage_on = False
         self.stage_shown = False
@@ -493,7 +499,7 @@ class Host:
         self.panels["summon"].place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.BOTTOM}, width=size, height=size, margins={E.LEFT: left, E.BOTTOM: bottom}, keyboard="none")
 
     # ---------- the rail's edge ----------
-    def place_rail(self, edge):
+    def place_rail(self, edge, size=None):
         """The rail down the right or left edge, or along the top or bottom,
         its size given (a panel placed again doesn't always stretch to the
         edges it's anchored to); the panels in the top-right corner keep
@@ -502,11 +508,15 @@ class Host:
             return
         changed = edge != RAIL_AT["edge"]
         RAIL_AT["edge"] = edge
+        if size is not None:
+            RAIL_AT["size"] = max(40, min(400, int(size))) if size else None
         w, h = self.get_screen_size()
         t = rail_thickness(edge)
         across = edge in ("top", "bottom")
         along = {E.LEFT, E.RIGHT} if across else {E.TOP, E.BOTTOM}
-        self.panels["edge"].place(layer=GtkLayerShell.Layer.OVERLAY, anchors={EDGES[edge], *along}, width=w if across else t, height=t if across else h, exclusive=0 if self.rail_hides else t)
+        # Reaching up for a card (the Scorpion taskbar): taller, its room the same.
+        reach = round(t * 1.6) if self.rail_tall and edge == "bottom" else 0
+        self.panels["edge"].place(layer=GtkLayerShell.Layer.OVERLAY, anchors={EDGES[edge], *along}, width=w if across else t, height=(t + reach) if across else h, exclusive=0 if self.rail_hides else t)
         for name in BESIDE_RAIL:
             for side, margin in beside_rail().items():
                 GtkLayerShell.set_margin(self.panels[name], side, margin)
@@ -543,7 +553,7 @@ class Host:
 
     def rail_hide(self):
         self.rail_timer = 0
-        if not self.rail_hides or self.rail_held:
+        if not self.rail_hides or self.rail_held or self.rail_tall:
             return False
         self.rail_hidden = True
         edge = self.panels["edge"]
@@ -733,8 +743,22 @@ class Host:
         elif kind == "rail":
             if "autoHide" in msg:
                 self.rail_mode(bool(msg.get("autoHide")))
+            if msg.get("page") in ("edge.html", "gravity.html") and msg["page"] != self.panels["edge"].page:
+                # Another layout: the rail's panel shows the other page (as
+                # it was, until that page says where and how big).
+                log("rail page:", msg["page"])
+                p = self.panels["edge"]
+                p.page = msg["page"]
+                self.rail_tall = False
+                RAIL_AT["size"] = None
+                p.load()
+            if "tall" in msg:
+                self.rail_tall = bool(msg.get("tall"))
+                if self.rail_tall:
+                    self.rail_show()
+                self.place_rail(RAIL_AT["edge"])
             if msg.get("edge"):
-                self.place_rail(str(msg["edge"]))
+                self.place_rail(str(msg["edge"]), msg.get("thickness", 0))
         elif kind == "stage":
             if msg.get("side"):
                 self.stage_from(str(msg["side"]))

@@ -1277,10 +1277,11 @@ function registerSummon(accel) {
 }
 
 // The taskbar's own settings, with defaults for anything missing. layout:
-// 'orbit' (the edge rail with the summon dot and intent wheel) or 'bar'.
+// 'gravity' (the Scorpion taskbar, apps as stones along the bottom), 'orbit' (the
+// edge rail with the summon dot and intent wheel) or 'bar'.
 function taskbarSettings() {
   const t = store.getSettings().taskbar || {};
-  return { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(t.show || {}) } };
+  return { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', layout: 'gravity', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(t.show || {}) } };
 }
 function setTaskbarLook(t) {
   const s = store.updateSettings({ taskbar: t });
@@ -1901,6 +1902,9 @@ function registerIpc() {
   h('shell:stage', (on) => setStage(on));
   // The summon dot dragged (each move, then where it's dropped, which is
   // kept), asked where it is, or put back in its corner.
+  // The Scorpion taskbar: clicks through its empty parts, and its window taller for an app's card.
+  h('shell:pass', (on) => desktop.passClicks(on));
+  h('shell:tall', (on) => desktop.setTall(on));
   h('shell:dot', (arg = {}) => {
     // Back to its corner, or into another one (Settings).
     if (arg.phase === 'reset' || arg.phase === 'corner') {
@@ -2056,8 +2060,14 @@ function registerIpc() {
       const edges = [['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']];
       const here = desktop.railEdge();
       const position = { label: 'Position', submenu: edges.map(([v, l]) => ({ label: l, type: 'radio', checked: here === v, click: () => set({ edge: v }) })) };
-      const layoutMenu = { label: 'Layout', submenu: [['orbit', 'Edge rail with the intent wheel'], ['bar', 'Classic bar']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.layout === v, click: () => set({ layout: v }) })) };
-      if (t.layout !== 'bar') {
+      const layoutMenu = { label: 'Layout', submenu: [['gravity', 'Scorpion'], ['orbit', 'Edge rail with the intent wheel'], ['bar', 'Classic bar']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.layout === v, click: () => set({ layout: v }) })) };
+      if (t.layout === 'gravity') {
+        template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, autoHide,
+          { type: 'separator' },
+          item('Add or remove apps…', () => showView('apps')),
+          item('Customize…', () => showView('settings', { section: 'layout' })),
+          ...(t.pinned.length ? [item('Unpin all apps', () => setTaskbarLook({ ...t, pinned: [] }))] : [])];
+      } else if (t.layout !== 'bar') {
         template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, position, autoHide,
           { label: 'Show', submenu: ['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume'].map(show) },
           { type: 'separator' },
