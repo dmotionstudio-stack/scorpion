@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The ORB: Scorpion</title>
+  <meta name="description" content="Interact turns Scorpion into a holographic orb you talk to face to face, control with your hands, and use to run your whole computer.">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"}}</script>
+</head>
+<body>
+  <header class="site-header" data-site-header></header>
+
+  <main>
+    <section class="page-head">
+      <div class="wrap center">
+        <span class="eyebrow">The ORB system</span>
+        <h1>Talk to your AI, face to face.</h1>
+        <p class="lead">Press Ctrl+I, or say "Scorpion", and the orb fills your screen. Try the real one below: it's the same code that runs in the app.</p>
+      </div>
+    </section>
+
+    <section class="section orb-section" id="orb" style="padding-top:10px">
+      <div class="wrap orb-layout">
+        <div>
+          <span class="eyebrow">Try it</span>
+          <h2>Pick a state, spin it, click a shortcut.</h2>
+          <p class="lead">Interact turns Scorpion into a holographic orb that fills your screen, and it can run your whole computer from there. It shows what Scorpion is doing, pulses with your voice and its own, and turns toward whoever is talking.</p>
+          <div class="state-buttons" role="group" aria-label="Orb state">
+            <button class="chip" data-orb-state="standby" aria-pressed="true">Standby</button>
+            <button class="chip" data-orb-state="listening" aria-pressed="false">Listening</button>
+            <button class="chip" data-orb-state="thinking" aria-pressed="false">Thinking</button>
+            <button class="chip" data-orb-state="acting" aria-pressed="false">Working</button>
+            <button class="chip" data-orb-state="waiting" aria-pressed="false">Asking you</button>
+            <button class="chip" data-orb-state="speaking" aria-pressed="false">Speaking</button>
+          </div>
+          <ul class="checks">
+            <li>Shortcuts and every open window orbit the orb: say a name, click, or point and pinch</li>
+            <li>Apps open in a panel beside the orb; sweep your hand to switch</li>
+            <li>Your hand can move the real mouse pointer, and thumbs up or down answers its questions</li>
+            <li>Say "Scorpion" to start talking; camera and voice never leave your computer</li>
+          </ul>
+          <p class="orb-info" data-demo-info hidden></p>
+          <p class="orb-hint">Drag to spin. Click a shortcut on the ring to see what it does.</p>
+        </div>
+        <div class="orb-stage" data-demo-orb>
+          <span class="orb-hud" data-demo-state>Standby</span>
+          <div class="orb-tools">
+            <button type="button" data-orb-zoom-in aria-label="Zoom in">+</button>
+            <button type="button" data-orb-zoom-out aria-label="Zoom out">&minus;</button>
+            <button type="button" data-orb-reset aria-label="Reset view">&#8634;</button>
+          </div>
+          <div class="orb-caption" aria-live="polite">
+            <span class="you" data-demo-you hidden></span>
+            <span class="say" data-demo-say></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="states">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="eyebrow">What the orb tells you</span>
+          <h2>You always know what Scorpion is doing.</h2>
+        </div>
+        <div class="grid grid-3">
+          <div class="card feature"><h3>Standby</h3><p>Calm and slow. Say "Scorpion", press Space, or give a thumbs up to start talking.</p></div>
+          <div class="card feature"><h3>Listening</h3><p>The core pulses with your voice while Whisper turns speech into text on your computer.</p></div>
+          <div class="card feature"><h3>Thinking</h3><p>The shells spin faster and the code around it races while the model works out an answer.</p></div>
+          <div class="card feature"><h3>Working</h3><p>A tool is running: opening an app, reading files, changing a setting. The scan rings sweep.</p></div>
+          <div class="card feature"><h3>Asking you</h3><p>It holds still and waits. Answer out loud, click, or give a thumbs up or down.</p></div>
+          <div class="card feature"><h3>Speaking</h3><p>It glows with its own voice. Interrupt any time with Space.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="gestures">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="eyebrow">Hand gestures</span>
+          <h2>Your hand is the mouse.</h2>
+          <p class="lead">With gestures on, the webcam follows your hands. Video stays on your computer and is never recorded or sent anywhere.</p>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Gesture</th><th>On the orb</th><th>Inside an app</th></tr></thead>
+            <tbody>
+              <tr><td>Point (index finger up)</td><td>Highlight a shortcut</td><td>Move the mouse pointer</td></tr>
+              <tr><td>Quick pinch, thumb and index</td><td>Open the shortcut</td><td>Click</td></tr>
+              <tr><td>Pinch, hold and move</td><td>Spin the orb</td><td>Drag</td></tr>
+              <tr><td>Two fingers up, move up or down</td><td>Turn the shortcut rings</td><td>Scroll</td></tr>
+              <tr><td>Both hands pinched, spread or close</td><td>Zoom the orb</td><td>Zoom the app</td></tr>
+              <tr><td>Open hand, sweep left or right</td><td>Previous or next app</td><td>Previous or next app</td></tr>
+              <tr><td>Open hand, push toward the screen</td><td>Back</td><td>Back to the orb</td></tr>
+              <tr><td>Thumb up or down, held</td><td colspan="2">Yes or no to a question; otherwise talk or stop</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="system">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="eyebrow">The orb as the system</span>
+          <h2>Run your whole computer from the orb.</h2>
+        </div>
+        <div class="grid grid-3">
+          <div class="card feature"><h3>Apps inside the orb</h3><p>The app you bring forward fills a panel beside the orb. Leave the orb and every app gets its normal window back.</p></div>
+          <div class="card feature"><h3>Ask out loud</h3><p>"Switch to Outlook", "open Wi-Fi settings", "lock the screen". Anything that changes something is asked out loud first.</p></div>
+          <div class="card feature"><h3>Constellations</h3><p>An optional look: each project is a star with its apps, files and websites in orbit. Click the star to resume it.</p></div>
+          <div class="card feature"><h3>It knows you</h3><p>With face recognition on, it turns toward whoever is talking and greets them by name.</p></div>
+          <div class="card feature"><h3>Gentle alerts</h3><p>It pulses for low battery, finished downloads, schedules and check-ins, and can say them aloud.</p></div>
+          <div class="card feature"><h3>The mini orb</h3><p>Minimize it to a small living orb that floats over everything. Click it to come back.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="cta-band">
+          <div>
+            <h2>The orb comes with every edition.</h2>
+            <p>Standard, Complete and Lifetime all include Interact, voice and hand gestures.</p>
+          </div>
+          <a class="btn btn-gold" href="download.html">Get Scorpion</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" data-site-footer></footer>
+
+  <script type="module" src="assets/site.js"></script>
+  <script type="module" src="assets/orb-site.js"></script>
+</body>
+</html>

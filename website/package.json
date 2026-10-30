@@ -1,0 +1,12 @@
+{
+  "name": "scorpion-website",
+  "private": true,
+  "type": "module",
+  "description": "The Scorpion website: updates, guide, and one-time-purchase downloads with Stripe.",
+  "scripts": {
+    "dev": "node dev-server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

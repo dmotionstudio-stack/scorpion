@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your Scorpion downloads</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="site-header" data-site-header></header>
+
+  <main class="section">
+    <div class="wrap" style="max-width:720px" data-result>
+      <p class="muted">Checking your order...</p>
+    </div>
+  </main>
+
+  <footer class="site-footer" data-site-footer></footer>
+
+  <script type="module" src="assets/site.js"></script>
+  <script type="module">
+    import { escapeHtml } from './assets/site.js';
+
+    const box = document.querySelector('[data-result]');
+    const id = new URLSearchParams(location.search).get('session_id');
+
+    function problem(title, text) {
+      box.innerHTML = `
+        <span class="eyebrow">Order</span>
+        <h1 style="font-size:2.2rem">${escapeHtml(title)}</h1>
+        <p class="lead">${escapeHtml(text)}</p>
+        <p class="muted">If you paid and this keeps happening, email <a href="mailto:support@scorpion.app">support@scorpion.app</a> with your receipt and we'll send your downloads.</p>
+        <a class="btn" href="download.html">Back to Download</a>`;
+    }
+
+    async function load() {
+      if (!id) return problem('No order here', 'This page opens right after you pay, with your download links.');
+      let res, data;
+      try {
+        res = await fetch(`/api/order?session_id=${encodeURIComponent(id)}`);
+        data = await res.json();
+      } catch {
+        return problem('We could not load your order', 'Check your connection and reload this page.');
+      }
+      if (res.status === 402) return problem('Payment is still processing', 'Some payment methods take a few minutes. Reload this page in a moment.');
+      if (!res.ok) return problem('We could not load your order', data.error || 'Please try again.');
+
+      const files = data.files.map((f) => `
+        <div class="card file">
+          <div><b>${escapeHtml(f.label)}</b><small>${escapeHtml(f.file)}</small></div>
+          <a class="btn btn-gold btn-sm" href="${escapeHtml(f.href)}">Download</a>
+        </div>`).join('');
+
+      box.innerHTML = `
+        <span class="eyebrow">Thank you</span>
+        <h1 style="font-size:2.4rem">${data.edition ? `Scorpion ${escapeHtml(data.edition.name)} is yours.` : 'Your USB stick is on its way.'}</h1>
+        <p class="lead">${data.email ? `A receipt is on its way to ${escapeHtml(data.email)}. ` : ''}${data.edition ? 'Bookmark this page: these links keep working, so you can download again any time.' : ''}</p>
+        ${data.edition ? `
+          <h3 style="margin-top:28px">Your downloads${data.version ? `, version ${escapeHtml(data.version)}` : ''}</h3>
+          <div class="files">${files}</div>
+          ${data.edition.lifetime ? '<div class="alert ok">Lifetime: these links always give you the newest version of Scorpion.</div>' : ''}
+          <p class="muted" style="margin-top:20px">Next: follow the <a href="guide.html">install guide</a> for your computer. It takes about two minutes.</p>` : ''}
+        ${data.usb ? `
+          <div class="card" style="margin-top:24px">
+            <h3>${escapeHtml(data.usb.name)}</h3>
+            <p class="muted" style="margin:0">${data.usb.shipTo ? `Shipping to ${escapeHtml(data.usb.shipTo)}. ` : ''}We'll email you the tracking number when it ships.</p>
+          </div>` : ''}`;
+    }
+
+    load();
+  </script>
+</body>
+</html>

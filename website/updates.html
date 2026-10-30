@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scorpion updates and release notes</title>
+  <meta name="description" content="News, new features and release notes for Scorpion, the offline AI assistant and agent.">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="site-header" data-site-header></header>
+
+  <main>
+    <section class="page-head">
+      <div class="wrap">
+        <span class="eyebrow">Updates</span>
+        <h1>What's new in Scorpion</h1>
+        <p class="lead">Releases, new features and news, newest first. Lifetime owners get every release; everyone else can upgrade any time.</p>
+      </div>
+    </section>
+
+    <section class="section" style="padding-top:10px">
+      <div class="wrap">
+        <div class="filters" role="group" aria-label="Filter updates">
+          <button class="chip" aria-pressed="true" data-filter="all">All</button>
+          <button class="chip" aria-pressed="false" data-filter="release">Releases</button>
+          <button class="chip" aria-pressed="false" data-filter="feature">Features</button>
+          <button class="chip" aria-pressed="false" data-filter="news">News</button>
+        </div>
+        <div class="updates" data-updates></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" data-site-footer></footer>
+
+  <script type="module" src="assets/site.js"></script>
+  <script type="module">
+    import { UPDATES, updateId } from './data/updates.js';
+    import { escapeHtml, formatDate } from './assets/site.js';
+
+    const list = document.querySelector('[data-updates]');
+    const tagLabel = { release: 'Release', feature: 'Feature', news: 'News' };
+
+    function render(filter) {
+      const items = UPDATES.filter((u) => filter === 'all' || u.tag === filter);
+      list.innerHTML = items.map((u) => `
+        <article class="card update" id="${updateId(u)}">
+          <div class="update-meta">
+            <time datetime="${u.date}">${formatDate(u.date)}</time>
+            <span class="tag ${u.tag}">${tagLabel[u.tag] || u.tag}</span>
+            ${u.version ? `<span class="tag">v${escapeHtml(u.version)}</span>` : ''}
+          </div>
+          <div>
+            <h3>${escapeHtml(u.title)}</h3>
+            <p>${escapeHtml(u.summary)}</p>
+            <ul>${u.points.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul>
+          </div>
+        </article>`).join('') || '<p class="muted">Nothing here yet.</p>';
+    }
+
+    document.querySelector('.filters').addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-filter]');
+      if (!chip) return;
+      document.querySelectorAll('[data-filter]').forEach((c) => c.setAttribute('aria-pressed', String(c === chip)));
+      render(chip.dataset.filter);
+    });
+
+    render('all');
+    if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'instant' });
+  </script>
+</body>
+</html>
