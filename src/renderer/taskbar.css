@@ -3,6 +3,9 @@
    accent, a glowing edge, scan lines, a slow light sweep, and glowing
    monospace text and icons. The window itself is transparent (shell.js). */
 html, body.taskbar { background: transparent; }
+/* With no background of its own, html would take body's and paint it over the
+   whole window, which stays put when the bar slides away (auto-hide). */
+html { background-image: linear-gradient(transparent, transparent); }
 body.taskbar {
   --glow: color-mix(in srgb, var(--accent) 70%, transparent);
   --faint: color-mix(in srgb, var(--accent) 22%, transparent);

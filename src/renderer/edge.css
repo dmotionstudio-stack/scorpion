@@ -3,6 +3,9 @@
    active. The window itself is transparent (shell.js). */
 :root { --accent: #5aa9ff; --text: #e9eef6; }
 html, body.edge { margin: 0; height: 100%; background: transparent; }
+/* With no background of its own, html would take body's and paint it over the
+   whole window, which stays put when the rail slides away (auto-hide). */
+html { background-image: linear-gradient(transparent, transparent); }
 body.edge {
   --ink: var(--shell-ink);
   --dim: var(--shell-dim);
