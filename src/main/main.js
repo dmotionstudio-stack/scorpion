@@ -1277,11 +1277,10 @@ function registerSummon(accel) {
 }
 
 // The taskbar's own settings, with defaults for anything missing. layout:
-// 'gravity' (the Scorpion taskbar, apps as stones along the bottom), 'orbit' (the
-// edge rail with the summon dot and intent wheel) or 'bar'.
+// 'orbit' (the edge rail with the summon dot and intent wheel) or 'bar'.
 function taskbarSettings() {
   const t = store.getSettings().taskbar || {};
-  return { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', layout: 'gravity', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(t.show || {}) } };
+  return { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(t.show || {}) } };
 }
 function setTaskbarLook(t) {
   const s = store.updateSettings({ taskbar: t });
@@ -1902,9 +1901,6 @@ function registerIpc() {
   h('shell:stage', (on) => setStage(on));
   // The summon dot dragged (each move, then where it's dropped, which is
   // kept), asked where it is, or put back in its corner.
-  // The Scorpion taskbar: clicks through its empty parts, and its window taller for an app's card.
-  h('shell:pass', (on) => desktop.passClicks(on));
-  h('shell:tall', (on) => desktop.setTall(on));
   h('shell:dot', (arg = {}) => {
     // Back to its corner, or into another one (Settings).
     if (arg.phase === 'reset' || arg.phase === 'corner') {
@@ -2060,10 +2056,9 @@ function registerIpc() {
       const edges = [['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']];
       const here = desktop.railEdge();
       const position = { label: 'Position', submenu: edges.map(([v, l]) => ({ label: l, type: 'radio', checked: here === v, click: () => set({ edge: v }) })) };
-      const layoutMenu = { label: 'Layout', submenu: [['gravity', 'Scorpion'], ['orbit', 'Edge rail with the intent wheel'], ['bar', 'Classic bar']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.layout === v, click: () => set({ layout: v }) })) };
-      // The same choices for every taskbar (the Scorpion taskbar stays along the bottom).
-      template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu,
-        ...(t.layout === 'gravity' ? [] : [position]), autoHide,
+      const layoutMenu = { label: 'Layout', submenu: [['orbit', 'Edge rail with the intent wheel'], ['bar', 'Classic bar']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.layout === v, click: () => set({ layout: v }) })) };
+      // The same choices for every taskbar.
+      template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, position, autoHide,
         { label: 'Show app names', type: 'checkbox', checked: t.labels, click: () => set({ labels: !t.labels }) },
         { label: 'Center the apps', type: 'checkbox', checked: t.center, click: () => set({ center: !t.center }) },
         { label: 'Size', submenu: ['small', 'normal', 'large'].map((v) => ({ label: v[0].toUpperCase() + v.slice(1), type: 'radio', checked: t.size === v, click: () => set({ size: v }) })) },
