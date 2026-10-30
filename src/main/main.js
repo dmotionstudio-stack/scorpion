@@ -2061,25 +2061,14 @@ function registerIpc() {
       const here = desktop.railEdge();
       const position = { label: 'Position', submenu: edges.map(([v, l]) => ({ label: l, type: 'radio', checked: here === v, click: () => set({ edge: v }) })) };
       const layoutMenu = { label: 'Layout', submenu: [['gravity', 'Scorpion'], ['orbit', 'Edge rail with the intent wheel'], ['bar', 'Classic bar']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.layout === v, click: () => set({ layout: v }) })) };
-      if (t.layout === 'gravity') {
-        template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, autoHide,
-          { type: 'separator' },
-          item('Add or remove apps…', () => showView('apps')),
-          item('Customize…', () => showView('settings', { section: 'layout' })),
-          ...(t.pinned.length ? [item('Unpin all apps', () => setTaskbarLook({ ...t, pinned: [] }))] : [])];
-      } else if (t.layout !== 'bar') {
-        template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, position, autoHide,
-          { label: 'Show', submenu: ['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume'].map(show) },
-          { type: 'separator' },
-          item('Add or remove apps…', () => showView('apps')),
-          item('Customize…', () => showView('settings', { section: 'layout' })),
-          ...(t.pinned.length ? [item('Unpin all apps', () => setTaskbarLook({ ...t, pinned: [] }))] : [])];
-      } else template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, position, autoHide,
+      // The same choices for every taskbar (the Scorpion taskbar stays along the bottom).
+      template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu,
+        ...(t.layout === 'gravity' ? [] : [position]), autoHide,
         { label: 'Show app names', type: 'checkbox', checked: t.labels, click: () => set({ labels: !t.labels }) },
         { label: 'Center the apps', type: 'checkbox', checked: t.center, click: () => set({ center: !t.center }) },
         { label: 'Size', submenu: ['small', 'normal', 'large'].map((v) => ({ label: v[0].toUpperCase() + v.slice(1), type: 'radio', checked: t.size === v, click: () => set({ size: v }) })) },
         { label: 'Look', submenu: [['holo', 'Holographic'], ['neon', 'Neon'], ['glass', 'Glass'], ['solid', 'Solid']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.style === v, click: () => set({ style: v }) })) },
-        { label: 'Show', submenu: ['network', 'battery', 'volume', 'clock'].map(show) },
+        { label: 'Show', submenu: ['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume'].map(show) },
         { type: 'separator' },
         item('Add or remove apps…', () => showView('apps')),
         item('Customize…', () => showView('settings', { section: 'layout' })),

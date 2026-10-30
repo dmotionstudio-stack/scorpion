@@ -19,6 +19,13 @@ async function applySettings(settings) {
   if (s.theme) document.documentElement.dataset.theme = s.theme;
   const edge = EDGES.includes(s.taskbar?.edge) ? s.taskbar.edge : 'right';
   for (const e of EDGES) document.body.classList.toggle(`at-${e}`, e === edge);
+  // The same choices as the classic bar: names, centred, size, look.
+  const t = { labels: true, center: false, size: 'normal', style: 'holo', ...(s.taskbar || {}) };
+  const b = document.body.classList;
+  for (const c of [...b]) if (/^eg-(style|size)-/.test(c)) b.remove(c);
+  b.add(`eg-style-${t.style}`, `eg-size-${t.size}`);
+  b.toggle('eg-labels', t.labels !== false);
+  b.toggle('eg-centered', Boolean(t.center));
   show = { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(s.taskbar?.show || {}) };
   $('#eg-net').hidden = show.network === false;
   for (const k of ['notifications', 'mail', 'chat']) $(`[data-glance="${k}"]`).hidden = show[k] === false;
@@ -42,10 +49,10 @@ function render() {
   const pins = pinned.map((p) => {
     const open = windowsOf(p);
     const active = open.some((w) => w.active);
-    return `<button class="eg-app${open.length ? ' running' : ''}${active ? ' active' : ''}" data-pin="${esc(p.id)}" title="${esc(p.name)}${open.length > 1 ? ` (${open.length} windows)` : ''}">${icon(p.icon, p.name)}</button>`;
+    return `<button class="eg-app${open.length ? ' running' : ''}${active ? ' active' : ''}" data-pin="${esc(p.id)}" title="${esc(p.name)}${open.length > 1 ? ` (${open.length} windows)` : ''}">${icon(p.icon, p.name)}<span class="eg-name">${esc(p.name)}</span></button>`;
   }).join('');
   const shown = windows.filter((w) => !pinned.some((p) => sameFile(w.exe, p.id)));
-  const wins = shown.map((w) => `<button class="eg-app running${w.active ? ' active' : ''}" data-hwnd="${esc(w.hwnd)}" title="${esc(w.title)}">${icon(w.icon, w.process || w.title)}</button>`).join('');
+  const wins = shown.map((w) => `<button class="eg-app running${w.active ? ' active' : ''}" data-hwnd="${esc(w.hwnd)}" title="${esc(w.title)}">${icon(w.icon, w.process || w.title)}<span class="eg-name">${esc(w.title)}</span></button>`).join('');
   $('#eg-apps').innerHTML = pins + (pins && wins ? '<span class="eg-sep"></span>' : '') + wins;
 }
 

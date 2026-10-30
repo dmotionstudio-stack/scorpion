@@ -16,7 +16,7 @@ async function applySettings(settings) {
   const s = settings || (await api.state().catch(() => null))?.settings;
   if (!s) return;
   if (s.theme) document.documentElement.dataset.theme = s.theme;
-  look = { labels: true, center: false, size: 'normal', style: 'holo', ...(s.taskbar || {}), show: { network: true, battery: true, volume: true, clock: true, ...(s.taskbar?.show || {}) } };
+  look = { labels: true, center: false, size: 'normal', style: 'holo', ...(s.taskbar || {}), show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(s.taskbar?.show || {}) } };
   const b = document.body.classList;
   for (const c of [...b]) if (/^tb-(style|size)-/.test(c)) b.remove(c);
   b.add(`tb-style-${look.style}`, `tb-size-${look.size}`);
@@ -24,7 +24,7 @@ async function applySettings(settings) {
   b.toggle('tb-centered', Boolean(look.center));
   const edge = ['bottom', 'top', 'left', 'right'].includes(look.edge) ? look.edge : 'bottom';
   for (const e of ['bottom', 'top', 'left', 'right']) b.toggle(`at-${e}`, e === edge);
-  for (const [k, el] of [['network', '#tb-net'], ['volume', '#tb-volume'], ['clock', '#tb-clock']]) $(el).hidden = look.show[k] === false;
+  for (const [k, el] of [['network', '#tb-net'], ['volume', '#tb-volume'], ['clock', '#tb-clock'], ['notifications', '[data-glance="notifications"]'], ['mail', '[data-glance="mail"]'], ['chat', '[data-glance="chat"]']]) $(el).hidden = look.show[k] === false;
   $('#tb-battery').dataset.off = look.show.battery === false ? '1' : '';
   refreshTray();
   pinned = await api.shellPinned().catch(() => pinned);
@@ -79,6 +79,7 @@ $('#tb-home').addEventListener('click', () => api.shellShow('desktop'));
 $('#tb-apps').addEventListener('click', () => api.shellShow('apps'));
 $('#tb-files').addEventListener('click', () => api.shellShow('files'));
 $('#tb-power').addEventListener('click', () => api.shellMenu({ kind: 'power' }));
+for (const b of document.querySelectorAll('[data-glance]')) b.addEventListener('click', () => api.shellGlance(b.dataset.glance).catch(() => {}));
 $('#tb-clock').addEventListener('click', () => api.shellMenu({ kind: 'clock' }));
 $('#tb-volume').addEventListener('click', () => api.shellVolume('mute'));
 $('#tb-volume').addEventListener('wheel', (e) => { e.preventDefault(); api.shellVolume(e.deltaY < 0 ? 'up' : 'down'); }, { passive: false });

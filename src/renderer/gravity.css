@@ -208,3 +208,30 @@ html[data-perf="light"] .gr-rail { transition: none; }
   .gr-body, .gr-light, .gr-ring, .gr-orbits path, .gr-line::after, .gr-stone.active .gr-rock, .gr-stone, .gr-pop { animation: none; }
   .gr-rail { transition: none; }
 }
+
+/* ---- The classic bar's choices (right-click → Show app names, Center the
+   apps, Size, Look; or Settings → Windows and taskbar). Holographic is the
+   look above. ---- */
+body.gr-no-labels .gr-name { display: none; }
+.gr-ico { position: relative; }
+.gr-badge { position: absolute; top: -2px; right: -4px; min-width: 15px; height: 15px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--gr-blue); color: #04122a; font: 700 9.5px/15px var(--font-ui, "Segoe UI", sans-serif); text-align: center; box-shadow: 0 0 8px var(--gr-blue); }
+/* Neon: the horizon and the strip's words in the theme's accent, glowing hard. */
+body.gr-style-neon .gr-line { background: linear-gradient(90deg, transparent, var(--accent) 15%, color-mix(in srgb, var(--accent) 40%, #fff) 50%, var(--accent) 85%, transparent); height: 2px;
+  box-shadow: 0 0 12px var(--accent), 0 0 30px var(--accent), 0 0 60px color-mix(in srgb, var(--accent) 50%, transparent); }
+body.gr-style-neon .gr-water { background: linear-gradient(to bottom, rgba(0, 0, 0, .9), #000); }
+body.gr-style-neon .gr-title, body.gr-style-neon .gr-open span, body.gr-style-neon .gr-clock { color: color-mix(in srgb, var(--accent) 55%, #fff); text-shadow: 0 0 10px var(--accent), 0 0 24px color-mix(in srgb, var(--accent) 60%, transparent); }
+body.gr-style-neon .gr-ico { color: var(--accent); }
+body.gr-style-neon .gr-ico svg { filter: drop-shadow(0 0 6px var(--accent)); }
+body.gr-style-neon .gr-stone { --halo: color-mix(in srgb, var(--glow) 55%, transparent); }
+/* Glass: a frosted strip under a quiet white horizon. */
+body.gr-style-glass .gr-water { background: rgba(30, 34, 44, .58); -webkit-backdrop-filter: blur(16px) saturate(1.3); backdrop-filter: blur(16px) saturate(1.3); }
+body.gr-style-glass .gr-line { background: rgba(255, 255, 255, .45); height: 1px; box-shadow: none; }
+body.gr-style-glass .gr-line::after, body.gr-style-solid .gr-line::after { display: none; }
+body.gr-style-glass .gr-title, body.gr-style-glass .gr-open span { text-shadow: none; }
+body.gr-style-glass .gr-ico svg, body.gr-style-glass .gr-tri { filter: none; }
+/* Solid: an opaque strip, no glow, no reflections. */
+body.gr-style-solid .gr-water { background: var(--panel, #15171c); }
+body.gr-style-solid .gr-line { background: var(--border, #2c2f36); height: 1px; box-shadow: none; }
+body.gr-style-solid .gr-rock { -webkit-box-reflect: unset; }
+body.gr-style-solid .gr-title, body.gr-style-solid .gr-open span, body.gr-style-solid .gr-clock { text-shadow: none; }
+body.gr-style-solid .gr-ico svg, body.gr-style-solid .gr-tri { filter: none; }

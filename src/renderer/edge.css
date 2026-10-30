@@ -110,3 +110,43 @@ body.edge.at-top.rail-hidden { transform: translateY(calc(-100% + 3px)); }
 .eg-install:disabled { opacity: .75; cursor: progress; animation: eg-wait 1.2s ease-in-out infinite alternate; }
 @keyframes eg-wait { to { filter: brightness(.8); } }
 @media (prefers-reduced-motion: reduce) { .eg-install:disabled { animation: none; } }
+
+/* ---- The classic bar's choices (right-click → Show app names, Center the
+   apps, Size, Look; or Settings → Windows and taskbar) ---- */
+/* Names: under each icon down a side, beside it along the top or bottom. */
+.eg-name { display: none; }
+body.eg-labels .eg-name { display: block; max-width: 62px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--dim); }
+body.eg-labels .eg-app { width: 64px; height: auto; padding: 7px 0 5px; gap: 3px; }
+body.eg-labels.at-top .eg-app, body.eg-labels.at-bottom .eg-app { width: auto; height: 46px; padding: 0 12px 0 9px; grid-auto-flow: column; gap: 8px; }
+body.eg-labels.at-top .eg-name, body.eg-labels.at-bottom .eg-name { max-width: 120px; font-size: 12px; color: var(--ink); }
+/* Centred along the rail. */
+body.eg-centered .eg-apps { justify-content: safe center; }
+/* Sizes. */
+body.eg-size-small .eg-app { width: 40px; height: 40px; }
+body.eg-size-small .eg-app img, body.eg-size-small .eg-initial { width: 22px; height: 22px; }
+body.eg-size-small .eg-item svg { width: 20px; height: 20px; }
+body.eg-size-large .eg-app { width: 56px; height: 56px; }
+body.eg-size-large .eg-app img, body.eg-size-large .eg-initial { width: 34px; height: 34px; }
+body.eg-size-large .eg-item svg { width: 28px; height: 28px; }
+body.eg-labels.eg-size-small .eg-app, body.eg-labels.eg-size-large .eg-app { height: auto; }
+body.eg-labels.eg-size-large.at-top .eg-app, body.eg-labels.eg-size-large.at-bottom .eg-app { height: 56px; }
+/* Looks. Glass is the rail's own (above). */
+/* Holographic: see-through dark tinted with the accent, glowing accent
+   icons and text, and scan lines, like the classic bar. */
+body.edge.eg-style-holo { --ink: color-mix(in srgb, var(--accent) 70%, #fff); --dim: color-mix(in srgb, var(--accent) 50%, #9aa);
+  background: linear-gradient(rgba(0, 0, 0, .8), rgba(0, 0, 0, .64)), radial-gradient(ellipse at 50% 50%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 75%);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent); }
+body.edge.eg-style-holo .eg-item svg { stroke: var(--accent); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 70%, transparent)); }
+body.edge.eg-style-holo .eg-item .eg-fill, body.edge.eg-style-holo .eg-item .eg-dot-fill { fill: var(--accent); }
+body.edge.eg-style-holo::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .3;
+  background: repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(0, 0, 0, .35) 2px, rgba(0, 0, 0, .35) 3px); }
+html[data-perf="light"] body.edge.eg-style-holo::after { display: none; }
+/* Neon: near black, a bright glowing edge and glowing accent icons. */
+body.edge.eg-style-neon { background: linear-gradient(rgba(0, 0, 0, .92), rgba(0, 0, 0, .82)); }
+body.edge.eg-style-neon::before { background: var(--accent); width: 2px; box-shadow: 0 0 10px var(--accent), 0 0 24px var(--accent); }
+body.edge.eg-style-neon.at-top::before, body.edge.eg-style-neon.at-bottom::before { width: auto; height: 2px; }
+body.edge.eg-style-neon .eg-item svg { stroke: var(--accent); filter: drop-shadow(0 0 6px var(--accent)); }
+body.edge.eg-style-neon .eg-app.active { box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent); }
+/* Solid: an opaque panel, no glow. */
+body.edge.eg-style-solid { background: var(--panel, #17181b); }
+body.edge.eg-style-solid::before { display: none; }

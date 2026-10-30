@@ -22,6 +22,9 @@ let pinned = []; // [{ id, name, icon }]
 let lastUsed = new Map(); // hwnd → when it was last in front (shell:recent)
 let z = 1;
 let popKey = null; // the stone whose card is open
+// The classic bar's choices (right-click, or Settings → Windows and taskbar).
+let look = { labels: true, center: false, size: 'normal', style: 'holo', show: {} };
+const SIZES = { small: 0.86, normal: 1, large: 1.1 };
 let shownKey = '';
 
 // ---------- the stones ----------
@@ -100,8 +103,11 @@ function layout() {
   const n = Math.max(1, current.length);
   document.body.classList.toggle('narrow', innerWidth / z < 1180);
   const room = row.clientWidth || innerWidth / z - 300;
-  const s = Math.max(0.6, Math.min(1, room / (n * 114 + 100 + 26 * (n - 1))));
-  const gap = Math.max(14, Math.min(96, (room - (n * 114 + 100) * s) / Math.max(1, n - 1)));
+  const grow = SIZES[look.size] || 1;
+  const s = Math.max(0.55, Math.min(grow, room / (n * 114 + 100 + 26 * (n - 1))));
+  // Centred: close together in the middle; otherwise spread along the horizon.
+  const spread = (room - (n * 114 + 100) * s) / Math.max(1, n - 1);
+  const gap = look.center ? Math.max(14, Math.min(36, spread)) : Math.max(14, Math.min(260, spread));
   row.style.setProperty('--s', s.toFixed(3));
   row.style.setProperty('--gap', `${Math.round(gap)}px`);
   drawOrbits();
@@ -384,7 +390,7 @@ async function refreshTray() {
     $(id).title = t.network ? `Connected: ${t.network}` : 'Not connected';
   }
   const has = typeof t.battery === 'number';
-  $('#gr-battery').hidden = !has;
+  $('#gr-battery').hidden = !has || look.show.battery === false;
   if (has) {
     $('#gr-battery-pct').textContent = `${t.battery}%`;
     $('#gr-battery-fill').style.width = `${t.battery}%`;
@@ -397,6 +403,14 @@ $('#gr-open').addEventListener('click', () => (api.shellShow ? api.shellShow('de
 $('#gr-clock').addEventListener('click', () => api.shellMenu({ kind: 'clock' }));
 $('#gr-volume').addEventListener('click', () => (host ? api.host({ type: 'panel', name: 'quick', section: 'sound' }) : api.shellVolume('mute')));
 $('#gr-volume').addEventListener('wheel', (e) => { e.preventDefault(); api.shellVolume(e.deltaY < 0 ? 'up' : 'down'); }, { passive: false });
+// Notifications, mail and chat; on Scorpion OS the bell opens the host's list.
+for (const b of document.querySelectorAll('[data-glance]')) b.addEventListener('click', () => {
+  if (b.dataset.glance === 'notifications' && host) { api.host({ type: 'panel', name: 'notify', toggle: true }); api.notificationAct?.({ action: 'read' }).catch(() => {}); return; }
+  api.shellGlance(b.dataset.glance).catch(() => {});
+});
+// The bell's count of unread notifications (the shell host collects them on Scorpion OS).
+const setBadge = (n) => { const c = n?.unread || 0; $('#gr-badge').hidden = !c; $('#gr-badge').textContent = c > 9 ? '9+' : String(c); };
+if (api.notifications) { api.notifications().then(setBadge).catch(() => {}); api.onNotificationsChanged?.(setBadge); }
 if (host) for (const id of ['#gr-signal', '#gr-wifi']) $(id).addEventListener('click', () => api.host({ type: 'panel', name: 'quick', section: 'network' }));
 
 // ---------- settings, size, auto-hide ----------
@@ -406,6 +420,16 @@ async function applySettings(settings) {
   const s = settings || (await api.state().catch(() => null))?.settings;
   if (!s) return;
   if (s.theme) document.documentElement.dataset.theme = s.theme;
+  look = { labels: true, center: false, size: 'normal', style: 'holo', ...(s.taskbar || {}), show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(s.taskbar?.show || {}) } };
+  const b = document.body.classList;
+  for (const c of [...b]) if (/^gr-(style|size)-/.test(c)) b.remove(c);
+  b.add(`gr-style-${look.style}`, `gr-size-${look.size}`);
+  b.toggle('gr-no-labels', look.labels === false);
+  for (const id of ['#gr-signal', '#gr-wifi']) $(id).hidden = look.show.network === false;
+  $('#gr-volume').hidden = look.show.volume === false;
+  $('#gr-clock').hidden = look.show.clock === false;
+  for (const k of ['notifications', 'mail', 'chat']) $(`[data-glance="${k}"]`).hidden = look.show[k] === false;
+  refreshTray();
   // Scorpion OS: the shell host places and hides the rail, and swaps back
   // to the edge rail when another layout is chosen.
   if (host) {

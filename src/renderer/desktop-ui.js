@@ -334,6 +334,11 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       <p class="muted small">${style === 'gravity' ? 'Your apps as stones on a glowing horizon along the bottom. Click a stone to bring its app forward (the one in front opens its card); raise it to defer, drop it to focus.' : style === 'orbit' ? 'A glance rail with the clock, notifications and your apps, and the summon dot.' : 'A bar with Scorpion, Apps and Files, your apps and the tray.'}</p>
       ${style === 'gravity' ? '' : `<p class="small">The taskbar's place on the screen</p>
       <div class="row wrap" role="group" aria-label="The taskbar's place on the screen">${pick('data-edge', edge, [['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']])}</div>`}
+      <p class="small">Its look</p>
+      <div class="row wrap" role="group" aria-label="The taskbar's look">${pick('data-look', ['holo', 'neon', 'glass', 'solid'].includes(t.style) ? t.style : 'holo', [['holo', 'Holographic'], ['neon', 'Neon'], ['glass', 'Glass'], ['solid', 'Solid']])}</div>
+      <p class="small">Its size</p>
+      <div class="row wrap" role="group" aria-label="The taskbar's size">${pick('data-size', ['small', 'normal', 'large'].includes(t.size) ? t.size : 'normal', [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']])}</div>
+      <div class="row wrap">${check('data-taskbar="labels"', t.labels !== false, 'Show app names')}${check('data-taskbar="center"', t.center === true, 'Center the apps')}</div>
       <p class="small">The summon dot</p>
       <div class="row wrap" role="group" aria-label="The summon dot's corner">${pick('data-corner', corner, [['tl', 'Top left'], ['tr', 'Top right'], ['bl', 'Bottom left'], ['br', 'Bottom right']])}</div>
       <p class="muted small">Or drag it anywhere on the screen: it stays where you drop it, and dropped near a corner it settles into that corner. It grows or shrinks to suit your screen.</p>
@@ -369,6 +374,8 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     if (add) add.onclick = () => showApps();
     for (const b of box.querySelectorAll('[data-edge]')) b.onclick = () => saveTaskbar({ edge: b.dataset.edge });
     for (const b of box.querySelectorAll('[data-style]')) b.onclick = () => saveTaskbar({ layout: b.dataset.style });
+    for (const b of box.querySelectorAll('[data-look]')) b.onclick = () => saveTaskbar({ style: b.dataset.look });
+    for (const b of box.querySelectorAll('[data-size]')) b.onclick = () => saveTaskbar({ size: b.dataset.size });
     for (const b of box.querySelectorAll('[data-corner]')) {
       b.onclick = async () => {
         await api.shellDot?.({ phase: 'corner', corner: b.dataset.corner }).catch(() => {});
