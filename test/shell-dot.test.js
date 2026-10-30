@@ -32,12 +32,14 @@ test('the dot floats while Scorpion is away, above the taskbar, and the wheel gr
   await tick();
   const dot = made.find((w) => w.url.endsWith('summon.html'));
   assert.ok(dot.visible);
-  assert.deepEqual(dot.bounds, { x: 8, y: 852 - 8 - 74, width: 74, height: 74 }); // above the 48px taskbar, sized for a 900-pixel screen
+  // Not placed yet: right in the corner above the 48px taskbar, sized for a
+  // 900-pixel screen (its see-through margin past the screen's edge).
+  assert.deepEqual(dot.bounds, { x: -10, y: 788, width: 74, height: 74 });
   assert.equal(await shell.openWheel(null), true);
   assert.deepEqual(dot.bounds, { x: 0, y: 0, width: 1600, height: 900 }); // no rail: the whole screen
   const [ch, at] = dot.sent.at(-1);
   assert.equal(ch, 'wheel:open');
-  assert.deepEqual(at, { x: 800, y: 450, dot: { x: 45, y: 852 - 45, size: 74 }, backdrop: null }); // no snapshot given
+  assert.deepEqual(at, { x: 800, y: 450, dot: { x: 27, y: 825, size: 74 }, backdrop: null }); // no snapshot given
   shell.setFloatingDot(false); // back while the wheel is open: it stays until closed
   assert.ok(dot.visible);
   shell.closeWheel();
@@ -68,10 +70,10 @@ test("Stage's strip slides in at the left edge and out when the pointer leaves",
 test('the dot stays where it was dropped, whole inside the screen', () => {
   const bounds = { x: 0, y: 0, width: 1600, height: 900 };
   const area = { x: 0, y: 0, width: 1600, height: 852 };
-  assert.deepEqual(shell.dotCentre(null, bounds, area), { x: 52, y: 800 }); // its corner
+  assert.deepEqual(shell.dotCentre(null, bounds, area), { x: 32, y: 820 }); // its corner: the rings 2 pixels from the edges
   assert.deepEqual(shell.dotCentre({ x: 0.5, y: 0.25 }, bounds, area), { x: 800, y: 225 });
-  assert.deepEqual(shell.dotCentre({ x: 1, y: 1 }, bounds, area), { x: 1600 - 44, y: 852 - 44 }); // not under the taskbar
-  assert.deepEqual(shell.dotCentre({ x: -1, y: 0 }, bounds, area), { x: 44, y: 44 });
+  assert.deepEqual(shell.dotCentre({ x: 1, y: 1 }, bounds, area), { x: 1600 - 30, y: 852 - 30 }); // its rings whole inside the area
+  assert.deepEqual(shell.dotCentre({ x: -1, y: 0 }, bounds, area), { x: 30, y: 30 });
 });
 
 test('dragged, the dot follows and its spot is given back as fractions', opts, async () => {
@@ -103,10 +105,10 @@ test('minimized, the rail floats with the dot and hides until the pointer reache
 test('the dot goes into any corner, and snaps into one dropped near it', () => {
   const bounds = { x: 0, y: 0, width: 1600, height: 900 };
   const area = { x: 0, y: 0, width: 1600, height: 852 };
-  assert.deepEqual(shell.dotCentre({ corner: 'tl' }, bounds, area), { x: 52, y: 52 });
-  assert.deepEqual(shell.dotCentre({ corner: 'tr' }, bounds, area), { x: 1600 - 52, y: 52 });
-  assert.deepEqual(shell.dotCentre({ corner: 'br' }, bounds, area), { x: 1600 - 52, y: 852 - 52 });
-  assert.deepEqual(shell.dotCentre({ corner: 'bl' }, bounds, area, 64), { x: 40, y: 852 - 40 });
+  assert.deepEqual(shell.dotCentre({ corner: 'tl' }, bounds, area), { x: 32, y: 32 });
+  assert.deepEqual(shell.dotCentre({ corner: 'tr' }, bounds, area), { x: 1600 - 32, y: 32 });
+  assert.deepEqual(shell.dotCentre({ corner: 'br' }, bounds, area), { x: 1600 - 32, y: 852 - 32 });
+  assert.deepEqual(shell.dotCentre({ corner: 'bl' }, bounds, area, 64), { x: 24, y: 828 });
   assert.equal(shell.nearCorner({ x: 1500, y: 120 }, area), 'tr');
   assert.equal(shell.nearCorner({ x: 90, y: 780 }, area), 'bl');
   assert.equal(shell.nearCorner({ x: 800, y: 400 }, area), null);
@@ -124,7 +126,7 @@ test('dropped near a corner, the dot is kept in that corner', opts, async () => 
   const dot = made.filter((w) => w.url.endsWith('summon.html') && !w.destroyed).at(-1);
   const r = shell.dragDot({ phase: 'end', x: 1560, y: 60 });
   assert.deepEqual(r.at, { corner: 'tr' });
-  assert.deepEqual(dot.bounds, { x: 1600 - 8 - 74, y: 8, width: 74, height: 74 });
+  assert.deepEqual(dot.bounds, { x: 1536, y: -10, width: 74, height: 74 }); // the screen's own corner, its rings 2 pixels in
   shell.setFloatingDot(false);
 });
 

@@ -162,25 +162,29 @@ function placeSummon() {
 export const dotSizeFor = (b) => 2 * Math.round(Math.min(112, Math.max(64, Math.min(b.width, b.height) / 12.3)) / 2);
 const dotSize = () => dotSizeFor(deps.screen.getPrimaryDisplay().bounds);
 const CORNERS = { tl: [0, 0], tr: [1, 0], bl: [0, 1], br: [1, 1] };
-const MARGIN = 8; // between a dot in a corner and the edges
-// The dot's centre: in a corner of the area apps use; or where it was dropped
-// (as fractions of the screen), kept whole inside that area. Nowhere yet: the
-// bottom-left corner.
+const GAP = 2; // between a dot in a corner and the edges
+// How far the dot's rings reach from its middle (summon.css draws them 30
+// pixels out in its 88-pixel window): its window's see-through margin may go
+// past the screen's edge, the rings themselves don't.
+const reach = (size) => (size * 30) / 88;
+// The dot's centre: right in a corner of the area; or where it was dropped
+// (as fractions of the screen), its rings kept whole inside that area.
+// Nowhere yet: the bottom-left corner.
 export function dotCentre(at, bounds, area, size = DOT) {
-  const half = size / 2;
+  const r = reach(size);
   const free = !at || !Number.isFinite(at.x) || !Number.isFinite(at.y);
   const corner = CORNERS[at?.corner] || (free ? CORNERS.bl : null);
   if (corner) {
     return {
-      x: Math.round(corner[0] ? area.x + area.width - MARGIN - half : area.x + MARGIN + half),
-      y: Math.round(corner[1] ? area.y + area.height - MARGIN - half : area.y + MARGIN + half),
+      x: Math.round(corner[0] ? area.x + area.width - GAP - r : area.x + GAP + r),
+      y: Math.round(corner[1] ? area.y + area.height - GAP - r : area.y + GAP + r),
     };
   }
   const x = bounds.x + at.x * bounds.width;
   const y = bounds.y + at.y * bounds.height;
   return {
-    x: Math.round(Math.min(Math.max(x, area.x + half), area.x + area.width - half)),
-    y: Math.round(Math.min(Math.max(y, area.y + half), area.y + area.height - half)),
+    x: Math.round(Math.min(Math.max(x, area.x + r), area.x + area.width - r)),
+    y: Math.round(Math.min(Math.max(y, area.y + r), area.y + area.height - r)),
   };
 }
 // The corner a dot dropped this close to (about its own size) snaps into, or null.
@@ -191,9 +195,14 @@ export function nearCorner(c, area, size = DOT) {
   }
   return null;
 }
+// Where the dot may go: the whole screen once it's been placed (into a
+// corner, over the Windows taskbar's, too); until then it waits above the
+// taskbar, clear of the Start button.
+const dotArea = (d, at) => (at ? d.bounds : d.workArea);
 function dotSpot() {
   const d = deps.screen.getPrimaryDisplay();
-  return dotCentre(deps.dotAt?.(), d.bounds, d.workArea, dotSize());
+  const at = deps.dotAt?.();
+  return dotCentre(at, d.bounds, dotArea(d, at), dotSize());
 }
 // Scorpion OS: the screen beside the rail (the host's panels sit over it all).
 function hostArea() {
@@ -208,11 +217,14 @@ function hostArea() {
 export function dragDot({ phase, x, y } = {}) {
   const r = deps.screen.getPrimaryDisplay().bounds;
   const size = dotSize();
-  const area = hostMode ? hostArea() : deps.screen.getPrimaryDisplay().workArea;
+  const d = deps.screen.getPrimaryDisplay();
+  const at = deps.dotAt?.();
+  // Dragged, it may go anywhere on the screen.
+  const area = hostMode ? hostArea() : dotArea(d, phase === 'get' ? at : true);
   const bounds = hostMode ? { ...r, x: 0, y: 0 } : r;
   if (phase === 'get') {
     // On Windows in screen terms (what a move sends back); on Scorpion OS from the screen's corner.
-    const c = dotCentre(deps.dotAt?.(), bounds, area, size);
+    const c = dotCentre(at, bounds, area, size);
     return { x: c.x, y: c.y, w: r.width, h: r.height, size };
   }
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
