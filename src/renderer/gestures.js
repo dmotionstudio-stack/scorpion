@@ -43,8 +43,18 @@ export const PINCH_ON = 0.32;
 export const PINCH_OFF = 0.45;
 // Radians of spin per screen width of hand movement.
 const ROTATE_SPEED = 5;
-// How quickly the smoothed points follow the hand (0..1, higher = snappier).
-const SMOOTHING = 0.4;
+// Steadying the pointer and the pinch point: a One Euro filter (Casiez,
+// Roussel and Vogel, CHI 2012). Held still, it smooths hard (MIN_CUTOFF, in
+// hertz), so the pointer doesn't shiver; moving, it smooths less the faster
+// the hand goes (BETA), so the pointer keeps up instead of trailing behind.
+// Tuned on a synthetic hand at 30 frames a second (test/gestures.test.js):
+// against the old fixed smoothing it's about 3.5 times less behind a hand
+// moving at a normal pace and a third steadier held still. The speed is
+// smoothed too (D_CUTOFF), or the camera's own shiver reads as movement.
+const MIN_CUTOFF = 0.6;
+const BETA = 26; // per (camera width per second)
+const D_CUTOFF = 0.45; // for the speed itself
+const RESTART_S = 0.25; // a point not seen for this long starts afresh where the hand is
 
 const TAP_MS = 450; // a pinch released within this is a tap, not a drag
 const TAP_MOVE = 0.06;
@@ -65,6 +75,25 @@ const SCROLL_SPEED = 12; // notches per hand-height of movement
 const COOLDOWN_MS = 900;
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+// A One Euro filter for a point (x, y in 0..1); t in seconds.
+export function pointFilter({ minCutoff = MIN_CUTOFF, beta = BETA, dCutoff = D_CUTOFF } = {}) {
+  const alpha = (cutoff, dt) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
+  let last = null; // { x, y, dx, dy, t }
+  return (p, t) => {
+    const dt = last ? t - last.t : 0;
+    if (!last || dt <= 0 || dt > RESTART_S) {
+      last = { x: p.x, y: p.y, dx: 0, dy: 0, t };
+      return { x: p.x, y: p.y };
+    }
+    const ad = alpha(dCutoff, dt);
+    const dx = last.dx + ad * ((p.x - last.x) / dt - last.dx);
+    const dy = last.dy + ad * ((p.y - last.y) / dt - last.dy);
+    const a = alpha(minCutoff + beta * Math.hypot(dx, dy), dt);
+    last = { x: last.x + a * (p.x - last.x), y: last.y + a * (p.y - last.y), dx, dy, t };
+    return { x: last.x, y: last.y };
+  };
+}
 
 // Which fingers are stretched out, and the hand's pose:
 // 'point' (index only), 'two' (index and middle), 'three' (index, middle,
@@ -111,7 +140,7 @@ export function stepGestures(g, landmarks, labels, now = performance.now()) {
     // two hands given the same label still get one each.
     const key = seen.has(labels[i]) ? `${labels[i]}#${i}` : labels[i];
     seen.add(key);
-    const { pose, size } = handPose(lm);
+    const { pose, size, fingers } = handPose(lm);
     if (size < 1e-6) return;
     const single = landmarks.length === 1;
     if (single) r.pose = pose;
@@ -122,17 +151,20 @@ export function stepGestures(g, landmarks, labels, now = performance.now()) {
     const tip = { x: 1 - lm[INDEX_TIP].x, y: lm[INDEX_TIP].y };
     const palm = { x: 1 - (lm[WRIST].x + lm[MIDDLE_MCP].x) / 2, y: (lm[WRIST].y + lm[MIDDLE_MCP].y) / 2 };
     let hand = g.hands.get(key);
-    if (!hand) g.hands.set(key, (hand = { pinching: false, mPinching: false, grab: raw, point: tip, hist: [], dragging: false }));
+    if (!hand) g.hands.set(key, (hand = { pinching: false, mPinching: false, grab: raw, point: tip, hist: [], dragging: false, grabF: pointFilter(), pointF: pointFilter() }));
     const was = hand.pinching;
     if (hand.pinching && ratio > PINCH_OFF) hand.pinching = false;
     else if (!hand.pinching && ratio < PINCH_ON) hand.pinching = true;
-    hand.grab = { x: hand.grab.x + (raw.x - hand.grab.x) * SMOOTHING, y: hand.grab.y + (raw.y - hand.grab.y) * SMOOTHING };
+    hand.grab = hand.grabF(raw, now / 1000);
     if (hand.pinching) pinched.push(hand.grab);
-    // Pointing: the index fingertip, steadied; it only follows a pointing
-    // finger and holds still during a pinch, so a tap picks what the finger
-    // was on before the pinch pulled it toward the thumb.
-    if (!hand.pinching && pose === 'point') hand.point = { x: hand.point.x + (tip.x - hand.point.x) * SMOOTHING, y: hand.point.y + (tip.y - hand.point.y) * SMOOTHING };
-    if (single && !hand.pinching && pose === 'point') r.pointer = hand.point;
+    // Pointing: the index fingertip, steadied; it follows the index finger
+    // whenever it's out and the middle one isn't (so a ring or little finger
+    // flickering in and out doesn't stop it), and holds still during a pinch,
+    // so a tap picks what the finger was on before the pinch pulled it toward
+    // the thumb.
+    const pointing = pose === 'point' || (fingers.index && !fingers.middle && pose === 'other');
+    if (!hand.pinching && pointing) hand.point = hand.pointF(tip, now / 1000);
+    if (single && !hand.pinching && pointing) r.pointer = hand.point;
 
     // Pinch: a quick one is a tap; held and moved (or held long), a drag.
     if (!was && hand.pinching) hand.pinchAt = { t: now, grab: hand.grab, point: hand.point };
@@ -286,7 +318,9 @@ export class HandTracker {
       numHands: 2,
       minHandDetectionConfidence: 0.6,
       minHandPresenceConfidence: 0.6,
-      minTrackingConfidence: 0.6,
+      // Lower: a hand already found keeps being followed frame to frame
+      // rather than searched for again, which is slower.
+      minTrackingConfidence: 0.5,
     });
     try {
       this.landmarker = await HandLandmarker.createFromOptions(fileset, options('GPU'));
@@ -296,8 +330,10 @@ export class HandTracker {
     }
   }
 
+  // As many frames a second as the camera gives (60 where it can): each one
+  // is a fresher look at the hand.
   async startCamera() {
-    this.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' }, audio: false });
+    this.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, frameRate: { ideal: 60 }, facingMode: 'user' }, audio: false });
     this.video.srcObject = this.stream;
     await this.video.play();
     this.running = true;
@@ -305,8 +341,8 @@ export class HandTracker {
   }
 
   // Always-on tracking stays light: with no hand in view for a couple of
-  // seconds, only every third camera frame is looked at (stride.idle), until
-  // one appears; then every frame, or every other one (stride.active, set by
+  // seconds, only some camera frames are looked at (stride.idle), until one
+  // appears; then every frame, or every other one (stride.active, set by
   // Performance in Settings).
   empty = 0;
   tick = 0;

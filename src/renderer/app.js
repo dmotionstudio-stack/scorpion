@@ -9,7 +9,7 @@ import { initHome } from './home-ui.js';
 import { initDesktop } from './desktop-ui.js';
 import { initOrbSystem } from './orb-system.js';
 import { initHandControl } from './hand-control.js';
-import { HandTracker, cameraError } from './gestures.js';
+import { HandTracker, cameraError, pointFilter } from './gestures.js';
 import { initWelcome } from './welcome.js';
 import { initLookSettings } from './settings-look.js';
 import { initPalette } from './palette.js';
@@ -915,7 +915,8 @@ function interactState() {
 const PERF_FPS = { full: { on: 60, thinking: 30, away: 12 }, balanced: { on: 40, thinking: 24, away: 10 }, light: { on: 24, thinking: 15, away: 8 } };
 const orbFps = (when = 'on') => (PERF_FPS[S.perf] || PERF_FPS.full)[when];
 // Hand tracking: which camera frames are looked at, with a hand in view and without.
-const PERF_STRIDE = { full: { active: 1, idle: 3 }, balanced: { active: 1, idle: 4 }, light: { active: 2, idle: 6 } };
+// With no hand in view, every second frame at Full (a hand coming in is seen at once).
+const PERF_STRIDE = { full: { active: 1, idle: 2 }, balanced: { active: 1, idle: 3 }, light: { active: 2, idle: 6 } };
 function applyPerf(level) {
   S.perf = PERF_FPS[level] ? level : 'full';
   document.documentElement.dataset.perf = S.perf;
@@ -1084,7 +1085,7 @@ function onGestureFrame(r) {
 // open double-clicks, a held pinch drags, two fingers scroll, both hands zoom
 // (Ctrl + wheel). Sweeps, push, thumbs and signs keep their meanings, and a
 // held fist pauses it all.
-const HM = { lastMove: 0, wheel: 0, zoom: 0, smooth: null };
+const HM = { lastMove: 0, wheel: 0, zoom: 0, smooth: null, filter: null };
 function handAsMouse(r) {
   if (r.hold === 'fist') orbSys?.togglePause();
   if (orbSys?.paused) return;
@@ -1092,10 +1093,13 @@ function handAsMouse(r) {
   if (IX.open && !orbSys.away) orbSys.handleGlobals(g); else hands?.handleGlobals(g);
   const send = (cmd) => api.handMouse(cmd).catch(() => {});
   if (r.pointer) {
-    // A little extra steadiness: the whole screen magnifies a shaking finger.
-    HM.smooth = HM.smooth ? { x: HM.smooth.x + (r.pointer.x - HM.smooth.x) * 0.5, y: HM.smooth.y + (r.pointer.y - HM.smooth.y) * 0.5 } : r.pointer;
-    if (performance.now() - HM.lastMove > 16) { HM.lastMove = performance.now(); send({ move: HM.smooth }); }
-  } else if (!r.hands) HM.smooth = null;
+    // Extra steadiness when still (the whole screen magnifies a shaking
+    // finger), and none in the way when the hand moves: a second, steadier
+    // One Euro filter (gestures.js).
+    HM.filter ??= pointFilter({ minCutoff: 0.3 });
+    HM.smooth = HM.filter(r.pointer, performance.now() / 1000);
+    if (performance.now() - HM.lastMove > 12) { HM.lastMove = performance.now(); send({ move: HM.smooth }); }
+  } else if (!r.hands) { HM.smooth = null; HM.filter = null; }
   if (r.tap) { hands?.flash('Click'); send({ click: 'left', at: HM.smooth || r.tap }); }
   if (r.rightTap) { hands?.flash('Right-click'); send({ click: 'right', at: HM.smooth || r.rightTap }); }
   if (r.bloom) { hands?.flash('Double-click'); send({ click: 'double', at: HM.smooth || r.bloom }); }

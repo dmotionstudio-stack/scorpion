@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createGestures, stepGestures, handPose, cameraError, PINCH_ON, PINCH_OFF } from '../src/renderer/gestures.js';
+import { createGestures, stepGestures, handPose, cameraError, pointFilter, PINCH_ON, PINCH_OFF } from '../src/renderer/gestures.js';
 import { initGestures, gesturesStatus, looksLikeModel, markLoaded } from '../src/main/gestures.js';
 
 // A hand 0.2 tall with thumb and index tips `gap` hand-sizes apart around (x, y).
@@ -207,4 +207,36 @@ test('more signs: three fingers, thumb + little finger, a still palm, a held fis
   step(f, shape(0.5, 0.5), 0);
   assert.equal(step(f, shape(0.5, 0.5), 1600).hold, 'fist');
   assert.equal(step(f, shape(0.5, 0.5, OPEN), 1700).bloom, null);
+});
+
+// The pointer keeps up with a moving hand and holds steady when it's still:
+// against the old fixed smoothing (40% of the way each frame), at 30 frames a second.
+test('the pointer follows the hand closely and steadies when it stops', () => {
+  const old = () => { let p = null; return (q) => (p = p ? { x: p.x + (q.x - p.x) * 0.4, y: p.y + (q.y - p.y) * 0.4 } : { ...q }); };
+  const behind = (f, speed) => { let lag = 0; for (let i = 0; i <= 30; i++) { const t = i / 30; const q = { x: 0.2 + speed * t, y: 0.5 }; lag = (q.x - f(q, t).x) / speed; } return lag * 1000; };
+  const oldMs = behind(old(), 0.3);
+  const newMs = behind(pointFilter(), 0.3);
+  assert.ok(Math.abs(oldMs - 50) < 2, `old smoothing: ${oldMs} ms behind`);
+  assert.ok(newMs < 18, `a third of a width a second: ${newMs.toFixed(0)} ms behind (was 50)`);
+  // Still, with the camera's own shiver (a fixed sequence of noise).
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const noise = () => { let s = 0; for (let i = 0; i < 6; i++) s += rnd(); return ((s - 3) / Math.sqrt(0.5)) * 0.003; };
+  const shiver = (f) => { const xs = []; for (let i = 0; i < 90; i++) { const p = f({ x: 0.5 + noise(), y: 0.5 + noise() }, i / 30); if (i > 30) xs.push(p.x); } const m = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length); };
+  const oldShiver = shiver(old());
+  seed = 7;
+  const newShiver = shiver(pointFilter());
+  assert.ok(newShiver < oldShiver * 0.8, `held still: ${(newShiver * 1000).toFixed(2)} vs ${(oldShiver * 1000).toFixed(2)} thousandths of the width`);
+  // Not seen for a moment: it starts afresh where the hand is, without sliding over.
+  const f = pointFilter();
+  f({ x: 0.2, y: 0.2 }, 0);
+  assert.deepEqual(f({ x: 0.8, y: 0.7 }, 0.5), { x: 0.8, y: 0.7 });
+});
+
+test('the pointer keeps moving when a ring or little finger flickers in and out', () => {
+  const g = createGestures();
+  assert.ok(step(g, shape(0.5, 0.5, { up: ['index'], thumb: 'out' }), 0).pointer);
+  const r = step(g, shape(0.48, 0.5, { up: ['index', 'pinky'], thumb: 'out' }), 33);
+  assert.ok(r.pointer, 'index and little finger: still pointing');
+  assert.equal(step(g, shape(0.48, 0.5, { up: ['index', 'middle'], thumb: 'out' }), 66).pointer, null, 'two fingers: that is scrolling');
 });

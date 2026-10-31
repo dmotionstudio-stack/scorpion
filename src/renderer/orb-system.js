@@ -321,7 +321,8 @@ export function initOrbSystem(ctx) {
   function appGesture(r) {
     moveCursor(null);
     const send = (cmd) => api.orbMouse(cmd).catch(() => {});
-    if (r.pointer && performance.now() - (O.lastMove || 0) > 33) { O.lastMove = performance.now(); send({ move: r.pointer }); }
+    // Every frame's move (orb-frame.js sends only the newest one waiting).
+    if (r.pointer && performance.now() - (O.lastMove || 0) > 12) { O.lastMove = performance.now(); send({ move: r.pointer }); }
     if (r.tap) { flash('Click'); send({ click: 'left', at: r.tap }); }
     if (r.rightTap) { flash('Right-click'); send({ click: 'right', at: r.rightTap }); }
     if (r.bloom) { flash('Open'); send({ click: 'double', at: r.bloom }); }

@@ -623,7 +623,7 @@ body:has(#interact:not(.hidden)) .hand-cam { top: 72px; right: 24px; bottom: aut
 .hand-cam-row .ix-guide-btn { margin-top: 0; }
 .hand-cam .ix-btn { color: var(--accent); }
 .hand-guide { position: fixed; z-index: 960; font-family: Consolas, "Courier New", monospace; }
-.hand-pointer { position: fixed; left: 0; top: 0; z-index: 970; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); box-shadow: 0 0 14px var(--accent); pointer-events: none; transition: transform .05s linear; }
+.hand-pointer { position: fixed; left: 0; top: 0; z-index: 970; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); box-shadow: 0 0 14px var(--accent); pointer-events: none; }
 .hand-pointer.hidden { display: none; }
 .hand-hover { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
 .hand-press { filter: brightness(1.3); }

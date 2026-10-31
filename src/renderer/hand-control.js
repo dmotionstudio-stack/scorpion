@@ -145,7 +145,7 @@ export function initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi }
   function handle(r, { globals = true } = {}) {
     if (r.pointer) {
       H.lastPoint = toWindow(r.pointer);
-      if (performance.now() - H.lastMove > 16) { H.lastMove = performance.now(); point(r.pointer); }
+      if (performance.now() - H.lastMove > 12) { H.lastMove = performance.now(); point(r.pointer); }
     } else if (r.pose && r.pose !== 'point' && !r.drag) hideCursor();
     if (!r.hands) hideCursor();
     if (r.tap) { flash('Click'); click(r.tap); }
