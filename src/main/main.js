@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import { execFile as execFileCb } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as store from './store.js';
 import * as models from './models.js';
@@ -340,6 +341,38 @@ function setFullMode(on) {
   send('fullmode:changed', fullMode);
   return fullMode;
 }
+// Full mode's desktop background (Settings → General → Full screen): the
+// picture on the Windows desktop, or one of the user's own, shrunk to the
+// screen and sent to the page as a data URL (kept while the file is unchanged).
+let wallCache = { key: '', url: null };
+function systemWallpaper() {
+  if (process.platform !== 'win32') return Promise.resolve(null);
+  // Windows keeps a copy of the current picture (slideshows and Spotlight included).
+  const copy = path.join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'Themes', 'TranscodedWallpaper');
+  if (fs.existsSync(copy)) return Promise.resolve(copy);
+  return new Promise((resolve) => {
+    execFileCb('reg', ['query', 'HKCU\\Control Panel\\Desktop', '/v', 'WallPaper'], { windowsHide: true, timeout: 5000 }, (err, out) => {
+      const m = !err && /WallPaper\s+REG_SZ\s+(.+)/i.exec(String(out));
+      resolve(m ? m[1].trim() : null);
+    });
+  });
+}
+async function desktopWallpaper() {
+  const pick = store.getSettings().fullWallpaper ?? 'system';
+  if (pick === 'none' || pick === 'theme') return null;
+  const file = pick === 'system' ? await systemWallpaper() : pick;
+  if (!file || !fs.existsSync(file)) return null;
+  const st = fs.statSync(file);
+  const key = `${file}|${st.mtimeMs}|${st.size}`;
+  if (wallCache.key === key) return wallCache.url;
+  const img = nativeImage.createFromBuffer(await fs.promises.readFile(file));
+  if (img.isEmpty()) return null;
+  const want = Math.round(screen.getPrimaryDisplay().size.width * 1.5);
+  const fit = img.getSize().width > want ? img.resize({ width: want, quality: 'good' }) : img;
+  wallCache = { key, url: `data:image/jpeg;base64,${fit.toJPEG(84).toString('base64')}` };
+  return wallCache.url;
+}
+
 // In full mode Scorpion's screens stop short of its taskbar (which stays on
 // top): above the bar, or left of the edge rail.
 // On Scorpion OS Scorpion's window always stops at the rail (labwc doesn't shrink it).
@@ -1702,6 +1735,15 @@ function registerIpc() {
   });
   h('window:fullMode', (on) => setFullMode(on));
   h('window:isFullMode', () => fullMode && Boolean(win?.isFullScreen()));
+  h('desktop:wallpaper', () => desktopWallpaper().catch(() => null));
+  // A picture of the user's own for full mode's background.
+  h('desktop:pickWallpaper', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Choose a picture for the background in full screen', properties: ['openFile'], filters: [{ name: 'Pictures', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }] });
+    if (r.canceled || !r.filePaths[0]) return store.getSettings();
+    const s = store.updateSettings({ fullWallpaper: r.filePaths[0] });
+    send('settings:changed', s);
+    return s;
+  });
   // The orb's Minimize on Windows: the window goes and the summon dot takes over.
   h('window:minimize', () => {
     if (!win || win.isDestroyed()) return false;

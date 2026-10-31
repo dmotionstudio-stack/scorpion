@@ -1560,6 +1560,8 @@ function renderSettings() {
   $('#file-access').value = full ? 'full' : 'ask';
   $('#login-start').value = S.loginStart || 'off';
   $('#full-at-start').checked = S.settings.fullModeAtStart !== false;
+  const wall = S.settings.fullWallpaper ?? 'system';
+  $('#full-wall-pick').value = ['system', 'theme', 'none'].includes(wall) ? wall : 'custom';
   $('#hands-always').checked = S.settings.handsAlwaysOn !== false;
   $('#file-access-hint').textContent = full
     ? 'Scorpion can read, create, edit and move files anywhere on this computer. Changes and commands still ask first unless Auto-approve is on. System folders (Windows, Program Files) stay read-only.'
@@ -2036,7 +2038,21 @@ function wire() {
   $('#full-at-start').onchange = async (e) => { S.settings = await api.updateSettings({ fullModeAtStart: e.target.checked }); };
   $('#full-now').onclick = () => api.setFullMode(true);
   // Full mode always shows its way out (the keys are in the button's tip).
-  const showFullExit = () => $('#full-exit').classList.toggle('hidden', !S.fullMode);
+  // Full mode's desktop background: the picture behind Scorpion's screens,
+  // which turn to tinted glass over it (styles.css: html.full-wall).
+  const applyWall = async () => {
+    const on = S.fullMode && (S.settings.fullWallpaper ?? 'system') !== 'none';
+    const url = on ? await api.desktopWallpaper?.().catch(() => null) : null;
+    document.documentElement.classList.toggle('full-wall', Boolean(on));
+    document.documentElement.style.setProperty('--wall', url ? `url("${url}")` : 'none');
+  };
+  $('#full-wall-pick').onchange = async (e) => {
+    if (e.target.value === 'custom') S.settings = await api.pickWallpaper();
+    else S.settings = await api.updateSettings({ fullWallpaper: e.target.value });
+    renderSettings();
+    applyWall();
+  };
+  const showFullExit = () => { $('#full-exit').classList.toggle('hidden', !S.fullMode); applyWall(); };
   $('#full-exit').onclick = () => api.setFullMode(false);
   showFullExit();
   // Full mode can change before this page hears of it (Scorpion OS's first

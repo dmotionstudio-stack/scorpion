@@ -889,3 +889,19 @@ body.sidebar-hidden .main .page { padding-left: 56px; }
 .store-text .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wl-toggle[aria-pressed="true"] { border-color: var(--accent); }
 .wl-toggle[aria-pressed="true"] span { color: var(--accent-text, var(--accent)); font-weight: 600; }
+
+/* Full mode's desktop background (Settings → General → Full screen): the
+   desktop's picture (or one of your own, or just the theme's colours) behind
+   Scorpion's screens, which turn to tinted glass over it (app.js sets
+   --wall). The orb keeps its own scene. */
+html.full-wall, html.full-wall body {
+  background:
+    linear-gradient(color-mix(in srgb, var(--bg) 12%, transparent), color-mix(in srgb, var(--bg) 34%, transparent)),
+    var(--wall, none) center / cover no-repeat,
+    radial-gradient(520px 460px at 12% 18%, color-mix(in srgb, var(--glow-1) 40%, transparent), transparent 70%),
+    radial-gradient(560px 520px at 88% 82%, color-mix(in srgb, var(--glow-2) 34%, transparent), transparent 70%),
+    var(--bg);
+}
+html.full-wall .main { background: color-mix(in srgb, var(--bg) 40%, transparent); -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1); }
+html.full-wall .sidebar { background: color-mix(in srgb, var(--panel) 62%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
+  border-right-color: color-mix(in srgb, var(--text) 10%, transparent); }

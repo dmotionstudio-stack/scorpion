@@ -202,6 +202,9 @@ contextBridge.exposeInMainWorld('scorpion', {
   setFullMode: invoke('window:fullMode'),
   isFullMode: invoke('window:isFullMode'),
   windowMinimize: invoke('window:minimize'),
+  // Full mode's desktop background: the picture (a data URL, or null), or choosing one.
+  desktopWallpaper: invoke('desktop:wallpaper'),
+  pickWallpaper: invoke('desktop:pickWallpaper'),
   onFullMode: on('fullmode:changed'),
   onVoiceDownload: on('voice:download'),
 
