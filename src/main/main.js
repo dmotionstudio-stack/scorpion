@@ -235,8 +235,9 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1280,
     height: 840,
-    minWidth: 820,
-    minHeight: 560,
+    // Small enough to sit beside other windows (the sidebar tucks away when narrow: app.js).
+    minWidth: 480,
+    minHeight: 360,
     title: 'Scorpion',
     show: false,
     backgroundColor: native ? '#00000000' : themeBg(),
@@ -357,10 +358,8 @@ function systemWallpaper() {
     });
   });
 }
-async function desktopWallpaper() {
-  const pick = store.getSettings().fullWallpaper ?? 'system';
-  if (pick === 'none' || pick === 'theme') return null;
-  const file = pick === 'system' ? await systemWallpaper() : pick;
+// A picture shrunk for the page, kept while its file is unchanged.
+async function pictureUrl(file) {
   if (!file || !fs.existsSync(file)) return null;
   const st = fs.statSync(file);
   const key = `${file}|${st.mtimeMs}|${st.size}`;
@@ -371,6 +370,77 @@ async function desktopWallpaper() {
   const fit = img.getSize().width > want ? img.resize({ width: want, quality: 'good' }) : img;
   wallCache = { key, url: `data:image/jpeg;base64,${fit.toJPEG(84).toString('base64')}` };
   return wallCache.url;
+}
+// The desktop's background: on Windows the picture Windows shows; on
+// Scorpion OS the one chosen in Scorpion (or none: the theme's colours).
+const desktopBackground = async () => pictureUrl(process.platform === 'win32' ? await systemWallpaper() : store.getSettings().background);
+async function desktopWallpaper() {
+  const pick = store.getSettings().fullWallpaper ?? 'system';
+  if (pick === 'none' || pick === 'theme') return null;
+  if (pick === 'system') return desktopBackground();
+  return pictureUrl(pick);
+}
+
+// The desktop background (Settings → Windows and taskbar, or right-click the
+// taskbar → Desktop background): pictures added to Scorpion's own list, one
+// of them set as the desktop's background. Small pictures of them for the
+// list are made once per file.
+const thumbs = new Map(); // path|mtime → data URL
+async function backgroundList() {
+  const s = store.getSettings();
+  const list = [];
+  for (const file of s.backgrounds || []) {
+    let thumb = null;
+    try {
+      const key = `${file}|${fs.statSync(file).mtimeMs}`;
+      thumb = thumbs.get(key);
+      if (!thumb) {
+        const img = nativeImage.createFromBuffer(await fs.promises.readFile(file));
+        if (!img.isEmpty()) thumbs.set(key, thumb = `data:image/jpeg;base64,${img.resize({ width: 240, quality: 'good' }).toJPEG(78).toString('base64')}`);
+      }
+    } catch { /* moved or gone: listed without a picture */ }
+    list.push({ path: file, name: path.basename(file).replace(/\.[^.]+$/, ''), thumb, current: file === s.background, missing: !fs.existsSync(file) });
+  }
+  return list;
+}
+async function addBackgrounds() {
+  const r = await dialog.showOpenDialog(win && !win.isDestroyed() && win.isVisible() ? win : undefined, { title: 'Add pictures for the desktop background', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Pictures', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }] });
+  if (r.canceled || !r.filePaths.length) return backgroundList();
+  const have = store.getSettings().backgrounds || [];
+  const added = r.filePaths.filter((p) => !have.includes(p));
+  store.updateSettings({ backgrounds: [...have, ...added] });
+  // The first one added becomes the background straight away.
+  if (added[0]) await setBackground(added[0]).catch((err) => console.error('desktop background:', err.message));
+  send('settings:changed', store.getSettings());
+  return backgroundList();
+}
+async function setBackground(file) {
+  if (!file || !fs.existsSync(file)) throw new Error('That picture is no longer there.');
+  await winctl.setDesktopBackground(file);
+  const have = store.getSettings().backgrounds || [];
+  store.updateSettings({ background: file, backgrounds: have.includes(file) ? have : [...have, file] });
+  wallCache = { key: '', url: null }; // full mode and Scorpion OS's desktop show the new one
+  send('settings:changed', store.getSettings());
+  return backgroundList();
+}
+// The next picture in the list.
+function nextBackground() {
+  const s = store.getSettings();
+  const list = (s.backgrounds || []).filter((p) => fs.existsSync(p));
+  if (!list.length) return addBackgrounds();
+  return setBackground(list[(list.indexOf(s.background) + 1) % list.length]);
+}
+// The Desktop background menu (the taskbar's right-click menu, and Scorpion OS's desktop).
+function backgroundMenu(item) {
+  const s = store.getSettings();
+  const list = (s.backgrounds || []).filter((p) => fs.existsSync(p));
+  return [
+    ...list.map((p) => ({ label: path.basename(p).replace(/\.[^.]+$/, ''), type: 'radio', checked: p === s.background, click: () => setBackground(p).catch((err) => console.error('desktop background:', err.message)) })),
+    ...(list.length ? [{ type: 'separator' }] : []),
+    ...(list.length > 1 ? [item('Next background', () => nextBackground())] : []),
+    item('Add pictures…', () => addBackgrounds()),
+    item('Desktop background settings…', () => showView('settings', { section: 'layout' })),
+  ];
 }
 
 // In full mode Scorpion's screens stop short of its taskbar (which stays on
@@ -1736,6 +1806,11 @@ function registerIpc() {
   h('window:fullMode', (on) => setFullMode(on));
   h('window:isFullMode', () => fullMode && Boolean(win?.isFullScreen()));
   h('desktop:wallpaper', () => desktopWallpaper().catch(() => null));
+  h('desktop:background', () => desktopBackground().catch(() => null));
+  h('desktop:backgrounds', () => backgroundList());
+  h('desktop:addBackgrounds', () => addBackgrounds());
+  h('desktop:setBackground', (file) => setBackground(String(file || '')));
+  h('desktop:removeBackground', (file) => { store.updateSettings({ backgrounds: (store.getSettings().backgrounds || []).filter((p) => p !== file) }); send('settings:changed', store.getSettings()); return backgroundList(); });
   // A picture of the user's own for full mode's background.
   h('desktop:pickWallpaper', async () => {
     const r = await dialog.showOpenDialog(win, { title: 'Choose a picture for the background in full screen', properties: ['openFile'], filters: [{ name: 'Pictures', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }] });
@@ -1791,8 +1866,8 @@ function registerIpc() {
       desktop.refreshRail();
       sendTaskbarInset();
     }
-    if (['taskbar', 'dotAt', 'stage', 'minimizeToStage', 'railAway', 'appsFull'].some((k) => k in patch)) send('settings:changed', next);
-    if ('dotAt' in patch) desktop.placeDot();
+    if (['taskbar', 'dotAt', 'stage', 'minimizeToStage', 'railAway', 'appsFull', 'wheel'].some((k) => k in patch)) send('settings:changed', next);
+    if ('dotAt' in patch || 'wheel' in patch) desktop.placeDot();
     if ('appsFull' in patch || 'minimizeToStage' in patch) watchWindows();
     return next;
   });
@@ -1943,6 +2018,12 @@ function registerIpc() {
   h('shell:stage', (on) => setStage(on));
   // The summon dot dragged (each move, then where it's dropped, which is
   // kept), asked where it is, or put back in its corner.
+  // The taskbar's inner edge dragged: its size, kept when let go (the room it keeps follows).
+  h('shell:railSize', (arg = {}) => {
+    const r = desktop.resizeRail(arg);
+    if (arg.phase === 'end' && r) { const t = taskbarSettings(); setTaskbarLook({ ...t, sizes: { ...(t.sizes || {}), [r.key]: r.size } }); }
+    return r;
+  });
   h('shell:dot', (arg = {}) => {
     // Back to its corner, or into another one (Settings).
     if (arg.phase === 'reset' || arg.phase === 'corner') {
@@ -2107,9 +2188,13 @@ function registerIpc() {
         { label: 'Look', submenu: [['holo', 'Holographic'], ['neon', 'Neon'], ['glass', 'Glass'], ['solid', 'Solid']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.style === v, click: () => set({ style: v }) })) },
         { label: 'Show', submenu: ['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume'].map(show) },
         { type: 'separator' },
+        { label: 'Desktop background', submenu: backgroundMenu(item) },
         item('Add or remove apps…', () => showView('apps')),
         item('Customize…', () => showView('settings', { section: 'layout' })),
         ...(t.pinned.length ? [item('Unpin all apps', () => setTaskbarLook({ ...t, pinned: [] }))] : [])];
+    } else if (kind === 'desktop') {
+      // Right-click on the desktop (Scorpion OS: its background).
+      template = [{ label: 'Desktop background', enabled: false }, { type: 'separator' }, ...backgroundMenu(item)];
     } else if (kind === 'clock') {
       template = [{ label: new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }), enabled: false }, { type: 'separator' },
         item('Date and time settings', () => winctl.openSettings('time'))];
@@ -2321,7 +2406,7 @@ app.whenReady().then(async () => {
   if (!primary) return;
   store.initStore(app.getPath('userData'));
   desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf, snapScreen,
-    dotAt: () => store.getSettings().dotAt || null, autoHide: () => taskbarSettings().autoHide === true, railAway: () => store.getSettings().railAway !== false, edge: () => taskbarSettings().edge || null });
+    dotAt: () => store.getSettings().dotAt || null, autoHide: () => taskbarSettings().autoHide === true, railAway: () => store.getSettings().railAway !== false, edge: () => taskbarSettings().edge || null, railSize: (key) => taskbarSettings().sizes?.[key] ?? null, wheel: () => store.getSettings().wheel || {} });
   // Performance follows the power cable when "Light on battery" is on.
   applyPerf();
   powerMonitor.on('on-battery', applyPerf);

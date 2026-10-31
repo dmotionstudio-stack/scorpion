@@ -27,6 +27,8 @@ export const SHELL_CALLS = {
   shellStagePick: 'shell:stagePick',
   shellDot: 'shell:dot',
   shellShow: 'shell:show',
+  desktopBackground: 'desktop:background',
+  shellRailSize: 'shell:railSize',
 };
 export const SHELL_EVENTS = {
   onSettingsChanged: 'settings:changed',

@@ -16,6 +16,7 @@ pages in WebKitGTK:
   notify.html  notification cards and the list, top right, clear of the rail
   quick.html   quick settings (Wi-Fi, Bluetooth, sound, brightness, battery)
   osd.html     the on-screen volume and brightness
+  wallpaper.html  the desktop's background, behind every window
 
 The pages talk to Scorpion over its local shell API (src/main/shell-api.js;
 the address and key are in $XDG_RUNTIME_DIR/scorpion-shell.json), and to this
@@ -65,10 +66,14 @@ BESIDE_RAIL = {"notify": NOTIFY_WIDTH, "quick": QUICK_WIDTH}
 INFO = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "scorpion-shell.json")
 E = GtkLayerShell.Edge
 EDGES = {"left": E.LEFT, "right": E.RIGHT, "top": E.TOP, "bottom": E.BOTTOM}
-RAIL_AT = {"edge": "right"}  # which edge the rail is on (its page says, from Scorpion's settings)
+# Which edge the rail is on, and a size of the user's own (dragged), as its
+# page says from Scorpion's settings.
+RAIL_AT = {"edge": "right", "size": None}
 
 
 def rail_thickness(edge=None):
+    if RAIL_AT["size"]:
+        return RAIL_AT["size"]
     return RAIL_ACROSS if (edge or RAIL_AT["edge"]) in ("top", "bottom") else RAIL
 
 
@@ -399,6 +404,9 @@ class Host:
         self.panels["quick"] = Panel(self, "quick.html", layer=overlay, anchors={E.TOP, E.RIGHT}, width=QUICK_WIDTH, height=1, margins=beside_rail())
         self.panels["osd"] = Panel(self, "osd.html", layer=overlay, anchors={E.BOTTOM}, width=340, height=90, margins={E.BOTTOM: 90})
         self.panels["stage"] = Panel(self, "stage.html", layer=overlay, anchors={E.LEFT, E.TOP, E.BOTTOM}, width=STAGE, height=-1, exclusive=-1)
+        # The desktop's background, behind every window (right-click it for its menu).
+        self.panels["wallpaper"] = Panel(self, "wallpaper.html", layer=GtkLayerShell.Layer.BACKGROUND, anchors={E.LEFT, E.RIGHT, E.TOP, E.BOTTOM}, width=-1, height=-1, exclusive=-1)
+        self.panels["wallpaper"].show_all()
         self.panels["edge"].show_all()
         self.panels["summon"].show_all()
         for name in ("notify", "quick", "osd", "stage"):
@@ -733,6 +741,12 @@ class Host:
         elif kind == "rail":
             if "autoHide" in msg:
                 self.rail_mode(bool(msg.get("autoHide")))
+            if "size" in msg:
+                # Dragged to a size of its own (0: the usual one).
+                size = int(msg.get("size") or 0)
+                RAIL_AT["size"] = max(44, min(170, size)) if size else None
+                if not msg.get("edge"):
+                    self.place_rail(RAIL_AT["edge"])
             if msg.get("edge"):
                 self.place_rail(str(msg["edge"]))
         elif kind == "stage":

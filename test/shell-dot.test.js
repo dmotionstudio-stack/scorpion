@@ -34,12 +34,12 @@ test('the dot floats while Scorpion is away, above the taskbar, and the wheel gr
   assert.ok(dot.visible);
   // Not placed yet: right in the corner above the 48px taskbar, sized for a
   // 900-pixel screen (its see-through margin past the screen's edge).
-  assert.deepEqual(dot.bounds, { x: -10, y: 788, width: 74, height: 74 });
+  assert.deepEqual(dot.bounds, { x: -12, y: 774, width: 90, height: 90 });
   assert.equal(await shell.openWheel(null), true);
   assert.deepEqual(dot.bounds, { x: 0, y: 0, width: 1600, height: 900 }); // no rail: the whole screen
   const [ch, at] = dot.sent.at(-1);
   assert.equal(ch, 'wheel:open');
-  assert.deepEqual(at, { x: 800, y: 450, dot: { x: 27, y: 825, size: 74 }, backdrop: null }); // no snapshot given
+  assert.deepEqual(at, { x: 800, y: 450, dot: { x: 33, y: 819, size: 90 }, backdrop: null }); // no snapshot given
   shell.setFloatingDot(false); // back while the wheel is open: it stays until closed
   assert.ok(dot.visible);
   shell.closeWheel();
@@ -81,7 +81,7 @@ test('dragged, the dot follows and its spot is given back as fractions', opts, a
   await tick();
   const dot = made.filter((w) => w.url.endsWith('summon.html') && !w.destroyed).at(-1);
   const r = shell.dragDot({ phase: 'move', x: 400, y: 300 });
-  assert.deepEqual(dot.bounds, { x: 363, y: 263, width: 74, height: 74 });
+  assert.deepEqual(dot.bounds, { x: 355, y: 255, width: 90, height: 90 });
   assert.deepEqual(r.at, { x: 0.25, y: 300 / 900 });
   shell.setFloatingDot(false);
 });
@@ -115,9 +115,12 @@ test('the dot goes into any corner, and snaps into one dropped near it', () => {
 });
 
 test('the dot is sized for the screen', () => {
-  assert.equal(shell.dotSizeFor({ width: 1920, height: 1080 }), 88);
-  assert.equal(shell.dotSizeFor({ width: 1366, height: 768 }), 64);
-  assert.equal(shell.dotSizeFor({ width: 3840, height: 2160 }), 112);
+  assert.equal(shell.dotSizeFor({ width: 1920, height: 1080 }), 108);
+  assert.equal(shell.dotSizeFor({ width: 1366, height: 768 }), 76);
+  assert.equal(shell.dotSizeFor({ width: 3840, height: 2160 }), 136);
+  // Settings → the summon button: smaller or larger.
+  assert.equal(shell.dotSizeFor({ width: 1920, height: 1080 }, 'small'), 86);
+  assert.equal(shell.dotSizeFor({ width: 1920, height: 1080 }, 'large'), 136);
 });
 
 test('dropped near a corner, the dot is kept in that corner', opts, async () => {
@@ -126,7 +129,7 @@ test('dropped near a corner, the dot is kept in that corner', opts, async () => 
   const dot = made.filter((w) => w.url.endsWith('summon.html') && !w.destroyed).at(-1);
   const r = shell.dragDot({ phase: 'end', x: 1560, y: 60 });
   assert.deepEqual(r.at, { corner: 'tr' });
-  assert.deepEqual(dot.bounds, { x: 1536, y: -10, width: 74, height: 74 }); // the screen's own corner, its rings 2 pixels in
+  assert.deepEqual(dot.bounds, { x: 1522, y: -12, width: 90, height: 90 }); // the screen's own corner, its rings 2 pixels in
   shell.setFloatingDot(false);
 });
 
@@ -157,4 +160,22 @@ test('the rail on the left: it floats there, and Stage comes in from the right',
   const strip = made.filter((w) => w.url.endsWith('stage.html')).at(-1);
   assert.deepEqual(strip.bounds, { x: 1600 - 230, y: 0, width: 230, height: 852 });
   shell.setStage(false);
+});
+
+test('dragging the taskbar\'s inner edge makes it thicker or thinner, within limits', opts, async () => {
+  let kept = null;
+  shell.initShell({ BrowserWindow: FakeWindow, screen, preload: 'p', dataDir: '.', getMainWindow: () => null, showView() {}, getLayout: () => 'orbit', perf: () => 'full', autoHide: () => true, railAway: () => true, edge: () => 'right', railSize: () => kept });
+  cursor = { x: 800, y: 400 };
+  shell.setFloatingDot(true);
+  await new Promise((r) => setTimeout(r, 300));
+  const rail = made.filter((w) => w.url.endsWith('edge.html')).at(-1);
+  assert.deepEqual(shell.resizeRail({ phase: 'move', x: 1600 - 120, y: 400 }), { key: 'rail-side', size: 120 });
+  assert.deepEqual(rail.bounds, { x: 1480, y: 0, width: 120, height: 852 }); // it follows the pointer
+  assert.equal(shell.resizeRail({ phase: 'move', x: 1000, y: 400 }).size, 170); // no thicker than this
+  assert.equal(shell.resizeRail({ phase: 'move', x: 1590, y: 400 }).size, 56); // nor thinner
+  const end = shell.resizeRail({ phase: 'end', x: 1600 - 100, y: 400 });
+  assert.deepEqual(end, { key: 'rail-side', size: 100 });
+  kept = end.size; // kept in the settings
+  assert.equal(shell.railThickness('right'), 100);
+  shell.setFloatingDot(false);
 });

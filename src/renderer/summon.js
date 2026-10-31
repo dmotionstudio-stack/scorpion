@@ -26,6 +26,10 @@ const ICONS = {
 };
 
 const W = { open: false, centre: { x: 0, y: 0 }, scale: 1, recent: [], intents: {}, hover: null, press: null, focusIdx: -1 };
+// The wheel's own settings (Settings → Windows and taskbar): its size, and
+// whether the windows you used last ring it.
+let wheelLook = { size: 'normal', recent: true };
+const SIZE = { small: 0.72, normal: 0.86, large: 1 };
 
 // The fixed artwork: the dark disc the windows sit on, the rounded glass
 // segments, the dark centre's blue rim and the flick arrow.
@@ -133,7 +137,7 @@ function renderCards() {
 function place() {
   const vw = innerWidth, vh = innerHeight;
   // Smaller to fit a small screen; a little bigger on a big one.
-  const grow = Math.min(1.35, Math.max(1, Math.min(vw, vh) / 1080));
+  const grow = Math.min(1.35, Math.max(1, Math.min(vw, vh) / 1080)) * (SIZE[wheelLook.size] || SIZE.normal);
   W.scale = Math.min(grow, (Math.min(vw, vh) / 2 - 12) / EXTENT);
   const half = EXTENT * W.scale;
   const x = Math.min(Math.max(W.centre.x, half), vw - half);
@@ -184,7 +188,7 @@ async function open(centre) {
   $('#sm-sr').textContent = 'Intent wheel open. Arrow keys choose, Enter opens, Escape closes.';
   const [recent, intents] = await Promise.all([api.shellRecent().catch(() => []), api.shellIntents().catch(() => ({}))]);
   if (!W.open) return;
-  W.recent = recent.slice(0, 5); // five tiles fit the ring above the hint
+  W.recent = wheelLook.recent === false ? [] : recent.slice(0, 5); // five tiles fit the ring above the hint
   W.intents = intents;
   // Named for screen readers; the hint under the wheel says the same on hover.
   for (const el of document.querySelectorAll('[data-intent]')) el.setAttribute('aria-label', `${INTENTS.find((i) => i.id === el.dataset.intent).label}: ${intents[el.dataset.intent] || ''}`);
@@ -377,6 +381,8 @@ let lastDotAt;
 api.onSettingsChanged?.((s) => {
   if (s?.theme) document.documentElement.dataset.theme = s.theme;
   if (s && 'stage' in s) showStage(s.stage);
+  if (s?.wheel) wheelLook = { ...wheelLook, ...s.wheel };
+  document.body.classList.toggle('no-recent', wheelLook.recent === false);
   if (s && JSON.stringify(s.dotAt ?? null) !== lastDotAt) { lastDotAt = JSON.stringify(s.dotAt ?? null); placeHostDot(); }
 });
 placeHostDot();
@@ -384,6 +390,8 @@ api.onPerfChanged?.((level) => { document.documentElement.dataset.perf = level; 
 api.state().then((st) => {
   if (st?.platform === 'win32' && api.shellStage) { $('#sm-stage').hidden = false; showStage(st.settings?.stage); }
   if (st?.settings?.theme) document.documentElement.dataset.theme = st.settings.theme;
+  if (st?.settings?.wheel) wheelLook = { ...wheelLook, ...st.settings.wheel };
+  document.body.classList.toggle('no-recent', wheelLook.recent === false);
   document.documentElement.dataset.perf = st?.perf || 'full';
 }).catch(() => {});
 // The dot's look follows its window's size (bigger on a big screen: shell.js).

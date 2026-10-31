@@ -1830,7 +1830,17 @@ function wire() {
   let sidebarHidden = false;
   try { sidebarHidden = localStorage.getItem('sidebarHidden') === '1'; } catch { /* default */ }
   setSidebar(sidebarHidden);
-  $('#sidebar-toggle').onclick = () => setSidebar(!document.body.classList.contains('sidebar-hidden'));
+  // Dragged narrow, the sidebar tucks away by itself, and comes back when
+  // there's room again (unless it was hidden by hand).
+  let tucked = false;
+  const fitSidebar = () => {
+    const narrow = innerWidth < 760;
+    if (narrow && !document.body.classList.contains('sidebar-hidden')) { tucked = true; document.body.classList.add('sidebar-hidden'); }
+    else if (!narrow && tucked) { tucked = false; document.body.classList.remove('sidebar-hidden'); }
+  };
+  addEventListener('resize', fitSidebar);
+  fitSidebar();
+  $('#sidebar-toggle').onclick = () => { tucked = false; setSidebar(!document.body.classList.contains('sidebar-hidden')); };
   document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'b' && !IX.open) { e.preventDefault(); $('#sidebar-toggle').click(); } });
 
   $('#messages').onclick = (e) => {

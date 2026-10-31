@@ -25,7 +25,8 @@ const DOT = 88; // the summon dot's window on a 1080-pixel screen (dotSizeFor)
 // deps.dotAt: where the dot was dropped ({ x, y } as fractions of the screen,
 // { corner: 'tl' | 'tr' | 'bl' | 'br' }, or null for the bottom-left corner);
 // deps.autoHide: the taskbar hides until the pointer reaches its edge;
-// deps.railAway: the rail comes with the floating dot; deps.edge: the screen
+// deps.railAway: the rail comes with the floating dot; deps.wheel: the
+// wheel's settings ({ size, button, recent, frosted }); deps.edge: the screen
 // edge the taskbar is on (null: the rail down the right, the bar along the bottom).
 let deps = null; // { BrowserWindow, screen, preload, dataDir, getMainWindow, showView, getLayout, perf, snapScreen, dotAt, autoHide, railAway, edge }
 let taskbar = null;
@@ -77,7 +78,18 @@ export const railEdge = () => {
 };
 const across = (e) => e === 'top' || e === 'bottom';
 // How thick it is on that edge.
-export const railThickness = (e = railEdge()) => (barLayout() && !hostMode ? (across(e) ? TASKBAR_HEIGHT : BAR_SIDE) : (across(e) ? RAIL_ACROSS : RAIL_WIDTH));
+// Dragging its inner edge makes it thicker or thinner (deps.railSize keeps
+// the size per kind: the rail or the bar, across or down a side).
+const SIZE_LIMITS = { 'bar-across': [32, 96], 'bar-side': [44, 140], 'rail-across': [44, 140], 'rail-side': [56, 170] };
+const sizeKey = (e) => `${barLayout() && !hostMode ? 'bar' : 'rail'}-${across(e) ? 'across' : 'side'}`;
+const fitSize = (key, px) => { const [lo, hi] = SIZE_LIMITS[key]; return Math.round(Math.min(hi, Math.max(lo, px))); };
+let liveSize = null; // while it's being dragged
+export const railThickness = (e = railEdge()) => {
+  const key = sizeKey(e);
+  const own = liveSize?.key === key ? liveSize.px : deps?.railSize?.(key);
+  if (Number.isFinite(own)) return fitSize(key, own);
+  return barLayout() && !hostMode ? (across(e) ? TASKBAR_HEIGHT : BAR_SIDE) : (across(e) ? RAIL_ACROSS : RAIL_WIDTH);
+};
 // A rectangle less the taskbar's strip along its edge.
 function besideEdge(r, e = railEdge(), t = railThickness(e)) {
   if (e === 'left') return { ...r, x: r.x + t, width: r.width - t };
@@ -139,10 +151,12 @@ function placeSummon() {
   const size = dotSize();
   summon.setBounds(wheelOpen ? wheelArea(r) : { x: Math.round(dot.x - size / 2), y: Math.round(dot.y - size / 2), width: size, height: size });
 }
-// The dot's window grows with the screen (88 pixels on a 1080-pixel one) and
-// shrinks on a small one, within reason; an even size, so it has a middle.
-export const dotSizeFor = (b) => 2 * Math.round(Math.min(112, Math.max(64, Math.min(b.width, b.height) / 12.3)) / 2);
-const dotSize = () => dotSizeFor(deps.screen.getPrimaryDisplay().bounds);
+// The dot's window grows with the screen (108 pixels on a 1080-pixel one) and
+// shrinks on a small one, within reason; Settings makes it smaller or larger
+// still. An even size, so it has a middle.
+const BUTTON = { small: 0.8, normal: 1, large: 1.25 };
+export const dotSizeFor = (b, button = 'normal') => 2 * Math.round((BUTTON[button] || 1) * Math.min(136, Math.max(76, Math.min(b.width, b.height) / 10)) / 2);
+const dotSize = () => dotSizeFor(deps.screen.getPrimaryDisplay().bounds, deps.wheel?.().button);
 const CORNERS = { tl: [0, 0], tr: [1, 0], bl: [0, 1], br: [1, 1] };
 const GAP = 2; // between a dot in a corner and the edges
 // How far the dot's rings reach from its middle (summon.css draws them 30
@@ -282,7 +296,7 @@ function destroyWindows() {
 // Frosted glass: a small picture of the screen, taken before the wheel shows,
 // which the page blurs behind it (not in Light, nor if it's slow).
 async function snapBackdrop(r, wait) {
-  if (!deps.snapScreen || deps.perf?.() === 'light') return null;
+  if (!deps.snapScreen || deps.perf?.() === 'light' || deps.wheel?.().frosted === false) return null;
   const src = await Promise.race([deps.snapScreen().catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), wait))]);
   return src ? { src, w: r.width, h: r.height } : null;
 }
@@ -487,6 +501,28 @@ function showRail() {
 }
 // A menu from the taskbar is open: it stays while it is (at most a minute).
 export function holdRail(on) { railHeld = on ? Date.now() + 60_000 : Date.now() + 800; }
+// The taskbar resized by dragging its inner edge: as the pointer moves its
+// window follows; let go, its size is given back to be kept (and the room it
+// keeps for apps follows). Scorpion OS's page says the size itself (size).
+export function resizeRail({ phase, x, y, size } = {}) {
+  const e = railEdge();
+  const key = sizeKey(e);
+  let px = Number(size);
+  if (!Number.isFinite(px) || px <= 0) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const s = railRect(railBase(), e, 0);
+    px = { right: s.x - x, left: x - s.x, top: y - s.y, bottom: s.y - y }[e];
+  }
+  px = fitSize(key, px);
+  railHeld = Date.now() + 1500; // a hiding taskbar stays while it's dragged
+  if (phase === 'end') {
+    liveSize = null;
+    return { key, size: px };
+  }
+  liveSize = { key, px };
+  if (!hostMode) placeTaskbar();
+  return { key, size: px };
+}
 export function holdWheel(on) { held = Boolean(on); }
 // The dot back where the settings say (dropped somewhere, or its corner).
 export function placeDot() { if (!hostMode && !wheelOpen) placeSummon(); }

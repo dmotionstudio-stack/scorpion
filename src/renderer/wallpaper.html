@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' scorpion:; img-src 'self' scorpion: data:; style-src 'self' scorpion: 'unsafe-inline'">
+  <title>Scorpion desktop</title>
+  <link rel="stylesheet" href="themes.css">
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    /* Scorpion OS's desktop background, behind every window (the shell host
+       shows it on the background layer): the picture chosen in Scorpion, or
+       the theme's own colours. Right-click for the Desktop background menu. */
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+    body {
+      background:
+        var(--wall, none) center / cover no-repeat,
+        radial-gradient(60vw 60vh at 15% 20%, color-mix(in srgb, var(--glow-1, #f5c518) 32%, transparent), transparent 70%),
+        radial-gradient(60vw 60vh at 85% 80%, color-mix(in srgb, var(--glow-2, #e07a00) 26%, transparent), transparent 70%),
+        var(--bg, #0e0d0b);
+      transition: background .6s;
+    }
+  </style>
+  <script src="shell-bridge.js"></script>
+  <script type="module" src="wallpaper.js"></script>
+</head>
+<body></body>
+</html>

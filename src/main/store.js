@@ -43,6 +43,11 @@ const DEFAULT_SETTINGS = {
   voiceName: 'af_heart', // Kokoro voice id
   voiceSpeed: 1, // 0.5–2
   voiceLanguage: 'en', // the language you speak and Scorpion replies in (see voice.js LANGUAGES)
+  // The summon wheel (Settings → Windows and taskbar): its size and the
+  // button's, the recent windows around it, the frosted glass behind it.
+  wheel: { size: 'normal', button: 'normal', recent: true, frosted: true },
+  backgrounds: [], // pictures added for the desktop background (paths)
+  background: null, // the one chosen, or null for the system's own
   fullWallpaper: 'system', // full mode's desktop background: 'system' (the desktop's picture), 'theme' (the theme's colours), 'none', or a picture's path
   fullModeAtStart: true, // Scorpion starts in full mode: the whole screen, over every window (Ctrl+Esc or Esc twice to leave, F11 back)
   constellationShortcut: 'Super+Space', // summons the constellation launcher (falls back to Win+Alt+Space)

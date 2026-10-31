@@ -171,3 +171,11 @@ html[data-perf="light"] .sum-core { animation: none; }
 .at-top .eg-launch .eg-item, .at-bottom .eg-launch .eg-item { flex: none; padding: 9px 8px; }
 body.eg-size-small .eg-summon { width: 34px; height: 34px; }
 body.eg-size-large .eg-summon { width: 48px; height: 48px; }
+
+/* The grip along its inner edge: drag it to make the taskbar thicker or thinner. */
+.rail-grip { position: absolute; z-index: 9; background: transparent; transition: background .15s; }
+.rail-grip:hover, .rail-grip.dragging { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+body.edge.at-right .rail-grip, body.edge:not(.at-left):not(.at-top):not(.at-bottom) .rail-grip { left: 0; top: 0; bottom: 0; width: 5px; cursor: ew-resize; }
+body.edge.at-left .rail-grip { right: 0; left: auto; top: 0; bottom: 0; width: 5px; cursor: ew-resize; }
+body.edge.at-top .rail-grip { left: 0; right: 0; bottom: 0; top: auto; height: 5px; width: auto; cursor: ns-resize; }
+body.edge.at-bottom .rail-grip { left: 0; right: 0; top: 0; bottom: auto; height: 5px; width: auto; cursor: ns-resize; }

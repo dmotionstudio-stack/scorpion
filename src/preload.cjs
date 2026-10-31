@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld('scorpion', {
   // The summon dot dragged somewhere else, and the rail hiding and coming back.
   shellDot: invoke('shell:dot'),
   onRail: on('shell:rail'),
+  // The taskbar's inner edge dragged to make it thicker or thinner.
+  shellRailSize: invoke('shell:railSize'),
   // The command palette: opened from the wheel, and its system entries run (src/shared/intents.js).
   shellPalette: invoke('shell:palette'),
   intentRun: invoke('intent:run'),
@@ -205,6 +207,12 @@ contextBridge.exposeInMainWorld('scorpion', {
   // Full mode's desktop background: the picture (a data URL, or null), or choosing one.
   desktopWallpaper: invoke('desktop:wallpaper'),
   pickWallpaper: invoke('desktop:pickWallpaper'),
+  // The desktop background: the pictures added, adding more, choosing one.
+  desktopBackground: invoke('desktop:background'),
+  desktopBackgrounds: invoke('desktop:backgrounds'),
+  addBackgrounds: invoke('desktop:addBackgrounds'),
+  setBackground: invoke('desktop:setBackground'),
+  removeBackground: invoke('desktop:removeBackground'),
   onFullMode: on('fullmode:changed'),
   onVoiceDownload: on('voice:download'),
 

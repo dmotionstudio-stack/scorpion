@@ -305,6 +305,7 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
   // How windows and the taskbar behave, your way: apps full screen, Stage,
   // the summon dot and the rail while Scorpion is minimized, auto-hide, what
   // the taskbar shows and which apps are pinned to it (in order).
+  const INTENT_NAMES = [['browse', 'Browse'], ['talk', 'Talk'], ['create', 'Create'], ['files', 'Files'], ['focus', 'Focus'], ['write', 'Write']];
   const TASKBAR_ITEMS = [['clock', 'Clock'], ['network', 'Network'], ['battery', 'Battery'], ['notifications', 'Notifications'], ['mail', 'Mail'], ['chat', 'Chat'], ['volume', 'Volume']];
   async function renderLayout() {
     const box = $('#layout-settings');
@@ -322,6 +323,8 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     const edge = t.edge || (style === 'bar' ? 'bottom' : 'right');
     const stageSide = edge === 'left' ? 'right' : 'left'; // shell.js and stage.js say the same
     const corner = s.dotAt?.corner || (s.dotAt ? null : 'bl');
+    const wheel = { size: 'normal', button: 'normal', recent: true, frosted: true, ...(s.wheel || {}) };
+    const intents = await api.shellIntents?.().catch(() => ({})) || {};
     box.innerHTML = `
       ${check('data-layout="appsFull"', s.appsFull !== false, 'Open apps full screen: an app\'s window fills the screen when it opens (its dialogs keep their size)')}
       ${check('data-layout="stage"', s.stage !== false, `Stage: touch the ${stageSide} edge of the screen and all your open apps slide in as live pictures; pick one and the window in front steps aside`)}
@@ -339,9 +342,18 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       <p class="small">Its size</p>
       <div class="row wrap" role="group" aria-label="The taskbar's size">${pick('data-size', ['small', 'normal', 'large'].includes(t.size) ? t.size : 'normal', [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']])}</div>
       <div class="row wrap">${check('data-taskbar="labels"', t.labels !== false, 'Show app names')}${check('data-taskbar="center"', t.center === true, 'Center the apps')}</div>
+      <p class="small">The summon wheel</p>
+      <div class="row wrap" role="group" aria-label="The wheel's size"><span class="muted small">Wheel</span>${pick('data-wheel-size', wheel.size, [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']])}</div>
+      <div class="row wrap" role="group" aria-label="The summon button's size"><span class="muted small">Button</span>${pick('data-wheel-button', wheel.button, [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']])}</div>
+      <div class="row wrap">${check('data-wheel="recent"', wheel.recent !== false, 'Show the windows you used last around it')}${check('data-wheel="frosted"', wheel.frosted !== false, 'Frosted glass behind it')}</div>
+      <div class="row wrap" role="group" aria-label="What each intent opens">${INTENT_NAMES.map(([id, label]) => `<button class="btn small" type="button" data-intent-pick="${id}" title="Choose what ${label} opens">${label}: <span class="muted">${esc(intents[id] || 'Default')}</span></button>`).join('')}</div>
+      <p class="muted small">Click an intent to choose what it opens (on the wheel: right-click it).</p>
       <p class="small">The summon dot</p>
       <div class="row wrap" role="group" aria-label="The summon dot's corner">${pick('data-corner', corner, [['tl', 'Top left'], ['tr', 'Top right'], ['bl', 'Bottom left'], ['br', 'Bottom right']])}</div>
       <p class="muted small">Or drag it anywhere on the screen: it stays where you drop it, and dropped near a corner it settles into that corner. It grows or shrinks to suit your screen.</p>
+      <p class="small">Desktop background</p>
+      <div class="bg-grid" id="bg-grid"><span class="muted small">Loading…</span></div>
+      <div class="row"><button class="btn small" type="button" id="bg-add">Add pictures…</button><span class="muted small">Click a picture to make it your desktop's background. Also from the taskbar: right-click it → Desktop background.</span></div>
       <p class="small">The taskbar shows</p>
       <div class="row wrap">${TASKBAR_ITEMS.map(([k, label]) => check(`data-show="${k}"`, show[k] !== false, label)).join('')}</div>
       <p class="small">Apps on the taskbar</p>
@@ -375,7 +387,26 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     for (const b of box.querySelectorAll('[data-edge]')) b.onclick = () => saveTaskbar({ edge: b.dataset.edge });
     for (const b of box.querySelectorAll('[data-style]')) b.onclick = () => saveTaskbar({ layout: b.dataset.style });
     for (const b of box.querySelectorAll('[data-look]')) b.onclick = () => saveTaskbar({ style: b.dataset.look });
+    // The summon wheel.
+    const saveWheel = (patch) => save({ wheel: { ...wheel, ...patch } });
+    for (const b of box.querySelectorAll('[data-wheel-size]')) b.onclick = () => saveWheel({ size: b.dataset.wheelSize });
+    for (const b of box.querySelectorAll('[data-wheel-button]')) b.onclick = () => saveWheel({ button: b.dataset.wheelButton });
+    for (const b of box.querySelectorAll('[data-wheel]')) b.onchange = () => saveWheel({ [b.dataset.wheel]: b.checked });
+    for (const b of box.querySelectorAll('[data-intent-pick]')) b.onclick = () => api.shellMenu({ kind: 'intent', id: b.dataset.intentPick });
     for (const b of box.querySelectorAll('[data-size]')) b.onclick = () => saveTaskbar({ size: b.dataset.size });
+    // The desktop background's pictures.
+    const showBackgrounds = (list) => {
+      const grid = $('#bg-grid');
+      if (!grid) return;
+      grid.innerHTML = list.map((b) => `<div class="bg-item${b.current ? ' current' : ''}${b.missing ? ' missing' : ''}">
+        <button class="bg-pick" type="button" data-bg="${esc(b.path)}" title="${esc(b.path)}" aria-pressed="${b.current}"${b.missing ? ' disabled' : ''}>${b.thumb ? `<img src="${b.thumb}" alt="">` : '<span class="bg-none">Not found</span>'}<span class="bg-name">${esc(b.name)}</span></button>
+        <button class="bg-x" type="button" data-bg-remove="${esc(b.path)}" aria-label="Remove ${esc(b.name)} from the list">×</button></div>`).join('') || '<span class="muted small">No pictures yet: add some.</span>';
+      for (const el of grid.querySelectorAll('[data-bg]')) el.onclick = async () => { try { showBackgrounds(await api.setBackground(el.dataset.bg)); toast('Desktop background changed'); } catch (err) { toast(errText(err), 'error'); } };
+      for (const el of grid.querySelectorAll('[data-bg-remove]')) el.onclick = async () => showBackgrounds(await api.removeBackground(el.dataset.bgRemove));
+    };
+    api.desktopBackgrounds?.().then(showBackgrounds).catch(() => showBackgrounds([]));
+    const addBg = $('#bg-add');
+    if (addBg) addBg.onclick = async () => { try { showBackgrounds(await api.addBackgrounds()); } catch (err) { toast(errText(err), 'error'); } };
     for (const b of box.querySelectorAll('[data-corner]')) {
       b.onclick = async () => {
         await api.shellDot?.({ phase: 'corner', corner: b.dataset.corner }).catch(() => {});

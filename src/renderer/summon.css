@@ -140,3 +140,6 @@ html[data-perf="light"] .sm-seg.hot, html[data-perf="light"] .sm-arcs path, html
   .sm-wheel, .sm-backdrop, .sm-card, .sm-seg, .sm-intent, .sm-tile, body.shown .sm-seg, body.shown .sm-intent, body.shown .sm-tile, body.shown .sm-arcs path, body.from-dot .sm-wheel { transition: none; animation: none; }
   .sm-ring.r3 { animation: none; }
 }
+
+/* Recent windows turned off (Settings → Windows and taskbar): no outer ring. */
+body.no-recent .sm-halo, body.no-recent .sm-rim, body.no-recent .sm-ticks { display: none; }

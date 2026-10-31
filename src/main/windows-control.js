@@ -389,6 +389,16 @@ export async function startExplorer() {
 }
 
 // The screen area apps maximize into; the taskbar keeps the bottom strip.
+// The desktop background: a picture, fitted the way Windows is already set to
+// fit it (SPI_SETDESKWALLPAPER, saved and announced like Settings does).
+const WALL = `Add-Type -Namespace ScorpionWall -Name W -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool SystemParametersInfo(uint a, uint b, string p, uint f);';`;
+export async function setDesktopBackground(file) {
+  const p = String(file).replace(/'/g, "''");
+  const out = await runPs(`${WALL} [ScorpionWall.W]::SystemParametersInfo(0x14, 0, '${p}', 3)`);
+  if (!/True/i.test(out)) throw new Error("Windows didn't take that picture as the desktop background");
+  return true;
+}
+
 const SPI = `Add-Type -Namespace ScorpionSpi -Name S -MemberDefinition '[StructLayout(LayoutKind.Sequential)] public struct R { public int L, T, Rt, B; } [DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint a, uint b, ref R r, uint f);';`;
 export async function getWorkArea() {
   const out = await runPs(`${SPI} $r = New-Object ScorpionSpi.S+R; [ScorpionSpi.S]::SystemParametersInfo(0x30, 0, [ref]$r, 0) | Out-Null; "$($r.L) $($r.T) $($r.Rt) $($r.B)"`);

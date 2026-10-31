@@ -135,3 +135,31 @@ const setPerf = (level) => {
 api.state().then((st) => setPerf(st?.perf || 'full')).catch(() => {});
 api.onPerfChanged?.(setPerf);
 setInterval(refreshTray, 30_000);
+
+// Drag the inner edge to make the taskbar thicker or thinner (kept). On
+// Windows its window follows the pointer (shell.js); on Scorpion OS the shell
+// host places its panel at the size this page works out.
+const grip = $('#rail-grip');
+let gripping = null;
+const edgeNow = () => ['left', 'right', 'top', 'bottom'].find((e) => document.body.classList.contains(`at-${e}`)) || 'bottom';
+const sizeAt = (ev) => ({ right: innerWidth - ev.clientX, left: ev.clientX, top: ev.clientY, bottom: innerHeight - ev.clientY })[edgeNow()];
+grip.addEventListener('pointerdown', (ev) => {
+  if (ev.button !== 0) return;
+  gripping = { frame: 0 };
+  grip.classList.add('dragging');
+  try { grip.setPointerCapture(ev.pointerId); } catch { /* gone */ }
+});
+grip.addEventListener('pointermove', (ev) => {
+  if (!gripping || gripping.frame) return;
+  gripping.frame = setTimeout(() => { if (gripping) gripping.frame = 0; }, 16); // about 60 a second
+  if (window.scorpionHost) api.host({ type: 'rail', size: Math.round(sizeAt(ev)) });
+  else api.shellRailSize({ phase: 'move', x: ev.screenX, y: ev.screenY }).catch(() => {});
+});
+const letGo = (ev) => {
+  if (!gripping) return;
+  gripping = null;
+  grip.classList.remove('dragging');
+  api.shellRailSize(window.scorpionHost ? { phase: 'end', size: Math.round(sizeAt(ev)) } : { phase: 'end', x: ev.screenX, y: ev.screenY }).catch(() => {});
+};
+grip.addEventListener('pointerup', letGo);
+grip.addEventListener('pointercancel', letGo);

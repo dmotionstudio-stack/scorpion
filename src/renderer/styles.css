@@ -905,3 +905,16 @@ html.full-wall, html.full-wall body {
 html.full-wall .main { background: color-mix(in srgb, var(--bg) 40%, transparent); -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1); }
 html.full-wall .sidebar { background: color-mix(in srgb, var(--panel) 62%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
   border-right-color: color-mix(in srgb, var(--text) 10%, transparent); }
+
+/* Settings → Windows and taskbar: the desktop background's pictures. */
+.bg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; max-width: 760px; margin: 4px 0 8px; }
+.bg-item { position: relative; }
+.bg-pick { display: block; width: 100%; padding: 0; border: 2px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--panel-2); cursor: pointer; color: var(--text); text-align: left; }
+.bg-pick img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; }
+.bg-none { display: grid; place-items: center; aspect-ratio: 16 / 10; color: var(--muted); font-size: 12px; }
+.bg-name { display: block; padding: 5px 8px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bg-pick:hover { border-color: var(--muted); }
+.bg-item.current .bg-pick { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.bg-item.missing .bg-pick { opacity: .55; cursor: default; }
+.bg-x { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: rgba(0, 0, 0, .6); color: #fff; cursor: pointer; opacity: 0; transition: opacity .15s; }
+.bg-item:hover .bg-x, .bg-x:focus-visible { opacity: 1; }
