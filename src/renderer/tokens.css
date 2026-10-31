@@ -11,10 +11,10 @@
   --radius-m: 12px;
   --radius-l: 14px;
   --radius-xl: 18px;
-  /* Dark glass: panels, then cards on them. */
-  --shell-glass: rgba(16, 20, 28, .9);
-  --shell-glass-2: rgba(36, 44, 60, .95);
-  --shell-glass-3: rgba(16, 20, 30, .96);
+  /* Glass in the theme's own colours (themes.css): panels, then cards on them. */
+  --shell-glass: color-mix(in srgb, var(--panel, #10141c) 90%, transparent);
+  --shell-glass-2: color-mix(in srgb, var(--panel-2, #242c3c) 95%, transparent);
+  --shell-glass-3: color-mix(in srgb, var(--bg, #10141e) 96%, transparent);
   --shell-line: rgba(255, 255, 255, .1);
   --shell-hover: rgba(255, 255, 255, .08);
   --shell-press: rgba(255, 255, 255, .12);
