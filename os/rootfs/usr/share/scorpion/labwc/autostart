@@ -32,11 +32,16 @@ done
   exec mako
 ) >>"$logs/shell.log" 2>&1 &
 
-# Lock after 10 idle minutes and before sleep; screen off after 15.
+# Lock after 10 idle minutes and before sleep; screen off after 15. Waking
+# from standby, the screens are turned back on whatever state they were left
+# in (some go to sleep switched off and don't come back by themselves), and
+# the lock (scorpion-lock) restarts itself if it stopped on the way.
 swayidle -w \
-  timeout 600 'swaylock -f' \
+  timeout 600 '/usr/lib/scorpion-os/scorpion-lock' \
   timeout 900 'wlopm --off \*' resume 'wlopm --on \*' \
-  before-sleep 'swaylock -f' >/dev/null 2>&1 &
+  before-sleep '/usr/lib/scorpion-os/scorpion-lock' \
+  after-resume 'wlopm --on \*; /usr/lib/scorpion-os/scorpion-lock' \
+  lock '/usr/lib/scorpion-os/scorpion-lock' >>"$logs/idle.log" 2>&1 &
 
 # Scorpion: the desktop, taskbar (the edge rail) and launcher.
 /usr/lib/scorpion-os/run-scorpion >>"$logs/scorpion.log" 2>&1 &

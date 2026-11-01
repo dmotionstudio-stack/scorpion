@@ -407,7 +407,8 @@ export async function systemControl(action, amount) {
       await run('grim', [file]);
       return `Screenshot saved: ${file}`;
     }
-    case 'lock': detach('swaylock', ['-f']); return 'Locked.'; // themed by /etc/swaylock/config
+    // Scorpion OS's lock restarts itself if it stops without being unlocked (os/.../scorpion-lock).
+    case 'lock': detach(fs.existsSync('/usr/lib/scorpion-os/scorpion-lock') ? '/usr/lib/scorpion-os/scorpion-lock' : 'swaylock', fs.existsSync('/usr/lib/scorpion-os/scorpion-lock') ? [] : ['-f']); return 'Locked.'; // themed by /etc/swaylock/config
     case 'sleep': await run('systemctl', ['suspend']); return 'Going to sleep.';
     case 'restart': case 'shutdown': {
       clearTimeout(pendingPower);

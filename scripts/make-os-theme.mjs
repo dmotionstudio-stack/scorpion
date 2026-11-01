@@ -70,6 +70,12 @@ text-wrong-color=${bare(c.text)}
 font=Ubuntu
 indicator-radius=90
 indicator-thickness=8
+# Always there, so a locked screen never looks like a blank one: the ring,
+# and the picture saying it's locked and to type the password (it starts out
+# black, and the mouse does nothing on it).
+indicator-idle-visible
+image=/usr/share/scorpion/lock.png
+scaling=center
 show-failed-attempts
 ignore-empty-password
 `,

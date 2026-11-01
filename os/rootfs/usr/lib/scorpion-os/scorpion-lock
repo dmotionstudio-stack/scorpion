@@ -1,0 +1,26 @@
+#!/bin/sh
+# Scorpion OS's screen lock (swaylock, themed by /etc/swaylock/config).
+#
+# If swaylock ever stops without being unlocked (it can crash as the computer
+# wakes from standby, when the graphics come back), the screen stays locked
+# with nothing on it: a black screen that ignores the mouse and keyboard. So
+# it's started again straight away, until it ends with the right password
+# (exit 0). Returns once the screen is locked, so the computer can then sleep.
+pgrep -x swaylock >/dev/null && exit 0
+(
+  tries=0
+  while :; do
+    swaylock && break
+    tries=$((tries + 1))
+    echo "scorpion-lock: swaylock stopped (try $tries); starting it again" >&2
+    # It keeps failing to start (not crashing on wake): give up rather than loop forever.
+    [ "$tries" -ge 60 ] && break
+    [ "$tries" -ge 20 ] && sleep 2 || sleep 0.3
+  done
+) &
+# Long enough for it to lock the screen before anything else happens.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  pgrep -x swaylock >/dev/null && break
+  sleep 0.1
+done
+sleep 0.4

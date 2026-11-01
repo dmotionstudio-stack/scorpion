@@ -90,6 +90,8 @@ xserver-xorg
 mako-notifier
 swaylock
 swayidle
+# turns the screens off when idle and back on (after standby too)
+wlopm
 grim
 slurp
 wl-clipboard
