@@ -29,6 +29,7 @@ import * as mcp from './mcp.js';
 import * as workspaces from './workspaces.js';
 import { recentActivity } from './activity.js';
 import * as desktop from './shell.js';
+import * as winHelper from './win-helper.js';
 import { windowChanges, shouldFill } from './window-watch.js';
 import { startShellApi, shellEvent } from './shell-api.js';
 import winctl from './system.js';
@@ -2405,6 +2406,8 @@ function ensureTrayHint() {
 app.whenReady().then(async () => {
   if (!primary) return;
   store.initStore(app.getPath('userData'));
+  // Windows: the helper (windows, the mouse, the taskbar's room) is built and kept here.
+  winHelper.initHelper(path.join(app.getPath('userData'), 'bin'));
   desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf, snapScreen,
     dotAt: () => store.getSettings().dotAt || null, autoHide: () => taskbarSettings().autoHide === true, railAway: () => store.getSettings().railAway !== false, edge: () => taskbarSettings().edge || null, railSize: (key) => taskbarSettings().sizes?.[key] ?? null, wheel: () => store.getSettings().wheel || {} });
   // Performance follows the power cable when "Light on battery" is on.
@@ -2503,7 +2506,7 @@ app.on('second-instance', (e, argv) => {
   if (argv.includes('--orb')) { if (navReady) send('nav:view', { view: 'orb', search: true }); else pendingNav = { view: 'orb', search: true }; }
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' && !keepsRunning() && !desktop.shellMode()) app.quit(); });
-app.on('will-quit', () => { stopKeyWatch(); globalShortcut.unregisterAll(); });
+app.on('will-quit', () => { stopKeyWatch(); globalShortcut.unregisterAll(); winHelper.stopHelper(); });
 app.on('before-quit', (e) => {
   // Leaving the desktop: put the screen area back (and the Windows desktop,
   // when Scorpion was it) before quitting.

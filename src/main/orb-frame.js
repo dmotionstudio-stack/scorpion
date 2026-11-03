@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as win from './windows-control.js';
+import * as helper from './win-helper.js';
 
 const FRAME = `Add-Type -TypeDefinition @'
 using System; using System.Text; using System.Runtime.InteropServices;
@@ -270,6 +271,20 @@ export function toPanel(p, area) {
 let pendingMove = null;
 let moving = false;
 const mouseRun = (script) => win.runPsKept(`${MOUSE} ${script}`);
+// The helper when it's there (a move in a millisecond, so a moving hand keeps
+// up); else the same through PowerShell.
+const PS_MOUSE = {
+  move: (x, y) => `[ScorpionMouse]::Move(${x}, ${y})`,
+  click: (x, y, right, times) => `[ScorpionMouse]::Click(${x}, ${y}, ${right === 1}, ${times})`,
+  down: (x, y) => `[ScorpionMouse]::Down(${x}, ${y})`,
+  up: (x, y) => `[ScorpionMouse]::Up(${x}, ${y})`,
+  wheel: (x, y, n, ctrl) => `[ScorpionMouse]::Wheel(${x}, ${y}, ${n}, ${ctrl === 1})`,
+  pos: () => '[ScorpionMouse]::Pos()',
+};
+async function mouseDo(cmd, ...args) {
+  if (helper.helperUsable()) { try { return await helper.call(cmd, ...args); } catch { /* PowerShell below */ } }
+  return mouseRun(PS_MOUSE[cmd](...args));
+}
 
 // cmd: { move: p } | { click: 'left'|'right'|'double', at: p } |
 // { drag: 'start'|'move'|'end', at: p } | { wheel: notches, ctrl?: true, at?: p }
@@ -284,25 +299,25 @@ export async function mouse(cmd = {}, { area = null } = {}) {
     if (moving) return true;
     moving = true;
     try {
-      while (pendingMove) { const m = pendingMove; pendingMove = null; await mouseRun(`[ScorpionMouse]::Move(${m.x}, ${m.y})`); }
+      while (pendingMove) { const m = pendingMove; pendingMove = null; await mouseDo('move', m.x, m.y); }
     } finally { moving = false; }
     return true;
   }
   const at = cmd.at ? toPanel(cmd.at, a) : { x: Math.round(a.x + a.w / 2), y: Math.round(a.y + a.h / 2) };
   pendingMove = null;
-  if (cmd.click) return mouseRun(`[ScorpionMouse]::Click(${at.x}, ${at.y}, $${cmd.click === 'right'}, ${cmd.click === 'double' ? 2 : 1})`).then(() => true);
-  if (cmd.drag === 'start') return mouseRun(`[ScorpionMouse]::Down(${at.x}, ${at.y})`).then(() => true);
-  if (cmd.drag === 'move') return mouseRun(`[ScorpionMouse]::Move(${at.x}, ${at.y})`).then(() => true);
-  if (cmd.drag === 'end') return mouseRun(`[ScorpionMouse]::Up(${at.x}, ${at.y})`).then(() => true);
+  if (cmd.click) return mouseDo('click', at.x, at.y, cmd.click === 'right' ? 1 : 0, cmd.click === 'double' ? 2 : 1).then(() => true);
+  if (cmd.drag === 'start') return mouseDo('down', at.x, at.y).then(() => true);
+  if (cmd.drag === 'move') return mouseDo('move', at.x, at.y).then(() => true);
+  if (cmd.drag === 'end') return mouseDo('up', at.x, at.y).then(() => true);
   if (cmd.wheel) {
     const n = Math.max(-20, Math.min(20, Math.round(cmd.wheel)));
     if (!n) return false;
     // The wheel goes to whatever is under the pointer: keep it in the area.
-    const where = cmd.at ? at : await mouseRun('[ScorpionMouse]::Pos()').then((o) => {
+    const where = cmd.at ? at : await mouseDo('pos').then((o) => {
       const [x, y] = o.split(' ').map(Number);
       return x >= a.x && x < a.x + a.w && y >= a.y && y < a.y + a.h ? { x, y } : at;
     }).catch(() => at);
-    return mouseRun(`[ScorpionMouse]::Wheel(${where.x}, ${where.y}, ${n}, $${Boolean(cmd.ctrl)})`).then(() => true);
+    return mouseDo('wheel', where.x, where.y, n, cmd.ctrl ? 1 : 0).then(() => true);
   }
   return false;
 }

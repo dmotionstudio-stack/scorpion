@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
+import * as helper from './win-helper.js';
 
 export const supported = process.platform === 'win32';
 
@@ -171,6 +172,13 @@ public static class ScorpionWindows {
 
 // kept: through the PowerShell kept open (the taskbar's frequent polling).
 export async function listWindows({ kept = false } = {}) {
+  // The helper first (milliseconds); PowerShell when it isn't there.
+  if (helper.helperUsable()) {
+    try {
+      return helper.rows(await helper.call('windows')).map(([hwnd, pid, proc, active, exe, iconic, title]) => ({ hwnd, pid: Number(pid), process: proc === 'ApplicationFrameHost' ? 'Store app' : proc, title, active: active === '1', minimized: iconic === '1', exe: exe || null }))
+        .filter((w) => w.title && !/^(Program Manager|Windows Input Experience)$/.test(w.title));
+    } catch { /* PowerShell below */ }
+  }
   const script = `${WINAPI} $fg = [ScorpionWindows]::GetForegroundWindow().ToInt64(); $names = @{}; $paths = @{}; Get-Process | ForEach-Object { $names[$_.Id] = $_.ProcessName; $paths[$_.Id] = $_.Path }; [ScorpionWindows]::List() | ForEach-Object { $p = $_.Split("\`t", 4); "$($p[0])\`t$($p[1])\`t$($names[[int]$p[1]])\`t$([int]($p[0] -eq $fg))\`t$($paths[[int]$p[1]])\`t$($p[2])\`t$($p[3])" }`;
   const out = await (kept ? runPsKept(script) : runPs(script));
   return out.split(/\r?\n/).filter(Boolean).map((line) => {
@@ -389,6 +397,20 @@ export async function startExplorer() {
 }
 
 // The screen area apps maximize into; the taskbar keeps the bottom strip.
+// The taskbar's room as an app bar (Windows' own way: apps maximize beside it,
+// and Windows takes the room back by itself if Scorpion stops). hwnd: the
+// taskbar window's; rect in screen pixels. Through the helper only: false
+// when it isn't there (shell.js then sets the work area itself).
+const EDGE_CODE = { left: 0, top: 1, right: 2, bottom: 3 };
+export async function setAppBar(hwnd, edge, { left, top, right, bottom }) {
+  if (!helper.helperUsable()) return false;
+  try { await helper.call('appbar', hwnd, EDGE_CODE[edge] ?? 2, Math.round(left), Math.round(top), Math.round(right), Math.round(bottom)); return true; } catch { return false; }
+}
+export async function removeAppBar(hwnd) {
+  if (!helper.helperUsable()) return false;
+  try { await helper.call('appbar-remove', hwnd); return true; } catch { return false; }
+}
+
 // The desktop background: a picture, fitted the way Windows is already set to
 // fit it (SPI_SETDESKWALLPAPER, saved and announced like Settings does).
 const WALL = `Add-Type -Namespace ScorpionWall -Name W -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool SystemParametersInfo(uint a, uint b, string p, uint f);';`;
@@ -517,6 +539,9 @@ export const signOut = () => new Promise((resolve) => execFile('shutdown.exe', [
 
 // Window actions by handle, for the taskbar (it already knows which window).
 export async function windowByHandle(hwnd, action) {
+  if (helper.helperUsable() && ['focus', 'minimize', 'maximize', 'close'].includes(action)) {
+    try { await helper.call(action, String(hwnd).replace(/[^0-9]/g, '')); return ''; } catch { /* PowerShell below */ }
+  }
   const h = `([IntPtr][long]${psQuote(hwnd)})`;
   if (action === 'focus') return runPsKept(`${WINAPI} [ScorpionWindows]::Focus(${h})`);
   if (action === 'minimize') return runPsKept(`${WINAPI} [ScorpionWindows]::ShowWindowAsync(${h}, 6) | Out-Null`);

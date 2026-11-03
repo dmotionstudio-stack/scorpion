@@ -126,6 +126,7 @@ const barLayout = () => Boolean(mode) && layout === 'bar';
 function railBase() {
   const d = deps.screen.getPrimaryDisplay();
   if (mode || !WIN) return d.bounds;
+  if (appBar) return appBar.base;
   const a = savedWorkArea;
   return a ? { x: a.left, y: a.top, width: a.right - a.left, height: a.bottom - a.top } : d.workArea;
 }
@@ -363,13 +364,50 @@ function setFloatingRail(on) {
   railFloats = on;
   if (on) {
     makeTaskbar();
-    if (!deps.autoHide?.()) reserveWorkArea().catch(() => {}); // hiding, it keeps no room
+    if (!deps.autoHide?.()) keepFloatingRoom().catch(() => {}); // hiding, it keeps no room
   } else {
+    const hwnd = hwndOf(taskbar);
     taskbar?.destroy();
     taskbar = null;
-    if (savedWorkArea) restoreWorkArea().catch(() => {});
+    giveBackFloatingRoom(hwnd).catch(() => {});
   }
   watchPointer();
+}
+// Floating with the dot (the Windows taskbar still there), the rail keeps its
+// room as an app bar: Windows' own way (windows-control.js setAppBar), so apps
+// maximize beside it, and if Scorpion ever stops Windows gives the room back by
+// itself. Where that can't be done, the work area is set as before (and put
+// back from shell-workarea.json after a crash).
+let appBar = null; // { hwnd, base: the area the rail runs along, from before it took its room }
+const hwndOf = (w) => {
+  if (!w || w.isDestroyed() || !w.getNativeWindowHandle) return null;
+  const b = w.getNativeWindowHandle();
+  return String(b.length >= 8 ? b.readBigUInt64LE(0) : b.readUInt32LE(0));
+};
+async function keepFloatingRoom() {
+  if (!WIN) return;
+  const hwnd = hwndOf(taskbar);
+  if (hwnd && win.setAppBar) {
+    const base = appBar?.hwnd === hwnd ? appBar.base : deps.screen.getPrimaryDisplay().workArea;
+    const r = railRect(base);
+    const px = deps.screen.dipToScreenRect ? deps.screen.dipToScreenRect(null, r) : r;
+    if (await win.setAppBar(hwnd, railEdge(), { left: px.x, top: px.y, right: px.x + px.width, bottom: px.y + px.height })) {
+      appBar = { hwnd, base };
+      placeTaskbar();
+      return;
+    }
+  }
+  await reserveWorkArea();
+}
+async function giveBackFloatingRoom(hwnd = hwndOf(taskbar)) {
+  if (appBar) {
+    const was = appBar;
+    appBar = null;
+    await win.removeAppBar?.(hwnd || was.hwnd);
+    if (taskbar && !taskbar.isDestroyed()) placeTaskbar();
+    return;
+  }
+  if (savedWorkArea) await restoreWorkArea();
 }
 // Settings changed (auto-hide, the rail with the dot, its edge): the rail,
 // the room it keeps and Stage's side follow.
@@ -378,7 +416,7 @@ export function refreshRail() {
   if (!hostMode) placeTaskbar();
   if (stageSide !== sideForStage()) { hideStage(true); stageSide = sideForStage(); }
   if (mode && !hostMode) win.setWorkArea(wantedArea()).catch(() => {});
-  else if (railFloats && !hostMode) (deps.autoHide?.() ? (savedWorkArea ? restoreWorkArea() : Promise.resolve()) : reserveWorkArea()).catch(() => {});
+  else if (railFloats && !hostMode) (deps.autoHide?.() ? giveBackFloatingRoom() : keepFloatingRoom()).catch(() => {});
   if (!deps.autoHide?.() && railHidden) showRail();
   watchPointer();
 }

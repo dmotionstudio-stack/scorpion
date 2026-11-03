@@ -533,6 +533,8 @@ export const explorerRunning = async () => true;
 export async function startExplorer() {}
 export async function getWorkArea() { return null; }
 export async function setWorkArea() {}
+export async function setAppBar() { return false; }
+export async function removeAppBar() { return false; }
 // Scorpion OS: the shell host shows the chosen picture behind everything (wallpaper.html).
 export async function setDesktopBackground() { return true; }
 export function setWindowsTaskbar() { return Promise.resolve(); }
