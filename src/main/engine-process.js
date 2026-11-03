@@ -1,8 +1,10 @@
-// The model engine in a process of its own, run by plain Node (Linux). Inside
-// Electron, Chromium's allocator takes over malloc for the whole process and
-// stops it on any aligned allocation over 1 GiB, which llama.cpp makes for
-// every model of 4B and up. Here, with glibc's allocator, those load fine; and
-// if the engine ever crashes, the desktop stays up.
+// The model engine in a process of its own, run by plain Node: Scorpion's own
+// runtime on Linux, Electron's binary acting as Node on Windows and macOS. If
+// the engine ever crashes, or a model takes all the memory, the desktop stays
+// up. On Linux there's more: inside Electron, Chromium's allocator takes over
+// malloc for the whole process and stops it on any aligned allocation over 1
+// GiB, which llama.cpp makes for every model of 4B and up; here, with glibc's
+// allocator, those load fine.
 //
 // Speaks with engine-client.js over Node's IPC channel: { type: 'call', id,
 // fn, args } runs one of engine.js's exports. Tools, callbacks and abort

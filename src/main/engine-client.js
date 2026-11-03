@@ -1,8 +1,8 @@
 // The model engine as the rest of Scorpion uses it: the same exports as
-// engine.js. On Linux, where Scorpion ships its own Node runtime
-// (resources/node/node), the engine runs in that separate process
-// (engine-process.js; why is explained there). Everywhere else it runs here,
-// in-process, as before.
+// engine.js, run in a process of its own (engine-process.js; why is
+// explained there): on Linux by the Node runtime Scorpion ships
+// (resources/node/node), on Windows and macOS by Electron's own binary acting
+// as plain Node. SCORPION_ENGINE_IN_PROCESS=1 runs it here instead.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,10 +16,16 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // The Node runtime for the engine process, or null to run in-process.
 function engineNode() {
   if (process.env.SCORPION_ENGINE_NODE) return process.env.SCORPION_ENGINE_NODE;
-  if (process.platform !== 'linux' || !process.resourcesPath) return null;
+  if (process.env.SCORPION_ENGINE_IN_PROCESS) return null;
+  // Electron (which can read its own app.asar) started with ELECTRON_RUN_AS_NODE.
+  if (process.platform !== 'linux') return process.versions.electron ? process.execPath : null;
+  if (!process.resourcesPath) return null;
   const node = path.join(process.resourcesPath, 'node', 'node');
   return fs.existsSync(node) ? node : null;
 }
+// Electron's binary runs as plain Node with ELECTRON_RUN_AS_NODE; the Node
+// runtime shipped for Linux mustn't get it.
+const asNode = () => nodePath === process.execPath && Boolean(process.versions.electron);
 let nodePath;
 const separate = () => (nodePath === undefined ? (nodePath = engineNode()) : nodePath) !== null;
 
@@ -34,10 +40,11 @@ function start() {
   if (starting) return starting;
   starting = new Promise((resolve, reject) => {
     const env = { ...process.env };
-    delete env.ELECTRON_RUN_AS_NODE;
+    if (asNode()) env.ELECTRON_RUN_AS_NODE = '1';
+    else delete env.ELECTRON_RUN_AS_NODE;
     // Messages are JSON: Electron's V8 and the engine's Node differ, so V8's
     // own ("advanced") serialization can't be read across.
-    const proc = spawn(nodePath, [path.join(here, 'engine-process.js')], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'], env });
+    const proc = spawn(nodePath, [path.join(here, 'engine-process.js')], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'], env, windowsHide: true });
     proc.on('message', (msg) => onMessage(proc, msg, resolve));
     proc.on('error', (err) => { reject(err); stopped(proc, err); });
     proc.on('exit', (code, signal) => {
