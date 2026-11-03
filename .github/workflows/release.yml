@@ -45,6 +45,11 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npx electron-builder ${{ matrix.target }} --publish never
+      # The app as people get it: it starts, its model engine runs in a process
+      # of its own, the Windows helper builds, older settings are brought up to
+      # date (scripts/smoke-test.mjs). A failure here stops the release.
+      - name: Check the packaged app
+        run: node scripts/smoke-test.mjs release
       - uses: actions/upload-artifact@v4
         with:
           name: scorpion-${{ matrix.os }}

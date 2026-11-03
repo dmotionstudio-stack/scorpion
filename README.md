@@ -560,9 +560,11 @@ npm test
 ```
 
 The unit tests run on any OS, including the Linux system layer's parsers
-(`test/linux-control.test.js`). Scorpion OS is tested by its GitHub workflow,
-which boots the ISO in QEMU and checks that Scorpion starts
-(`os/test/boot-test.mjs`).
+(`test/linux-control.test.js`). The release workflow also starts each packaged
+app and checks it (`scripts/smoke-test.mjs`), and Scorpion OS's workflow boots
+the ISO in QEMU and checks the session, crash recovery, the lock screen and
+waking from sleep (`os/test/boot-test.mjs`). What runs where, and what to
+check by hand: [docs/TESTING.md](docs/TESTING.md).
 
 ```bash
 node scripts/e2e-agent.mjs path/to/chat.gguf path/to/embed.gguf
