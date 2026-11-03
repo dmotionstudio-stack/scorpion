@@ -57,6 +57,8 @@ sleep 3
 
 # 4. Sleep, then (the test wakes the machine) everything is still there.
 show sh -c 'echo "sleep: $(cat /sys/power/state) / $(cat /sys/power/mem_sleep)"'
+# What can't be paused for sleep: processes waiting uninterruptibly (state D).
+show sh -c "ps -eo pid,stat,wchan:32,comm | awk 'NR == 1 || \$2 ~ /D/'"
 echo 1 > /sys/power/pm_debug_messages 2>/dev/null
 say SLEEPING
 timeout 120 systemctl suspend
@@ -66,7 +68,12 @@ s=0; l=0
 pgrep -x scorpion >/dev/null && s=1
 pgrep -x swaylock >/dev/null && l=1
 say "WOKE scorpion=$s lock=$l"
-[ "$code" = 0 ] || show sh -c "echo suspend exit $code; dmesg | grep -iE 'freez|refus|PM:' | tail -25"
+if dmesg | grep -q 'refusing to freeze'; then
+  # The kernel's own account of the task that wouldn't pause, and where it waits.
+  echo w > /proc/sysrq-trigger
+  sleep 1
+  show sh -c "echo suspend exit $code; dmesg | grep -A14 -E 'refusing to freeze|task:.* state:D' | grep -v '^ *$' | tail -60 | cut -c1-150"
+fi
 sleep 12 # a picture after waking
 pkill -USR1 -x swaylock
 sleep 3
