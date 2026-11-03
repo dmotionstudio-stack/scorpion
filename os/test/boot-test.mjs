@@ -153,6 +153,12 @@ if (result === 'RUNNING') {
       await sleep(5000);
       const wakeBright = await picture('after-wake');
       if (wakeBright != null && wakeBright < NOT_BLACK) problems.push('the screen is black after waking');
+      // Unlocked: black now means the screen itself didn't come back (not just the lock).
+      if (await until(/SCORPION-UNLOCKED/, 60)) {
+        await sleep(5000);
+        const openBright = await picture('after-wake-unlocked');
+        if (openBright != null && openBright < NOT_BLACK) problems.push('the screen is still black after waking and unlocking: the display did not come back');
+      }
     }
   } else problems.push('the sleep step never started');
   console.log(`  ${(await until(/SCORPION-STEPS-DONE/, 60)) ? 'all steps done' : 'the steps did not finish'}`);

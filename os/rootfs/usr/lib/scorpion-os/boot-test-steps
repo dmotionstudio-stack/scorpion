@@ -40,12 +40,12 @@ sleep 15
 # 3. The lock: on, then swaylock crashes: it must come straight back.
 show sh -c "systemctl --user -M $user@ show-environment | grep -E 'WAYLAND|DISPLAY|XDG_RUNTIME'"
 show timeout 20 systemctl --user -M "$user@" start scorpion-lock.service
-sleep 2
+sleep 4 # time to draw
 if pgrep -x swaylock >/dev/null; then say LOCKED; else say LOCK-MISSING; fi
 show usvc status scorpion-lock.service --no-pager -n 15
 sleep 10 # a picture of the lock screen
 pkill -KILL -x swaylock
-sleep 3
+sleep 5 # started again, and drawn
 if pgrep -x swaylock >/dev/null; then say LOCK-BACK; else
   say LOCK-GONE
   show usvc status scorpion-lock.service --no-pager -n 25
@@ -69,4 +69,7 @@ say "WOKE scorpion=$s lock=$l"
 [ "$code" = 0 ] || show sh -c "echo suspend exit $code; dmesg | grep -iE 'freez|refus|PM:' | tail -25"
 sleep 12 # a picture after waking
 pkill -USR1 -x swaylock
+sleep 3
+say UNLOCKED
+sleep 12 # a picture after unlocking: black still means the screen itself didn't come back
 say STEPS-DONE
