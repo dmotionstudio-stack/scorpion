@@ -157,6 +157,9 @@ if (result === 'RUNNING') {
   } else problems.push('the sleep step never started');
   console.log(`  ${(await until(/SCORPION-STEPS-DONE/, 60)) ? 'all steps done' : 'the steps did not finish'}`);
 }
+// The evidence the steps left (lines starting '| '), for when one failed.
+const evidence = (fs.existsSync(serial) ? fs.readFileSync(serial, 'utf8') : '').split(/\r?\n/).filter((l) => l.startsWith('| '));
+if (evidence.length) console.log(`  what the system said:\n${evidence.map((l) => `    ${l}`).join('\n')}`);
 live.stop();
 
 // 2. The boot menus, as computers see the disc.

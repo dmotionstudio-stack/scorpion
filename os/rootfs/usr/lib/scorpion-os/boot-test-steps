@@ -2,19 +2,24 @@
 # The automatic boot test's checks inside the system (scorpion-boot-report.service,
 # only with the kernel option scorpion.test; os/test/boot-test.mjs on the other
 # end). Each step writes a line starting SCORPION- to the console, which the
-# test watches for (taking pictures, waking the machine, judging).
+# test watches for (taking pictures, waking the machine, judging). Lines
+# starting "| " are evidence for when a step fails.
 say() { echo "SCORPION-$*" > /dev/console; }
+show() { "$@" 2>&1 | head -40 | sed 's/^/| /' > /dev/console; }
 
 # 1. Scorpion comes up in the session.
 for _ in $(seq 1 180); do pgrep -x scorpion >/dev/null && break; sleep 2; done
-if ! pgrep -x scorpion >/dev/null; then say SESSION-MISSING; exit 1; fi
+if ! pgrep -x scorpion >/dev/null; then say SESSION-MISSING; show ps -eo pid,ppid,comm,args; exit 1; fi
 say SESSION-RUNNING
-sleep 40 # the test takes its picture of the session meanwhile
 
 # The session's user, to reach their services.
 uid=$(ps -o uid= -p "$(pgrep -o -x scorpion)" | tr -d ' ')
 user=$(id -nu "$uid")
 usvc() { systemctl --user -M "$user@" "$@"; }
+show sh -c "labwc --version; echo user=$user"
+show usvc is-active scorpion-session.target scorpion.service scorpion-shell.service scorpion-idle.service
+show sh -c "ps -eo pid,ppid,stat,comm,args | grep -E 'scorpion|swayidle|swaylock|labwc' | grep -v grep | cut -c1-160"
+sleep 40 # the test takes its picture of the session meanwhile
 
 # 2. Scorpion crashes: its service starts it again.
 old=$(pgrep -o -x scorpion)
@@ -25,29 +30,43 @@ for _ in $(seq 1 30); do
   now=$(pgrep -o -x scorpion)
   if [ -n "$now" ] && [ "$now" != "$old" ]; then back=1; break; fi
 done
-[ "$back" = 1 ] && say RESTART-OK || say RESTART-FAILED
+if [ "$back" = 1 ]; then say RESTART-OK; else
+  say RESTART-FAILED
+  show usvc status scorpion.service --no-pager -n 25
+  show sh -c "journalctl -b --no-pager -n 25 _SYSTEMD_USER_UNIT=scorpion.service | cut -c1-200"
+fi
 sleep 15
 
 # 3. The lock: on, then swaylock crashes: it must come straight back.
-usvc start scorpion-lock.service
+show sh -c "systemctl --user -M $user@ show-environment | grep -E 'WAYLAND|DISPLAY|XDG_RUNTIME'"
+show timeout 20 systemctl --user -M "$user@" start scorpion-lock.service
 sleep 2
-pgrep -x swaylock >/dev/null && say LOCKED || say LOCK-MISSING
+if pgrep -x swaylock >/dev/null; then say LOCKED; else say LOCK-MISSING; fi
+show usvc status scorpion-lock.service --no-pager -n 15
 sleep 10 # a picture of the lock screen
 pkill -KILL -x swaylock
 sleep 3
-pgrep -x swaylock >/dev/null && say LOCK-BACK || say LOCK-GONE
+if pgrep -x swaylock >/dev/null; then say LOCK-BACK; else
+  say LOCK-GONE
+  show usvc status scorpion-lock.service --no-pager -n 25
+  show sh -c "journalctl -b --no-pager -n 30 _COMM=swaylock + _SYSTEMD_USER_UNIT=scorpion-lock.service | cut -c1-200"
+fi
 sleep 10 # a picture after the crash
 pkill -USR1 -x swaylock # swaylock's own "unlock"
 sleep 3
 
 # 4. Sleep, then (the test wakes the machine) everything is still there.
+show sh -c 'echo "sleep: $(cat /sys/power/state) / $(cat /sys/power/mem_sleep)"'
+echo 1 > /sys/power/pm_debug_messages 2>/dev/null
 say SLEEPING
-systemctl suspend
+timeout 120 systemctl suspend
+code=$?
 sleep 8 # waking: the screens come back, the lock is made sure of
 s=0; l=0
 pgrep -x scorpion >/dev/null && s=1
 pgrep -x swaylock >/dev/null && l=1
 say "WOKE scorpion=$s lock=$l"
+[ "$code" = 0 ] || show sh -c "echo suspend exit $code; dmesg | grep -iE 'freez|refus|PM:' | tail -25"
 sleep 12 # a picture after waking
 pkill -USR1 -x swaylock
 say STEPS-DONE
