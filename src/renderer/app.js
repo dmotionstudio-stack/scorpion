@@ -12,6 +12,7 @@ import { initHandControl } from './hand-control.js';
 import { HandTracker, cameraError, pointFilter } from './gestures.js';
 import { initWelcome } from './welcome.js';
 import { initLookSettings } from './settings-look.js';
+import { initOrbBubbles } from './orb-bubbles-ui.js';
 import { initPalette } from './palette.js';
 import { initSystemSettings } from './settings-system.js';
 
@@ -91,6 +92,7 @@ let orbSys = null; // the orb as the whole system (orb-system.js)
 let hands = null; // hand gestures on Scorpion's own screens (hand-control.js)
 let welcome = null; // the spoken first start (welcome.js)
 let lookSettings = null; // Settings → General: Performance, the orb's look (settings-look.js)
+let orbBubblesUi = null; // Settings → General: the orb's bubbles (orb-bubbles-ui.js)
 let palette = null; // the command palette, Ctrl+K (palette.js)
 let systemSettings = null; // Settings → This computer on Scorpion OS (settings-system.js)
 
@@ -1556,6 +1558,7 @@ function renderOnlineBadge() {
 // ---------- settings page ----------
 function renderSettings() {
   lookSettings?.render();
+  orbBubblesUi?.render();
   renderVoiceSettings();
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
   $('#online-mode').checked = Boolean(S.settings.online);
@@ -1769,6 +1772,7 @@ function wire() {
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice, startHands: () => toggleHands(true), setView });
+  orbBubblesUi = initOrbBubbles({ api, $, esc, S, toast, errText });
   lookSettings = initLookSettings({ $, api, S, setSetting, toast, IX, startWelcome: () => welcome.start({ force: true }) });
   systemSettings = initSystemSettings({ $, esc, api, toast, errText });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
@@ -2086,7 +2090,7 @@ function wire() {
   api.onSchedulesChanged(reloadSchedules);
   api.onOpenThread((id) => openThread(id));
   // The agent can set the workspace or allow a folder mid-chat.
-  api.onSettingsChanged((settings) => { S.settings = settings; renderTopbar(); renderModes(); renderSettings(); renderVoiceButtons(); IX.orb?.refreshSettings?.(); });
+  api.onSettingsChanged((settings) => { S.settings = settings; renderTopbar(); renderModes(); renderSettings(); renderVoiceButtons(); IX.orb?.refreshSettings?.(); orbSys?.refreshShortcuts?.(); });
   const setOnline = async (on) => {
     S.settings = await api.updateSettings({ online: on });
     renderSettings();

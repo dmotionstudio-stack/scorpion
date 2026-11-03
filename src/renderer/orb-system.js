@@ -13,6 +13,7 @@
 import { parseWake, parseYesNo, matchShortcut, nextIndex } from './orb-commands.js';
 import { intentsFor, matchSpoken } from '/shared/intents.js';
 import { PLATFORM } from './palette.js';
+import { bubbleItems, ringLook, siteUrl } from './orb-bubbles.js';
 
 const IS_WINDOWS = navigator.userAgent.includes('Windows');
 const PLACES = [
@@ -32,11 +33,12 @@ export function initOrbSystem(ctx) {
   const O = { desktop: false, away: false, framed: null, windows: [], winIndex: -1, lastFocused: null, approval: null, asking: false, wakeListening: false, wakeTimer: 0, pollTimer: 0, eventTimer: 0, greetTimer: 0, pointer: null };
 
   // ---------- shortcuts ----------
-  const items = () => [
-    ...PLACES.map((p) => ({ ...p, kind: 'tool' })),
-    ...O.windows.map((w) => ({ id: `w:${w.hwnd}`, kind: 'window', label: w.title, app: w.process, icon: w.icon, hwnd: w.hwnd, exe: w.exe })),
-  ];
-  const showShortcuts = () => IX.orb?.setSatellites(items());
+  // As Settings arranges them (orb-bubbles.js): places, your own, open windows.
+  const items = () => bubbleItems(S.settings.orbBubbles, PLACES, O.windows);
+  const showShortcuts = () => {
+    IX.orb?.setRingLook?.(ringLook(S.settings.orbBubbles));
+    IX.orb?.setSatellites(items());
+  };
 
   async function refreshWindows() {
     if (!IS_WINDOWS || !IX.open || O.away) return;
@@ -61,6 +63,7 @@ export function initOrbSystem(ctx) {
       return;
     }
     caption(`Opening ${item.label}`);
+    if (item.custom) { openOwn(item.custom); return; }
     leaveOrb(() => {
       if (item.id === 'apps') desktopUi.showApps();
       else if (item.id === 'files') desktopUi.showFiles();
@@ -68,6 +71,22 @@ export function initOrbSystem(ctx) {
       else if (item.id === 'chats') setView('chat');
       else setView(item.id);
     });
+  }
+
+  // A bubble of your own: an app (it opens inside the orb, like the others),
+  // a folder (in Scorpion's Files), a website (in your browser) or one of
+  // Scorpion's actions (as the command palette runs it).
+  async function openOwn(b) {
+    try {
+      if (b.kind === 'app') await api.shellLaunch({ id: b.target, name: b.label });
+      else if (b.kind === 'folder') leaveOrb(() => (desktopUi ? desktopUi.showFiles(b.target) : api.filesOpen(b.target)));
+      else if (b.kind === 'site') { const url = siteUrl(b.target); if (url) await api.openLink(url); else throw new Error(`${b.target} isn't a web address`); }
+      else if (b.kind === 'action') {
+        const it = intentsFor(PLATFORM, { live: Boolean(S.live) }).find((i) => i.id === b.target);
+        if (!it) throw new Error(`Scorpion can't do "${b.label}" here`);
+        ctx.runIntent?.(it);
+      }
+    } catch (err) { toast(errText(err), 'error'); }
   }
 
   // An app inside the orb's panel; one that refuses (an app running as
@@ -601,6 +620,8 @@ export function initOrbSystem(ctx) {
   return {
     onOpen, onClose, state, handleSpoken, handleGesture, onApproval, clearApproval, returnToOrb, greeted, scheduleWake, stopWake: stopWakeListening, leave: leaveOrb,
     toggleGuide, goHome, handleGlobals, togglePause,
+    // Settings changed (the orb's bubbles among them): the rings follow.
+    refreshShortcuts: () => { if (IX.open) showShortcuts(); },
     get paused() { return Boolean(O.handsPaused); },
     get wakeListening() { return O.wakeListening; },
     get desktop() { return O.desktop; },

@@ -323,6 +323,8 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
     window: { rx: 4.75, ry: 2.75, z: 0.4, speed: -0.025, size: 0.12, start: -Math.PI / 2 },
   };
   const ringAngle = { tool: 0, window: 0 };
+  // Settings → The orb's bubbles: how big they are and how fast the rings turn.
+  const look = { size: 1, speed: 1 };
   const sats = new Map(); // id -> satellite
   let hovered = null;
   const raycaster = new THREE.Raycaster();
@@ -348,7 +350,7 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
   function addSatellite(item) {
     const r = RING[item.kind === 'window' ? 'window' : 'tool'];
     const group = new THREE.Group();
-    const wireMat = new THREE.LineBasicMaterial({ color: item.kind === 'window' ? pal.mid : pal.bright, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+    const wireMat = new THREE.LineBasicMaterial({ color: item.color || (item.kind === 'window' ? pal.mid : pal.bright), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
     const coreMat2 = new THREE.MeshBasicMaterial({ color: pal.hot, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
     const body = new THREE.Group();
     body.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(r.size, 1)), wireMat));
@@ -360,7 +362,7 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
     const el = document.createElement('div');
     el.className = `orb-label${item.kind === 'window' ? ' window' : ''}`;
     labelLayer.appendChild(el);
-    const sat = { item, kind: item.kind === 'window' ? 'window' : 'tool', group, body, hit, wireMat, coreMat: coreMat2, el, iconSrc: item.icon || null, grow: 1, size: r.size };
+    const sat = { item, kind: item.kind === 'window' ? 'window' : 'tool', group, body, hit, wireMat, coreMat: coreMat2, el, iconSrc: item.icon || null, grow: 1, size: r.size, color: item.color || null };
     hit.userData.satId = item.id;
     sats.set(item.id, sat);
     drawLabel(sat);
@@ -391,6 +393,11 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
       else {
         const relabel = sat.item.label !== item.label;
         sat.item = item;
+        // A colour of its own, or back to the theme's.
+        if ((item.color || null) !== sat.color) {
+          sat.color = item.color || null;
+          sat.wireMat.color.set(sat.color || (sat.kind === 'window' ? pal.mid : pal.bright));
+        }
         if ((item.icon || null) !== sat.iconSrc) setIcon(sat, item.icon);
         if (relabel) drawLabel(sat);
       }
@@ -418,7 +425,7 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
       const r = RING[kind];
       const list = (sats.order || []).map((id) => sats.get(id)).filter((s) => s && s.kind === kind);
       // The ring holds still while you point at one of its shortcuts.
-      if (!list.some((s) => s.item.id === hovered)) ringAngle[kind] += r.speed * dt;
+      if (!list.some((s) => s.item.id === hovered)) ringAngle[kind] += r.speed * look.speed * dt;
       list.forEach((sat, i) => {
         const a = r.start + ringAngle[kind] + (i / list.length) * Math.PI * 2;
         sat.group.position.set(r.rx * Math.cos(a), r.ry * Math.sin(a), r.z + 0.35 * Math.sin(a));
@@ -426,7 +433,7 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
         sat.body.rotation.x = t * 0.4;
         const target = sat.item.id === hovered ? 1.6 : 1;
         sat.grow += (target - sat.grow) * Math.min(1, dt * 10);
-        sat.body.scale.setScalar(sat.grow);
+        sat.body.scale.setScalar(sat.grow * look.size);
         sat.coreMat.opacity = sat.item.id === hovered ? 0.9 : 0.35;
         // The label sits just under its sphere on screen.
         sat.group.updateMatrixWorld();
@@ -621,6 +628,8 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
     },
     // The shortcuts around the orb (see setSatellites above).
     setSatellites,
+    // How big the bubbles are and how fast the rings turn (1 = as designed; speed 0 = still).
+    setRingLook({ size = 1, speed = 1 } = {}) { look.size = size; look.speed = speed; },
     // x, y: -1..1 across the view (y up). Returns the shortcut there, or null.
     pick: (x, y) => satAt(x, y),
     // Highlights the shortcut under the pointer (null: none). Returns its id.

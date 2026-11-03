@@ -1867,7 +1867,7 @@ function registerIpc() {
       desktop.refreshRail();
       sendTaskbarInset();
     }
-    if (['taskbar', 'dotAt', 'stage', 'minimizeToStage', 'railAway', 'appsFull', 'wheel'].some((k) => k in patch)) send('settings:changed', next);
+    if (['taskbar', 'dotAt', 'stage', 'minimizeToStage', 'railAway', 'appsFull', 'wheel', 'orbBubbles'].some((k) => k in patch)) send('settings:changed', next);
     if ('dotAt' in patch || 'wheel' in patch) desktop.placeDot();
     if ('appsFull' in patch || 'minimizeToStage' in patch) watchWindows();
     return next;
@@ -2284,6 +2284,12 @@ function registerIpc() {
   h('shell:launch', async ({ id, name }) => winctl.launchApp({ id, name }, { viaExplorer: desktop.shellMode() !== 'shell' }));
   h('files:list', (dir) => listFolder(dir));
   h('files:open', (p) => winctl.openPath(p));
+  // A website (an orb bubble of your own), in the default browser: only web addresses.
+  h('link:open', (url) => {
+    const u = new URL(String(url));
+    if (!/^https?:$/.test(u.protocol)) throw new Error('Only web addresses can be opened');
+    return shell.openExternal(u.href);
+  });
   h('files:newFolder', ({ dir, name }) => { const p = path.join(dir, String(name || 'New folder').replace(/[\\/:*?"<>|]/g, '').trim() || 'New folder'); if (fs.existsSync(p)) throw new Error(`${path.basename(p)} already exists`); fs.mkdirSync(p); return p; });
   h('files:rename', ({ from, name }) => {
     const clean = String(name || '').replace(/[\\/:*?"<>|]/g, '').trim();

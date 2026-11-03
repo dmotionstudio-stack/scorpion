@@ -918,3 +918,11 @@ html.full-wall .sidebar { background: color-mix(in srgb, var(--panel) 62%, trans
 .bg-item.missing .bg-pick { opacity: .55; cursor: default; }
 .bg-x { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: rgba(0, 0, 0, .6); color: #fff; cursor: pointer; opacity: 0; transition: opacity .15s; }
 .bg-item:hover .bg-x, .bg-x:focus-visible { opacity: 1; }
+
+/* Settings → General → The orb's bubbles. */
+.pin-list li > .ob-swatch { flex: none; width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 6px rgba(0, 0, 0, .4); }
+.ob-add { display: grid; gap: 6px; padding: 10px 12px; margin: 4px 0 10px; border: 1px dashed var(--border); border-radius: 10px; max-width: 760px; }
+.ob-add input[type="text"], .ob-add select { min-width: 220px; }
+.ob-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+.ob-color-pick { display: inline-flex; align-items: center; gap: 6px; }
+#orb-bubbles input[type="color"] { width: 30px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; }

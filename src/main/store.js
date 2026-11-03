@@ -62,6 +62,7 @@ const DEFAULT_SETTINGS = {
   orbGreet: true, // at sign-in, the orb greets the person it recognizes (face recognition installed)
   orbSpeakEvents: false, // the orb says PC events out loud (battery, downloads, schedules, check-ins)
   orbApps: true, // while the orb is open, apps open inside it (framed in its panel)
+  orbBubbles: null, // the bubbles around the orb (orb-bubbles.js; null: the usual ones)
   performance: 'full', // 'full' | 'balanced' | 'light' (Settings → General → Performance)
   performanceOnBattery: false, // Light while running on battery
   welcomeDone: false, // the spoken first start was shown (welcome.js)
