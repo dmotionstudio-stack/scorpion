@@ -6,10 +6,7 @@
 # swaylock runs in the foreground, so systemd always knows its process (with
 # -f it forks, and systemd can lose track of which one to watch). Starting the
 # service returns a second later, once the screen is locked, so the computer
-# can then sleep. Then labwc is told to reload (SIGHUP), which draws every
-# screen afresh: labwc 0.7 doesn't always repaint the whole screen when the
-# lock appears, leaving what was there before, or black, until something else
-# changes (the boot test caught it).
+# can then sleep.
 [Unit]
 Description=Screen lock
 PartOf=scorpion-session.target
@@ -18,6 +15,6 @@ StartLimitBurst=20
 
 [Service]
 ExecStart=/usr/bin/swaylock
-ExecStartPost=/bin/sh -c 'sleep 1; pkill -HUP -x -u "$(id -u)" labwc || true'
+ExecStartPost=/bin/sleep 1
 Restart=on-failure
 RestartSec=0
