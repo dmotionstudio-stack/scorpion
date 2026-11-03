@@ -79,4 +79,5 @@ pkill -USR1 -x swaylock
 sleep 3
 say UNLOCKED
 sleep 12 # a picture after unlocking: black still means the screen itself didn't come back
+show usvc status scorpion-shell.service --no-pager -n 12
 say STEPS-DONE

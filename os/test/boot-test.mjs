@@ -65,8 +65,12 @@ const NOT_BLACK = 0.02;
 function qemu(args, serial) {
   const sock = path.join(tmp, `qmp-${Date.now()}.sock`);
   const p = spawn('qemu-system-x86_64', [
-    ...accel, '-machine', 'q35', '-m', '6144', '-smp', '4',
-    '-vga', 'virtio', '-display', 'none',
+    // Memory enough that the live system isn't forever reading programs back
+    // from the (slow, virtual) disc, which keeps it from pausing for sleep;
+    // and a plain graphics card, whose screen updates don't stall without a
+    // display (virtio's waited on a refresh that never came).
+    ...accel, '-machine', 'q35', '-m', '10240', '-smp', '4',
+    '-vga', 'std', '-display', 'none',
     '-qmp', `unix:${sock},server=on,wait=off`,
     '-serial', `file:${serial}`,
     '-netdev', 'user,id=n0', '-device', 'virtio-net-pci,netdev=n0',
