@@ -15,6 +15,7 @@ import { initLookSettings } from './settings-look.js';
 import { initOrbBubbles } from './orb-bubbles-ui.js';
 import { initPalette } from './palette.js';
 import { initSystemSettings } from './settings-system.js';
+import { initAppUpdates } from './settings-app-updates.js';
 
 const api = window.scorpion;
 const $ = (sel) => document.querySelector(sel);
@@ -95,6 +96,7 @@ let lookSettings = null; // Settings → General: Performance, the orb's look (s
 let orbBubblesUi = null; // Settings → General: the orb's bubbles (orb-bubbles-ui.js)
 let palette = null; // the command palette, Ctrl+K (palette.js)
 let systemSettings = null; // Settings → This computer on Scorpion OS (settings-system.js)
+let appUpdatesUi = null; // Settings → Updates on Windows and macOS (settings-app-updates.js)
 
 // ---------- top bar ----------
 function renderTopbar() {
@@ -1775,6 +1777,7 @@ function wire() {
   orbBubblesUi = initOrbBubbles({ api, $, esc, S, toast, errText });
   lookSettings = initLookSettings({ $, api, S, setSetting, toast, IX, startWelcome: () => welcome.start({ force: true }) });
   systemSettings = initSystemSettings({ $, esc, api, toast, errText });
+  appUpdatesUi = initAppUpdates({ $, api, S, toast, errText });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
   const onNav = ({ view, dir, select, signin, search, talk, query, section }) => {
     // Typing on the intent wheel: the command palette, with what was typed.

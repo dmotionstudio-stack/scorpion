@@ -74,6 +74,7 @@ const DEFAULT_SETTINGS = {
   appsFull: true, // an app's window fills the screen when it opens (Windows; Scorpion OS)
   minimizeToStage: true, // a window minimized flies into Stage's strip
   updatesAnnounced: '', // Scorpion OS: the set of updates last announced (updates.js), so each is said once
+  appUpdates: true, // Windows and macOS: look for new versions of Scorpion on GitHub by itself (app-updates.js)
   handsAlwaysOn: true, // hand gestures on (camera; off while minimized); on Windows the hand is the mouse everywhere
   wakeWord: false, // saying "Scorpion" starts listening while the orb is open
   settingsVersion: 0, // which of the steps below these settings have been through

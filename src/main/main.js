@@ -34,6 +34,7 @@ import { windowChanges, shouldFill } from './window-watch.js';
 import { startShellApi, shellEvent } from './shell-api.js';
 import winctl from './system.js';
 import { createUpdates } from './updates.js';
+import { createAppUpdates } from './app-updates.js';
 import * as appFrame from './orb-frame.js';
 import * as appIcons from './app-icons.js';
 import * as constellations from './constellations.js';
@@ -1451,6 +1452,7 @@ async function runNamedIntent(id) {
 // the wheel's recent windows.
 const lastUsed = new Map();
 let updates = null; // Scorpion OS's updates (updates.js)
+let appUpdates = null; // Scorpion's own, on Windows and macOS (app-updates.js)
 const ACCESS_FEATURES = ['bigText', 'screenReader', 'keyboard'];
 const accessSettings = () => ({ bigText: false, screenReader: false, keyboard: false, ...(store.getSettings().access || {}) });
 // Bigger text is Scorpion's zoom plus (Scorpion OS) the system's text size;
@@ -2087,6 +2089,14 @@ function registerIpc() {
   h('shell:volume', async (action) => { const r = await winctl.volumeStep(action); showOsd('volume'); return r; });
   // The welcome's internet step (Scorpion OS): online or not, the Wi-Fi
   // networks in range, joining one. Windows and macOS handle their own.
+  // Windows and macOS: new versions of Scorpion from GitHub (Settings → General → Updates).
+  h('app:updates', ({ action } = {}) => {
+    if (!appUpdates) return { supported: false };
+    if (action === 'check') return appUpdates.check();
+    if (action === 'restart') return appUpdates.restart();
+    if (action === 'download') return appUpdates.download();
+    return appUpdates.view();
+  });
   // Scorpion OS: its updates and snapshots (Settings → This computer).
   h('sys:updates', ({ action } = {}) => {
     if (!updates) return { supported: false };
@@ -2485,6 +2495,27 @@ app.whenReady().then(async () => {
   if (process.platform === 'linux') {
     updates = createUpdates({ sys: winctl, send, getSettings: store.getSettings, updateSettings: store.updateSettings, onInstallAsked: () => showView('settings', { section: 'system' }) });
     updates.start();
+  } else {
+    appUpdates = createAppUpdates({
+      version: app.getVersion(),
+      packaged: app.isPackaged,
+      portable: Boolean(portableDir) && !process.env.SCORPION_DATA_DIR,
+      getSettings: store.getSettings,
+      send,
+      openExternal: (url) => shell.openExternal(url),
+      notify: ({ title, body, onClick }) => {
+        if (!Notification.isSupported()) return;
+        const n = new Notification({ title, body, silent: true });
+        n.on('click', () => { if (onClick) onClick(); else showWindow(); });
+        n.show();
+      },
+      fetchJson: async (url) => {
+        const res = await net.fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': `Scorpion/${app.getVersion()}` } });
+        if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+        return res.json();
+      },
+    });
+    appUpdates.start();
   }
   for (const server of store.getSettings().mcpServers || []) if (server.enabled) connectMcp(server).catch(() => {});
   startTelegram().catch(() => {});

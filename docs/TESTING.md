@@ -10,7 +10,7 @@ target.
 | Where | What | When |
 |---|---|---|
 | `npm test` | Unit tests (gestures, the shell's placement, settings migrations, the shell API, the OS theme files…) | Every build, and before every commit |
-| `scripts/smoke-test.mjs` | The packaged app on Windows and both Macs: it starts, its window and page load, the model engine runs in a process of its own and reports the hardware, the Windows helper builds and lists windows, older settings are brought up to date | The release workflow, after building; a failure stops the release |
+| `scripts/smoke-test.mjs` | The packaged app on Windows and both Macs: it starts, its window and page load, the model engine runs in a process of its own and reports the hardware, the Windows helper builds and lists windows, older settings are brought up to date, updates from GitHub are on (and the Windows build has the updater's app-update.yml) | The release workflow, after building; a failure stops the release |
 | `os/test/boot-test.mjs` | Scorpion OS in QEMU: boots to the session; Scorpion comes back after it crashes; the screen locks, and the lock comes back after swaylock crashes; the machine sleeps, wakes, and shows its lock screen (judged by pictures, which must not be black); the UEFI and BIOS boot menus | The Scorpion OS workflow, after building the ISO |
 
 ## What to check by hand, by area

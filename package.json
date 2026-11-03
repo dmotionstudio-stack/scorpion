@@ -23,6 +23,7 @@
     "@mediapipe/tasks-vision": "0.10.35",
     "@rapideditor/country-coder": "5.6.1",
     "dompurify": "3.4.17",
+    "electron-updater": "6.8.11",
     "exceljs": "4.4.0",
     "exif-reader": "2.0.3",
     "kokoro-js": "1.2.1",
@@ -42,6 +43,14 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "dmotionstudio-stack",
+        "repo": "scorpion",
+        "releaseType": "release"
+      }
+    ],
     "files": [
       "src/**/*",
       "package.json",

@@ -7,6 +7,8 @@
 //   - the model engine runs in a process of its own and reports the hardware
 //   - Windows: the native helper builds and lists the open windows
 //   - the settings were brought up to the current version
+//   - Windows and macOS: updates from GitHub are on (and on Windows the
+//     updater's app-update.yml is in the build)
 // Then stops it. Exits 1 with what failed.
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -14,6 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const releaseDir = path.resolve(process.argv[2] || 'release');
+const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The built app's program.
@@ -85,6 +88,19 @@ try {
 
   // The settings, brought up to date.
   check(s.version >= 1 && s.layout === 'orbit', `older settings were brought up to date (version ${s.version}, layout ${s.layout})`);
+
+  // Updates from GitHub (app-updates.js). Only the state: a check would
+  // download whatever is newest.
+  if (process.platform !== 'linux') {
+    const u = await run('window.scorpion.appUpdates({}).then((u) => JSON.stringify({ supported: u.supported, installs: u.installs, current: u.current }))');
+    const uu = typeof u === 'string' ? JSON.parse(u) : {};
+    check(uu.supported === true && uu.current === version && uu.installs === (process.platform === 'win32'), `updates from GitHub are on (${u && JSON.stringify(u)})`);
+  }
+  if (process.platform === 'win32') {
+    const yml = path.join(path.dirname(app), 'resources', 'app-update.yml');
+    const text = fs.existsSync(yml) ? fs.readFileSync(yml, 'utf8') : '';
+    check(/provider: github/.test(text) && /owner: dmotionstudio-stack/.test(text) && /repo: scorpion/.test(text), `the updater knows where releases are (${yml})`);
+  }
 
   // Windows: the native helper.
   if (process.platform === 'win32') {

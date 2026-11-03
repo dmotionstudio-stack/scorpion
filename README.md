@@ -313,6 +313,21 @@ To uninstall: drag **Scorpion** from Applications to the Trash. Your chats,
 memories and models stay in `~/Library/Application Support/Scorpion` until you
 delete that folder.
 
+### Updates
+
+Scorpion looks for new versions on this repository's GitHub releases a couple of
+minutes after it starts and every six hours (**Settings → General → Updates**
+has **Check now** and a switch to stop it looking by itself). The check only
+asks GitHub for the newest version number.
+
+- **Windows (installed):** the new installer downloads in the background and
+  installs when Scorpion restarts, or right away with **Restart and update**.
+  Chats, models and settings stay as they are.
+- **Mac and portable Windows copies:** Scorpion says a new version is out, and
+  **Download** opens it. The Mac disk images aren't signed, so they can't
+  replace themselves.
+- **Scorpion OS:** the app updates with the system (Settings → This computer).
+
 ### First start: get a model
 
 Scorpion needs one model file. You need internet once for this, or none at all

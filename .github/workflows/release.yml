@@ -2,6 +2,8 @@
 # Run it from the Actions tab, or push a tag like v0.1.0: a tag also publishes
 # them as a GitHub release, with docs/releases/<tag>.md as its notes.
 # Set the input "bundle_model" to ship a model inside the installer (fully offline install).
+# The release also carries latest.yml and the installer's .blockmap: installed
+# Windows copies read them to update themselves (src/main/app-updates.js).
 name: Release
 
 on:
@@ -53,8 +55,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: scorpion-${{ matrix.os }}
+          # Windows also: latest.yml and the blockmap, for its updater.
           path: |
             release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
             release/*.dmg
           if-no-files-found: error
 
@@ -75,7 +80,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # GitHub turns spaces in file names into dots, but latest.yml names
+          # the installer with dashes (Scorpion-Setup-x.y.z.exe): rename to
+          # match, and make sure the file it names is there.
+          for f in dist/*' '*; do if [ -e "$f" ]; then mv "$f" "${f// /-}"; fi; done
           ls -la dist
+          want="dist/$(sed -n 's/^path: //p' dist/latest.yml)"
+          [ -f "$want" ] || { echo "latest.yml names $want, which isn't here"; exit 1; }
+          grep -q "^version: ${GITHUB_REF_NAME#v}$" dist/latest.yml || { echo "latest.yml isn't version ${GITHUB_REF_NAME#v}"; exit 1; }
           notes="docs/releases/${GITHUB_REF_NAME}.md"
           if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
-          gh release create "$GITHUB_REF_NAME" dist/*.exe dist/*.dmg --title "Scorpion ${GITHUB_REF_NAME#v}" "$@"
+          gh release create "$GITHUB_REF_NAME" dist/*.exe dist/*.exe.blockmap dist/latest.yml dist/*.dmg --title "Scorpion ${GITHUB_REF_NAME#v}" "$@"

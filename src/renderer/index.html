@@ -291,6 +291,20 @@
               <p class="muted small">Puts programs and system settings back as they were at that moment, from the next restart. Your files, chats and documents are never touched.</p>
             </div>
           </div>
+          <div class="field sys-card" id="app-upd-field" hidden>
+            <label>Updates</label>
+            <div class="sys-block">
+              <div class="sys-line"><b>Scorpion</b><span class="muted small" id="app-upd-status"></span></div>
+              <div class="sys-progress" id="app-upd-progress" hidden><div id="app-upd-bar"></div></div>
+              <div class="row">
+                <button class="btn small" type="button" id="app-upd-check">Check now</button>
+                <button class="btn primary small" type="button" id="app-upd-restart" hidden>Restart and update</button>
+                <button class="btn primary small" type="button" id="app-upd-download" hidden>Download</button>
+              </div>
+              <label class="toggle"><input type="checkbox" id="app-upd-auto"><span>Look for new versions by itself (every few hours)</span></label>
+              <p class="muted small"><span id="app-upd-note"></span> New versions come from Scorpion's releases on GitHub; the check only asks for the newest version number.</p>
+            </div>
+          </div>
           <div class="field">
             <label>Theme</label>
             <div class="theme-grid" id="theme-grid"></div>

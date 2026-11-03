@@ -69,6 +69,9 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellInstall: invoke('shell:install'),
   // Scorpion OS: updates and snapshots (Settings → This computer).
   sysUpdates: invoke('sys:updates'),
+  // Windows and macOS: Scorpion's own updates from GitHub.
+  appUpdates: invoke('app:updates'),
+  onAppUpdates: on('app:updates'),
   sysSnapshots: invoke('sys:snapshots'),
   sysApps: invoke('sys:apps'),
   sysAccess: invoke('sys:access'),
