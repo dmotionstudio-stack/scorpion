@@ -1,8 +1,12 @@
 # Scorpion OS session: labwc runs this file with sh when the session starts.
 # Session helpers first, then Scorpion as the desktop.
 
-# Apps started through D-Bus and systemd see this session's display.
-dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP >/dev/null 2>&1
+# Apps started through D-Bus and systemd (the session's own services below
+# among them) see this session's display and settings.
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP DESKTOP_SESSION \
+  XKB_DEFAULT_LAYOUT XKB_DEFAULT_VARIANT XKB_DEFAULT_OPTIONS GTK_THEME XCURSOR_THEME XCURSOR_SIZE \
+  MOZ_ENABLE_WAYLAND QT_QPA_PLATFORM SDL_VIDEODRIVER _JAVA_AWT_WM_NONREPARENTING XDG_DATA_DIRS >/dev/null 2>&1
+[ -n "$WLR_RENDERER" ] && dbus-update-activation-environment --systemd WLR_RENDERER >/dev/null 2>&1
 
 # Password prompts for system changes (Wi-Fi, installing, drivers).
 for agent in /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1; do
@@ -13,14 +17,19 @@ done
 # beside them as *.old.log.
 logs="${XDG_STATE_HOME:-$HOME/.local/state}/scorpion"
 mkdir -p "$logs"
-for name in scorpion shell; do
+for name in scorpion shell idle; do
   [ -f "$logs/$name.log" ] && mv -f "$logs/$name.log" "$logs/$name.old.log"
 done
 
-# Scorpion's shell: the rail, the summon dot and wheel, notifications and the
-# on-screen display as layer-shell panels; it is also the notification server.
-# It starts again if it crashes (up to three times). Where it can't run at all
-# (exit 1: no layer-shell), mako shows notifications and Scorpion its own rail.
+# The rest are the session's services (/usr/lib/systemd/user/scorpion-*):
+# Scorpion, its shell and the idle lock, each started again by systemd if it
+# crashes. Only if they can't be started, the same by hand.
+systemctl --user start scorpion-session.target && exit 0
+
+# Scorpion's shell (the rail, the summon dot and wheel, notifications, the
+# on-screen display), started again if it crashes (up to three times). Where it
+# can't run at all (exit 1: no layer-shell), mako shows notifications and
+# Scorpion its own rail.
 (
   for try in 1 2 3; do
     /usr/lib/scorpion-os/scorpion-shell
@@ -32,16 +41,7 @@ done
   exec mako
 ) >>"$logs/shell.log" 2>&1 &
 
-# Lock after 10 idle minutes and before sleep; screen off after 15. Waking
-# from standby, the screens are turned back on whatever state they were left
-# in (some go to sleep switched off and don't come back by themselves), and
-# the lock (scorpion-lock) restarts itself if it stopped on the way.
-swayidle -w \
-  timeout 600 '/usr/lib/scorpion-os/scorpion-lock' \
-  timeout 900 'wlopm --off \*' resume 'wlopm --on \*' \
-  before-sleep '/usr/lib/scorpion-os/scorpion-lock' \
-  after-resume 'wlopm --on \*; /usr/lib/scorpion-os/scorpion-lock' \
-  lock '/usr/lib/scorpion-os/scorpion-lock' >>"$logs/idle.log" 2>&1 &
+/usr/lib/scorpion-os/scorpion-idle >>"$logs/idle.log" 2>&1 &
 
 # Scorpion: the desktop, taskbar (the edge rail) and launcher.
 /usr/lib/scorpion-os/run-scorpion >>"$logs/scorpion.log" 2>&1 &

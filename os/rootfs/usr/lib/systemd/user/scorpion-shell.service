@@ -1,0 +1,19 @@
+# Scorpion's shell: the rail, the summon dot and wheel, notifications, the
+# on-screen display and the desktop's background as layer-shell panels; it's
+# also the notification server.
+[Unit]
+Description=Scorpion's shell (panels and notifications)
+PartOf=scorpion-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+# It can't run here (exit 1: no layer-shell), or keeps crashing: mako shows
+# notifications, and Scorpion its own rail.
+OnFailure=scorpion-mako.service
+
+[Service]
+ExecStart=/usr/lib/scorpion-os/scorpion-shell
+Restart=on-failure
+RestartSec=2
+RestartPreventExitStatus=1
+StandardOutput=append:%h/.local/state/scorpion/shell.log
+StandardError=inherit

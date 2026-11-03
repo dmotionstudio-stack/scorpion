@@ -1,0 +1,8 @@
+# Notifications when Scorpion's shell can't run.
+[Unit]
+Description=Notifications (mako)
+PartOf=scorpion-session.target
+
+[Service]
+ExecStart=/usr/bin/mako
+Restart=on-failure

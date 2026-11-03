@@ -36,6 +36,11 @@ labwc --config-dir "$CONFIG"
 code=$?
 if [ "$code" -ne 0 ] && [ -z "$WLR_RENDERER" ] && [ $(($(date +%s) - started)) -lt 15 ]; then
   export WLR_RENDERER=pixman
-  exec labwc --config-dir "$CONFIG"
+  labwc --config-dir "$CONFIG"
+  code=$?
 fi
+# The session's services (Scorpion, its shell, the idle lock) end with it, and
+# the next session starts with a clean slate.
+systemctl --user stop scorpion-session.target 2>/dev/null
+systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY WLR_RENDERER 2>/dev/null
 exit "$code"

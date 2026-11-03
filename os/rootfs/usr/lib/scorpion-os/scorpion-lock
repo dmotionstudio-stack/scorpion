@@ -1,11 +1,16 @@
 #!/bin/sh
 # Scorpion OS's screen lock (swaylock, themed by /etc/swaylock/config).
 #
+# In the session it's a service (scorpion-lock.service), which systemd
+# starts again if swaylock stops without being unlocked. Where there's no
+# such service (another session, systemd not reachable), the same by hand:
+#
 # If swaylock ever stops without being unlocked (it can crash as the computer
 # wakes from standby, when the graphics come back), the screen stays locked
 # with nothing on it: a black screen that ignores the mouse and keyboard. So
 # it's started again straight away, until it ends with the right password
 # (exit 0). Returns once the screen is locked, so the computer can then sleep.
+systemctl --user start scorpion-lock.service 2>/dev/null && exit 0
 pgrep -x swaylock >/dev/null && exit 0
 (
   tries=0

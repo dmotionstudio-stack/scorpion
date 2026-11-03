@@ -1,0 +1,7 @@
+# Scorpion crashed three times in a row: say so.
+[Unit]
+Description=Tell that Scorpion stopped
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/notify-send -u critical "Scorpion stopped" "Scorpion closed unexpectedly three times. Right-click the background for a menu, or press Super+Return for a terminal. What happened is in ~/.local/state/scorpion/scorpion.log."

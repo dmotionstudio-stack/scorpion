@@ -1,0 +1,9 @@
+# Scorpion OS's session (started from labwc's autostart, stopped by
+# /usr/bin/scorpion-session when labwc ends): Scorpion, its shell and the idle
+# lock, each a service systemd starts again if it crashes.
+[Unit]
+Description=Scorpion OS session
+BindsTo=graphical-session.target
+Wants=graphical-session-pre.target
+After=graphical-session-pre.target
+Wants=scorpion.service scorpion-shell.service scorpion-idle.service

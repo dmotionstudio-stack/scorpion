@@ -1,0 +1,18 @@
+# Scorpion: the desktop, the taskbar (the edge rail) and the launcher.
+[Unit]
+Description=Scorpion, the desktop
+PartOf=scorpion-session.target
+# Crashing three times in two minutes, it isn't started again, and says so
+# (the session stays up with labwc's own menu: right-click the background).
+StartLimitIntervalSec=120
+StartLimitBurst=3
+OnFailure=scorpion-stopped.service
+
+[Service]
+ExecStart=/usr/bin/scorpion --shell --ozone-platform=x11
+Restart=on-failure
+RestartSec=2
+# Quitting Scorpion on purpose ends the session.
+ExecStopPost=/bin/sh -c 'if [ "$SERVICE_RESULT" = success ] && [ "$EXIT_CODE" = exited ] && [ "$EXIT_STATUS" = 0 ]; then labwc --exit; fi'
+StandardOutput=append:%h/.local/state/scorpion/scorpion.log
+StandardError=inherit

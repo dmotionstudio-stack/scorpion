@@ -1,0 +1,12 @@
+# Locking after 10 idle minutes and before sleep, the screens off after 15,
+# and back on after waking (scorpion-idle).
+[Unit]
+Description=Idle lock and screen power
+PartOf=scorpion-session.target
+
+[Service]
+ExecStart=/usr/lib/scorpion-os/scorpion-idle
+Restart=on-failure
+RestartSec=2
+StandardOutput=append:%h/.local/state/scorpion/idle.log
+StandardError=inherit
