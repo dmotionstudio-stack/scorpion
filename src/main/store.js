@@ -75,7 +75,36 @@ const DEFAULT_SETTINGS = {
   updatesAnnounced: '', // Scorpion OS: the set of updates last announced (updates.js), so each is said once
   handsAlwaysOn: true, // hand gestures on (camera; off while minimized); on Windows the hand is the mouse everywhere
   wakeWord: false, // saying "Scorpion" starts listening while the orb is open
+  settingsVersion: 0, // which of the steps below these settings have been through
 };
+
+// Settings carry a version. Each step brings settings written by an older
+// Scorpion up to date, once, the first time they're read (and the file is
+// saved at the new version). Add a step at the end when the meaning of a
+// setting changes; never edit or reorder the ones already shipped.
+const MIGRATIONS = [
+  // 1. The stones-on-a-horizon taskbar ("gravity") was removed: the edge rail instead.
+  (s) => { if (s.taskbar?.layout === 'gravity') s.taskbar = { ...s.taskbar, layout: 'orbit' }; },
+  // 2. The summon wheel's settings gained keys: an older, partial one gets the rest.
+  (s) => { if (s.wheel && typeof s.wheel === 'object') s.wheel = { ...DEFAULT_SETTINGS.wheel, ...s.wheel }; },
+  // 3. The taskbar's settings gained keys (notifications, mail and chat among
+  //    what it shows): fill in what an older one is missing, keep what it has.
+  (s) => {
+    if (!s.taskbar || typeof s.taskbar !== 'object') return;
+    s.taskbar = { ...DEFAULT_SETTINGS.taskbar, ...s.taskbar, show: { ...DEFAULT_SETTINGS.taskbar.show, ...(s.taskbar.show || {}) } };
+  },
+];
+export const SETTINGS_VERSION = MIGRATIONS.length;
+// Settings as read from disk, brought up to the current version (a copy).
+// Settings from a newer Scorpion are left as they are.
+export function migrateSettings(raw) {
+  const s = { ...(raw || {}) };
+  let v = Math.max(0, Number(s.settingsVersion) || 0);
+  if (v >= SETTINGS_VERSION) return s;
+  for (; v < SETTINGS_VERSION; v++) MIGRATIONS[v](s);
+  s.settingsVersion = SETTINGS_VERSION;
+  return s;
+}
 
 let dataDir = null;
 
@@ -111,7 +140,12 @@ export function writeJson(file, value) {
 }
 
 export function getSettings() {
-  return { ...DEFAULT_SETTINGS, ...readJson(paths.settings, {}) };
+  const raw = readJson(paths.settings, null);
+  // A first start: nothing to bring up to date.
+  if (!raw) return { ...DEFAULT_SETTINGS, settingsVersion: SETTINGS_VERSION };
+  const s = migrateSettings(raw);
+  if (s.settingsVersion !== raw.settingsVersion) writeJson(paths.settings, s);
+  return { ...DEFAULT_SETTINGS, ...s };
 }
 
 export function updateSettings(patch) {

@@ -1,0 +1,53 @@
+#!/bin/sh
+# The automatic boot test's checks inside the system (scorpion-boot-report.service,
+# only with the kernel option scorpion.test; os/test/boot-test.mjs on the other
+# end). Each step writes a line starting SCORPION- to the console, which the
+# test watches for (taking pictures, waking the machine, judging).
+say() { echo "SCORPION-$*" > /dev/console; }
+
+# 1. Scorpion comes up in the session.
+for _ in $(seq 1 180); do pgrep -x scorpion >/dev/null && break; sleep 2; done
+if ! pgrep -x scorpion >/dev/null; then say SESSION-MISSING; exit 1; fi
+say SESSION-RUNNING
+sleep 40 # the test takes its picture of the session meanwhile
+
+# The session's user, to reach their services.
+uid=$(ps -o uid= -p "$(pgrep -o -x scorpion)" | tr -d ' ')
+user=$(id -nu "$uid")
+usvc() { systemctl --user -M "$user@" "$@"; }
+
+# 2. Scorpion crashes: its service starts it again.
+old=$(pgrep -o -x scorpion)
+pkill -KILL -o -x scorpion
+back=0
+for _ in $(seq 1 30); do
+  sleep 1
+  now=$(pgrep -o -x scorpion)
+  if [ -n "$now" ] && [ "$now" != "$old" ]; then back=1; break; fi
+done
+[ "$back" = 1 ] && say RESTART-OK || say RESTART-FAILED
+sleep 15
+
+# 3. The lock: on, then swaylock crashes: it must come straight back.
+usvc start scorpion-lock.service
+sleep 2
+pgrep -x swaylock >/dev/null && say LOCKED || say LOCK-MISSING
+sleep 10 # a picture of the lock screen
+pkill -KILL -x swaylock
+sleep 3
+pgrep -x swaylock >/dev/null && say LOCK-BACK || say LOCK-GONE
+sleep 10 # a picture after the crash
+pkill -USR1 -x swaylock # swaylock's own "unlock"
+sleep 3
+
+# 4. Sleep, then (the test wakes the machine) everything is still there.
+say SLEEPING
+systemctl suspend
+sleep 8 # waking: the screens come back, the lock is made sure of
+s=0; l=0
+pgrep -x scorpion >/dev/null && s=1
+pgrep -x swaylock >/dev/null && l=1
+say "WOKE scorpion=$s lock=$l"
+sleep 12 # a picture after waking
+pkill -USR1 -x swaylock
+say STEPS-DONE

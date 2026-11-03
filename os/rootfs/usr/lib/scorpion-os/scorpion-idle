@@ -1,0 +1,12 @@
+#!/bin/sh
+# Scorpion OS's idle handling (scorpion-idle.service): lock after 10 idle
+# minutes and before sleep; screens off after 15. Waking from standby, the
+# screens are turned back on whatever state they were left in (some go to
+# sleep switched off and don't come back by themselves), and the lock is made
+# sure of.
+exec swayidle -w \
+  timeout 600 '/usr/lib/scorpion-os/scorpion-lock' \
+  timeout 900 'wlopm --off \*' resume 'wlopm --on \*' \
+  before-sleep '/usr/lib/scorpion-os/scorpion-lock' \
+  after-resume 'wlopm --on \*; /usr/lib/scorpion-os/scorpion-lock' \
+  lock '/usr/lib/scorpion-os/scorpion-lock'
