@@ -76,6 +76,7 @@ process.on('message', async (msg) => {
     aborts.get(msg.id)?.abort();
   }
 });
-// The main process went away: so does the engine.
+// The main process went away, or the engine is told to stop: it goes.
 process.on('disconnect', () => process.exit(0));
+process.on('SIGTERM', () => process.exit(0));
 send({ type: 'ready', state: state() });

@@ -1,8 +1,12 @@
-# The screen lock (swaylock, themed by /etc/swaylock/config). It forks once
-# the screen is locked, so starting it returns then (the computer can sleep).
-# If it ever stops without being unlocked (it can crash as the computer
-# wakes), the screen would stay locked with nothing on it: systemd starts it
-# again at once. Unlocked with the password, it ends and stays ended.
+# The screen lock (swaylock, themed by /etc/swaylock/config). If it ever
+# stops without being unlocked (it can crash as the computer wakes), the
+# screen would stay locked with nothing on it: systemd starts it again at
+# once. Unlocked with the password, it ends and stays ended.
+#
+# swaylock runs in the foreground, so systemd always knows its process (with
+# -f it forks, and systemd can lose track of which one to watch). Starting the
+# service returns a second later, once the screen is locked, so the computer
+# can then sleep.
 [Unit]
 Description=Screen lock
 PartOf=scorpion-session.target
@@ -10,7 +14,7 @@ StartLimitIntervalSec=60
 StartLimitBurst=20
 
 [Service]
-Type=forking
-ExecStart=/usr/bin/swaylock -f
+ExecStart=/usr/bin/swaylock
+ExecStartPost=/bin/sleep 1
 Restart=on-failure
 RestartSec=0

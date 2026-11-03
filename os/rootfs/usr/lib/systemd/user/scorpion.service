@@ -12,6 +12,10 @@ OnFailure=scorpion-stopped.service
 ExecStart=/usr/bin/scorpion --shell --ozone-platform=x11
 Restart=on-failure
 RestartSec=2
+# After a crash, what's left of it (the model engine's process) is given five
+# seconds to go, then made to: systemd waits for it before starting Scorpion
+# again (by default for 90 seconds).
+TimeoutStopSec=5
 # Quitting Scorpion on purpose ends the session.
 ExecStopPost=/bin/sh -c 'if [ "$SERVICE_RESULT" = success ] && [ "$EXIT_CODE" = exited ] && [ "$EXIT_STATUS" = 0 ]; then labwc --exit; fi'
 StandardOutput=append:%h/.local/state/scorpion/scorpion.log
