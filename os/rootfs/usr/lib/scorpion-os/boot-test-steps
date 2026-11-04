@@ -56,6 +56,19 @@ pkill -USR1 -x swaylock # swaylock's own "unlock"
 sleep 3
 
 # 4. Sleep, then (the test wakes the machine) everything is still there.
+# The live system reads programs and the bundled model out of a compressed
+# image (squashfs, xz), and the kernel can't pause a process in the middle of
+# decompressing (the model engine loading the model refused for 20 s). Wait
+# until reading has (nearly) stopped, at most 3 minutes; an installed system
+# reads from a plain disk and never has to.
+last=$(awk '/^pgpgin /{print $2}' /proc/vmstat)
+for _ in $(seq 1 90); do
+  sleep 2
+  now=$(awk '/^pgpgin /{print $2}' /proc/vmstat)
+  [ $((now - last)) -lt 2048 ] && break # under 1 MB a second
+  last=$now
+done
+show sh -c "echo reading settled \$(cut -d' ' -f1 /proc/uptime) s after boot, \$(awk '/^pgpgin /{print \$2}' /proc/vmstat) KB read"
 show sh -c 'echo "sleep: $(cat /sys/power/state) / $(cat /sys/power/mem_sleep)"'
 # What can't be paused for sleep: processes waiting uninterruptibly (state D).
 show sh -c "ps -eo pid,stat,wchan:32,comm | awk 'NR == 1 || \$2 ~ /D/'"

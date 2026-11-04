@@ -65,10 +65,11 @@ const NOT_BLACK = 0.02;
 function qemu(args, serial) {
   const sock = path.join(tmp, `qmp-${Date.now()}.sock`);
   const p = spawn('qemu-system-x86_64', [
-    // Memory enough for the live system copied into it (toram below: 4.3 GB)
-    // with room to run; and a plain graphics card, whose screen updates don't
-    // stall without a display (virtio's waited on a refresh that never came).
-    ...accel, '-machine', 'q35', '-m', '12288', '-smp', '4',
+    // Memory enough that the live system isn't forever reading programs back
+    // from the (slow, virtual) disc, which keeps it from pausing for sleep;
+    // and a plain graphics card, whose screen updates don't stall without a
+    // display (virtio's waited on a refresh that never came).
+    ...accel, '-machine', 'q35', '-m', '10240', '-smp', '4',
     '-vga', 'std', '-display', 'none',
     '-qmp', `unix:${sock},server=on,wait=off`,
     '-serial', `file:${serial}`,
@@ -86,10 +87,7 @@ const serial = path.join(shots, 'serial-live.log');
 const live = qemu(['-cdrom', iso, '-kernel', path.join(tmp, 'vmlinuz'), '-initrd', path.join(tmp, 'initrd'),
   // Sleep that QEMU can wake (S3, which q35 has off unless asked).
   '-global', 'ICH9-LPC.disable_s3=0',
-  // toram: the system is copied into memory at boot. Read from the virtual
-  // disc instead, programs sat waiting on it (state D) and the machine
-  // couldn't pause them to sleep; real disks and installed systems don't.
-  '-append', 'boot=casper ignore_uuid toram console=ttyS0,115200 scorpion.test systemd.show_status=1 mem_sleep_default=deep'], serial);
+  '-append', 'boot=casper ignore_uuid console=ttyS0,115200 scorpion.test systemd.show_status=1 mem_sleep_default=deep'], serial);
 const limit = Date.now() + (kvm ? 15 : 45) * 60_000;
 let result = 'TIMEOUT';
 let tookPicture = false;
