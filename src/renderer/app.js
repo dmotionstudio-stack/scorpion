@@ -870,7 +870,7 @@ async function openInteract(opts = {}) {
         ? import('./orb.js').then(({ createOrb }) => createOrb($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low' }))
         : import('./constellation.js').then(({ createConstellation }) => createConstellation($('#ix-stage'), { accent: accentColor(), api, toast, errText, settings: () => S.settings }));
       IX.orb = await IX.loading;
-      IX.orb.setFrameCap?.(orbFps());
+      applyOrbCap();
       $('#interact').classList.toggle('ix-constellation', look === 'constellation');
     } else {
       IX.orb.setAccent(accentColor());
@@ -917,7 +917,23 @@ function interactState() {
 // Performance (Settings → General): the orb's frames per second, in front,
 // while the model writes, and behind other windows.
 const PERF_FPS = { full: { on: 60, thinking: 30, away: 12 }, balanced: { on: 40, thinking: 24, away: 10 }, light: { on: 24, thinking: 15, away: 8 } };
-const orbFps = (when = 'on') => (PERF_FPS[S.perf] || PERF_FPS.full)[when];
+// While the hands are followed, the orb leaves room on the graphics chip for
+// the hand model: at most the camera's own 30 frames a second, and fewer
+// pixels. Behind a full orb (2880×1800 on a laptop's built-in graphics) each
+// hand frame took 3 to 6 times longer, and a hand seen late is a slow pointer.
+const HANDS_ORB_FPS = 30;
+const HANDS_ORB_DETAIL = 2 / 3;
+const handsTracked = () => G.on && !G.paused && G.phase === 'on';
+const orbFps = (when = 'on') => {
+  const fps = (PERF_FPS[S.perf] || PERF_FPS.full)[when];
+  return handsTracked() ? Math.min(fps, HANDS_ORB_FPS) : fps;
+};
+// The orb's pace and detail for now (gestures started or stopped).
+function applyOrbCap() {
+  const when = !document.hasFocus() && orbSys?.desktop ? 'away' : interactState() === 'thinking' ? 'thinking' : 'on';
+  IX.orb?.setFrameCap?.(orbFps(when));
+  IX.orb?.setMaxDetail?.(handsTracked() ? HANDS_ORB_DETAIL : 1);
+}
 // Hand tracking: which camera frames are looked at, with a hand in view and without.
 // With no hand in view, every second frame at Full (a hand coming in is seen at once).
 const PERF_STRIDE = { full: { active: 1, idle: 2 }, balanced: { active: 1, idle: 3 }, light: { active: 2, idle: 6 } };
@@ -1117,6 +1133,7 @@ function handAsMouse(r) {
 }
 
 function renderGestures() {
+  applyOrbCap();
   const btn = $('#ix-gestures');
   btn.setAttribute('aria-pressed', String(G.on));
   btn.textContent = G.on ? 'Gestures on' : 'Gestures off';

@@ -488,11 +488,50 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
   let lastFrame = 0;
   let fpsCap = 60;
 
+  // Resolution that follows the graphics chip. Frames coming slower than the
+  // cap mean the chip can't keep up, and everything else on it waits too (hand
+  // tracking took 4 to 6 times longer behind a 2880×1800 orb on a laptop's
+  // built-in graphics): the orb draws fewer pixels until it keeps up, and
+  // more again once it has room (a size that was too much is tried again
+  // only after a minute). The first seconds, while shaders compile, don't count.
+  const FULL_RATIO = renderer.getPixelRatio();
+  let MAX_RATIO = FULL_RATIO; // lower while something else needs the chip (setMaxDetail)
+  const MIN_RATIO = Math.min(FULL_RATIO, 0.75);
+  const fit = { since: 0, frames: 0, good: 0, ceiling: Infinity, ceilingAt: 0, startedAt: 0 };
+  function setRatio(r) {
+    renderer.setPixelRatio(r);
+    composer.setPixelRatio(r);
+  }
+  function adapt(ms) {
+    if (!fit.startedAt) fit.startedAt = ms;
+    if (ms - fit.startedAt < 3000) return;
+    if (!fit.since) { fit.since = ms; fit.frames = 0; return; }
+    fit.frames += 1;
+    const span = ms - fit.since;
+    if (span < 2000) return;
+    const fps = (fit.frames * 1000) / span;
+    fit.since = ms;
+    fit.frames = 0;
+    const ratio = renderer.getPixelRatio();
+    if (ms - fit.ceilingAt > 60_000) fit.ceiling = Infinity;
+    if (fps < fpsCap * 0.8 && ratio > MIN_RATIO) {
+      fit.ceiling = ratio;
+      fit.ceilingAt = ms;
+      fit.good = 0;
+      setRatio(Math.max(MIN_RATIO, ratio * 0.85));
+    } else if (fps >= fpsCap * 0.95 && ratio < MAX_RATIO && (fit.good += 1) >= 5) {
+      fit.good = 0;
+      const up = Math.min(MAX_RATIO, ratio * 1.15);
+      if (up < fit.ceiling * 0.98) setRatio(up);
+    }
+  }
+
   function frame(ms) {
     if (!running) return;
     raf = requestAnimationFrame(frame);
     if (ms - lastFrame < 1000 / fpsCap - 2) return;
     lastFrame = ms;
+    adapt(ms);
     const dt = Math.min(clock.getDelta(), 0.1);
     const t = clock.elapsedTime;
     const ease = 1 - Math.pow(0.02, dt);
@@ -652,7 +691,19 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
       pulseT = 0;
     },
     // Fewer frames while the AI model is busy on the same GPU.
-    setFrameCap(fps) { fpsCap = fps; },
+    setFrameCap(fps) {
+      if (fps === fpsCap) return;
+      fpsCap = fps;
+      // A new pace: measured afresh, and any size may be tried again.
+      Object.assign(fit, { since: 0, good: 0, ceiling: Infinity, startedAt: 0 });
+    },
+    // At most this share of the full resolution (1: all of it), while
+    // something else needs the graphics chip: the hand tracker.
+    setMaxDetail(share = 1) {
+      MAX_RATIO = Math.max(MIN_RATIO, FULL_RATIO * share);
+      if (renderer.getPixelRatio() > MAX_RATIO) setRatio(MAX_RATIO);
+      else if (share >= 1) Object.assign(fit, { good: 0, ceiling: Infinity }); // free to grow back
+    },
     rotateBy,
     zoomBy,
     zoomIn: () => zoomBy(0.65),
@@ -661,6 +712,8 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
     start() {
       if (running) return;
       running = true;
+      fit.since = 0;
+      fit.startedAt = 0;
       clock.getDelta();
       resize();
       raf = requestAnimationFrame(frame);

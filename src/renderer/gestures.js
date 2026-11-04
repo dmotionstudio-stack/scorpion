@@ -290,14 +290,21 @@ export function cameraError(err) {
 }
 
 // The tracker: load() the hand model, then startCamera(). onFrame gets each
-// stepGestures() result.
+// stepGestures() result. The model runs in a worker (gestures-worker.js):
+// each camera frame goes to it, and while it's busy newer frames replace the
+// waiting one, so the hand is never seen late. Where a worker can't run the
+// model, it runs here on the page as before.
 export class HandTracker {
   constructor(video, overlay, { onFrame, color = '#f0a830' }) {
     this.video = video;
     this.overlay = overlay;
     this.onFrame = onFrame;
     this.color = color;
-    this.landmarker = null;
+    this.landmarker = null; // on the page (no worker)
+    this.worker = null;
+    this.delegate = null; // where the model runs: 'GPU' or 'CPU'
+    this.busy = false; // a frame is with the worker
+    this.modelMs = 0; // how long the model takes a frame, smoothed
     this.loading = null;
     this.stream = null;
     this.running = false;
@@ -305,8 +312,25 @@ export class HandTracker {
   }
 
   load(modelUrl) {
-    this.loading ??= this.createLandmarker(modelUrl).catch((err) => { this.loading = null; throw err; });
+    this.loading ??= this.createWorker(modelUrl)
+      .catch(() => { this.worker?.terminate(); this.worker = null; return this.createLandmarker(modelUrl); })
+      .catch((err) => { this.loading = null; throw err; });
     return this.loading;
+  }
+
+  async createWorker(modelUrl) {
+    if (typeof Worker === 'undefined' || typeof VideoFrame === 'undefined') throw new Error('no worker');
+    // A classic worker: MediaPipe's loader (importScripts) needs one.
+    const worker = new Worker(new URL('./gestures-worker.js', import.meta.url));
+    this.worker = worker;
+    const loaded = await new Promise((resolve, reject) => {
+      worker.onmessage = ({ data }) => (data.error ? reject(new Error(data.error)) : resolve(data.loaded));
+      worker.onerror = (e) => reject(new Error(e.message || 'the hand tracker worker failed'));
+      worker.postMessage({ load: { modelUrl: new URL(modelUrl, location.href).href, delegate: 'GPU' } });
+    });
+    this.delegate = loaded;
+    worker.onmessage = ({ data }) => this.result(data);
+    worker.onerror = () => { this.busy = false; };
   }
 
   async createLandmarker(modelUrl) {
@@ -324,9 +348,11 @@ export class HandTracker {
     });
     try {
       this.landmarker = await HandLandmarker.createFromOptions(fileset, options('GPU'));
+      this.delegate = 'GPU';
     } catch {
       // Some graphics drivers refuse the GPU path; the CPU one always works.
       this.landmarker = await HandLandmarker.createFromOptions(fileset, options('CPU'));
+      this.delegate = 'CPU';
     }
   }
 
@@ -338,6 +364,31 @@ export class HandTracker {
     await this.video.play();
     this.running = true;
     this.video.requestVideoFrameCallback(this.frame);
+    this.fitExposure(this.stream).catch(() => {});
+  }
+
+  // In dim light a webcam lengthens each frame's exposure and drops its frame
+  // rate (a laptop's went from 30 to 15 a second, each frame blurred), so the
+  // hand is seen half as often. A camera that allows it keeps its full rate:
+  // the exposure is fixed at the longest that fits a frame, and goes back to
+  // automatic when the camera stops.
+  async fitExposure(stream) {
+    const track = stream.getVideoTracks()[0];
+    const caps = track?.getCapabilities?.() || {};
+    if (!caps.exposureMode?.includes('manual') || !caps.exposureTime) return;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    await wait(1500); // the camera settles first
+    const ticks = this.tick;
+    await wait(2000);
+    if (this.stream !== stream) return;
+    const fps = (this.tick - ticks) / 2;
+    const full = Math.min(caps.frameRate?.max || 30, 60);
+    if (fps >= full * 0.8) return;
+    const step = caps.exposureTime.step || 1;
+    // exposureTime counts 100 µs: a frame at 30 a second has 333 of them.
+    const longest = Math.floor(10000 / full / step) * step;
+    await track.applyConstraints({ advanced: [{ exposureMode: 'manual', exposureTime: Math.max(caps.exposureTime.min, Math.min(caps.exposureTime.max, longest)) }] });
+    this.fixedExposure = track;
   }
 
   // Always-on tracking stays light: with no hand in view for a couple of
@@ -354,15 +405,38 @@ export class HandTracker {
       this.tick += 1;
       const every = this.empty > 60 ? this.stride.idle : this.stride.active;
       if (this.tick % every) return;
-      const result = this.landmarker.detectForVideo(this.video, performance.now());
-      this.empty = result.landmarks.length ? 0 : this.empty + 1;
-      const labels = result.handedness.map((h) => h[0]?.categoryName ?? '?');
-      this.onFrame(stepGestures(this.gestures, result.landmarks, labels), result.landmarks);
-      if (this.preview) this.draw(result.landmarks);
+      const t = performance.now();
+      if (this.worker) {
+        if (this.busy) return; // the worker's still on the last one: this frame waits for the next
+        this.busy = true;
+        const frame = new VideoFrame(this.video, { timestamp: Math.round(t * 1000) });
+        this.worker.postMessage({ frame, t }, [frame]);
+        return;
+      }
+      const result = this.landmarker.detectForVideo(this.video, t);
+      this.modelMs += (performance.now() - t - this.modelMs) * 0.1;
+      this.handle(result.landmarks, result.handedness.map((h) => h[0]?.categoryName ?? '?'), t);
+    } catch {
+      this.busy = false; // a frame that couldn't be taken: the next one tries again
     } finally {
       if (this.running) this.video.requestVideoFrameCallback(this.frame);
     }
   };
+
+  // The worker's answer for a frame.
+  result({ t, landmarks, labels, ms }) {
+    this.busy = false;
+    if (!this.running) return;
+    if (ms != null) this.modelMs += (ms - this.modelMs) * 0.1;
+    this.handle(landmarks, labels, t);
+  }
+
+  // A frame's hands, as gestures. t: when the frame was taken.
+  handle(landmarks, labels, t) {
+    this.empty = landmarks.length ? 0 : this.empty + 1;
+    this.onFrame(stepGestures(this.gestures, landmarks, labels, t), landmarks);
+    if (this.preview) this.draw(landmarks);
+  }
 
   // Skeletons on the mirrored preview; the thumb-index line lights up while pinched.
   draw(hands) {
@@ -394,7 +468,14 @@ export class HandTracker {
   // Turns the camera off; the model stays loaded for next time.
   stopCamera() {
     this.running = false;
-    this.stream?.getTracks().forEach((t) => t.stop());
+    // A fixed exposure back to automatic before the camera is let go, so
+    // other apps get it as it was.
+    const fixed = this.fixedExposure;
+    this.fixedExposure = null;
+    for (const t of this.stream?.getTracks() || []) {
+      if (t === fixed) t.applyConstraints({ advanced: [{ exposureMode: 'continuous' }] }).catch(() => {}).finally(() => t.stop());
+      else t.stop();
+    }
     this.stream = null;
     this.video.srcObject = null;
     this.gestures = createGestures();
