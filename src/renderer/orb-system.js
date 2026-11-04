@@ -508,7 +508,7 @@ export function initOrbSystem(ctx) {
   }
   async function wakeTick() {
     if (!wakeOn()) return;
-    const busy = V.talk || V.starting || V.onText || V.transcribing || speaker.busy || O.approval || O.asking || (S.thread && S.running.has(S.thread.id));
+    const busy = V.talk || V.dictating || V.starting || V.onText || V.transcribing || speaker.busy || O.approval || O.asking || (S.thread && S.running.has(S.thread.id));
     if (busy) { scheduleWake(700); return; }
     O.wakeListening = true;
     renderInteract();

@@ -1,6 +1,7 @@
 // Scorpion's helper on Windows (win-helper.js builds and runs it): lists the
-// open windows, works them, moves the mouse and keeps the taskbar's room as an
-// app bar, answering each request over a pipe in a millisecond or two.
+// open windows, works them, moves the mouse, types (Type what I say) and keeps
+// the taskbar's room as an app bar, answering each request over a pipe in a
+// millisecond or two.
 //
 // One request per line on stdin:  id <TAB> command <TAB> arguments...
 // One answer per line on stdout:  id <TAB> ok|err <TAB> result
@@ -138,6 +139,51 @@ public static class ScorpionHelper {
     bars.Remove(h.ToInt64());
   }
 
+  // ---------- typing (Type what I say) ----------
+  [StructLayout(LayoutKind.Sequential)] struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr dwExtraInfo; }
+  [StructLayout(LayoutKind.Sequential)] struct KEYBDINPUT { public ushort wVk, wScan; public uint dwFlags, time; public IntPtr dwExtraInfo; }
+  [StructLayout(LayoutKind.Explicit)] struct InputUnion { [FieldOffset(0)] public MOUSEINPUT mi; [FieldOffset(0)] public KEYBDINPUT ki; }
+  [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint type; public InputUnion u; }
+  [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint n, INPUT[] inputs, int size);
+
+  static INPUT Key(ushort vk, ushort scan, uint flags) {
+    var i = new INPUT();
+    i.type = 1; // keyboard
+    i.u.ki.wVk = vk; i.u.ki.wScan = scan; i.u.ki.dwFlags = flags;
+    return i;
+  }
+  // Text into whatever has the keyboard, as if typed: each character as
+  // itself (any language), a line break as Enter. Base64 (UTF-8), since a
+  // request is one line.
+  static string Type(string b64) {
+    var text = Encoding.UTF8.GetString(Convert.FromBase64String(b64)).Replace("\r\n", "\n");
+    var keys = new List<INPUT>();
+    foreach (char c in text) {
+      if (c == '\n') { keys.Add(Key(0x0D, 0, 0)); keys.Add(Key(0x0D, 0, 2)); }
+      else { keys.Add(Key(0, c, 4)); keys.Add(Key(0, c, 4 | 2)); } // KEYEVENTF_UNICODE (| KEYUP)
+    }
+    if (keys.Count == 0) return "0";
+    uint sent = SendInput((uint)keys.Count, keys.ToArray(), Marshal.SizeOf(typeof(INPUT)));
+    if (sent == 0) throw new Exception("Windows didn't take the typing (error " + Marshal.GetLastWin32Error() + ")");
+    return (sent / 2).ToString();
+  }
+  // Backspace n times ("delete that").
+  static string Erase(int n) {
+    var keys = new List<INPUT>();
+    for (int k = 0; k < Math.Min(n, 2000); k++) { keys.Add(Key(0x08, 0, 0)); keys.Add(Key(0x08, 0, 2)); }
+    if (keys.Count > 0) SendInput((uint)keys.Count, keys.ToArray(), Marshal.SizeOf(typeof(INPUT)));
+    return "";
+  }
+  // The window in front: hwnd, pid, program path, title.
+  static string Foreground() {
+    var h = GetForegroundWindow();
+    uint pid;
+    GetWindowThreadProcessId(h, out pid);
+    var t = new StringBuilder(512);
+    GetWindowText(h, t, t.Capacity);
+    return h.ToInt64() + "\x1f" + pid + "\x1f" + Clean(ExePath(pid)) + "\x1f" + Clean(t.ToString());
+  }
+
   // ---------- requests ----------
   static IntPtr Hwnd(string s) { return new IntPtr(long.Parse(s)); }
   static int I(string s) { return int.Parse(s); }
@@ -159,6 +205,9 @@ public static class ScorpionHelper {
       case "pos": { POINT q; GetCursorPos(out q); return q.X + " " + q.Y; }
       case "appbar": return AppBar(Hwnd(p[2]), uint.Parse(p[3]), I(p[4]), I(p[5]), I(p[6]), I(p[7]));
       case "appbar-remove": AppBarRemove(Hwnd(p[2])); return "";
+      case "type": return Type(p[2]);
+      case "erase": return Erase(I(p[2]));
+      case "foreground": return Foreground();
       default: throw new Exception("unknown request " + p[1]);
     }
   }

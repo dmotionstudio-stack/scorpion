@@ -35,6 +35,7 @@ import { startShellApi, shellEvent } from './shell-api.js';
 import winctl from './system.js';
 import { createUpdates } from './updates.js';
 import { createAppUpdates } from './app-updates.js';
+import { createDictation } from './dictation.js';
 import * as appFrame from './orb-frame.js';
 import * as appIcons from './app-icons.js';
 import * as constellations from './constellations.js';
@@ -1487,6 +1488,19 @@ function noteWindows(list) {
   // terminal), Scorpion leaves full mode so it can be seen.
   if (process.platform === 'linux' && fullMode && list.some((w) => w.active && !w.self)) setFullMode(false);
 }
+// Type what I say (Windows, dictation.js): Win+Alt+T (or Ctrl+Alt+T) starts
+// or stops it; the page listens and transcribes, the helper types.
+let dictation = null;
+let dictationKey = null;
+function registerDictationKey() {
+  if (dictationKey) { globalShortcut.unregister(dictationKey); dictationKey = null; }
+  const toggle = () => send('dictation:toggle');
+  for (const key of ['Super+Alt+T', 'Control+Alt+T']) {
+    try { if (globalShortcut.register(key, toggle)) { dictationKey = key; break; } } catch { /* taken */ }
+  }
+  return dictationKey;
+}
+
 // The wheel's summon shortcut (Win+Shift+Space, or Alt+Shift+Space): the wheel
 // opens where the pointer is.
 let wheelKey = null;
@@ -2089,6 +2103,16 @@ function registerIpc() {
   h('shell:volume', async (action) => { const r = await winctl.volumeStep(action); showOsd('volume'); return r; });
   // The welcome's internet step (Scorpion OS): online or not, the Wi-Fi
   // networks in range, joining one. Windows and macOS handle their own.
+  // Type what I say: the page's state (the pill shows it), a sentence heard
+  // (typed into the app in front; { stop } when "stop typing" was said), or
+  // the shortcut, for Settings.
+  h('dictation', async ({ state, message, text, ask } = {}) => {
+    if (!dictation) return { supported: false };
+    if (ask) return { supported: true, key: dictationKey };
+    if (text != null) return dictation.heard(text);
+    await dictation.setState(state, message);
+    return {};
+  });
   // Windows and macOS: new versions of Scorpion from GitHub (Settings → General → Updates).
   h('app:updates', ({ action } = {}) => {
     if (!appUpdates) return { supported: false };
@@ -2440,6 +2464,10 @@ app.whenReady().then(async () => {
   });
   registerSummon();
   registerWheelKey();
+  if (process.platform === 'win32') {
+    dictation = createDictation({ BrowserWindow, screen, call: winHelper.call, url: 'scorpion://app/dictate.html', theme: () => store.getSettings().theme });
+    registerDictationKey();
+  }
   if (process.platform === 'win32' && store.getSettings().stage) desktop.setStage(true);
   watchWindows();
   appFrame.initFrame({

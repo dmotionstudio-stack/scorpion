@@ -382,6 +382,18 @@ Choose a workspace folder (the folder button in the top bar), then try:
    listens, answers aloud, then listens again. Say "stop" or click it to end.
 4. The speaker button reads every reply aloud. While it's speaking, click it to stop.
 
+### Type what I say (Windows)
+
+Whatever you say is typed into the app in front: an email, a document, a chat,
+a search box. Click where the words should go, then press **Win+Alt+T** (or
+**Ctrl+Alt+T** when Windows keeps that one), or, with hand gestures on, put your
+thumb and little finger out while another app is in front. A small pill at the
+bottom of the screen shows it's listening. Say "new line" or "new paragraph"
+for a break, "delete that" to take back the last sentence, and "stop typing" to
+finish (it also stops after 20 seconds of quiet, or with the same key or sign).
+It types in the language chosen in **Settings → Voice**, and nothing you say
+leaves the computer. Apps running as administrator don't accept it.
+
 Choose your language, the voice and the speed in **Settings → Voice** (or the
 language menu in Interact). Picking a language with its own voice downloads that
 voice once (~38 MB). The microphone is only used while the microphone or conversation button is listening.

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>Scorpion: type what I say</title>
+  <link rel="stylesheet" href="themes.css">
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 14px/1.3 var(--font-ui, system-ui, sans-serif); }
+    .pill { box-sizing: border-box; height: 52px; margin: 6px 8px; display: flex; align-items: center; gap: 12px; padding: 0 18px;
+      border-radius: 26px; background: color-mix(in srgb, var(--bg, #111) 88%, transparent); color: var(--text, #eee);
+      border: 1px solid color-mix(in srgb, var(--accent, #f5c518) 55%, transparent); box-shadow: 0 6px 24px rgb(0 0 0 / .35); }
+    .dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--accent, #f5c518); }
+    .pill[data-state="listening"] .dot { animation: beat 1.1s ease-in-out infinite; }
+    .pill[data-state="typing"] .dot { animation: beat .45s linear infinite; }
+    .pill[data-state="error"] { border-color: var(--danger, #e5534b); }
+    .pill[data-state="error"] .dot { background: var(--danger, #e5534b); }
+    .words { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hint { flex: none; color: color-mix(in srgb, var(--text, #eee) 60%, transparent); font-size: 12px; }
+    @keyframes beat { 50% { transform: scale(.55); opacity: .55; } }
+    @media (prefers-reduced-motion: reduce) { .dot { animation: none !important; } }
+  </style>
+  <script src="dictate.js"></script>
+</head>
+<body>
+  <div class="pill" id="pill" data-state="listening" role="status" aria-live="polite">
+    <span class="dot" aria-hidden="true"></span>
+    <span class="words" id="words">Listening…</span>
+    <span class="hint" id="hint">say “stop typing”</span>
+  </div>
+</body>
+</html>

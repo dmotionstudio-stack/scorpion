@@ -203,6 +203,9 @@ contextBridge.exposeInMainWorld('scorpion', {
   speak: invoke('voice:speak'),
   micAccess: invoke('voice:micAccess'),
   warmVoice: invoke('voice:warm'),
+  // Type what I say (Windows): the state, a sentence to type, the shortcut.
+  dictation: invoke('dictation'),
+  onDictationToggle: on('dictation:toggle'),
   installLanguageVoice: invoke('voice:installLanguage'),
   setFullScreen: invoke('window:fullscreen'),
   setFullMode: invoke('window:fullMode'),

@@ -5,11 +5,12 @@
 const RATE = 16000; // what Whisper expects
 
 // Records the microphone at 16 kHz. With `vad` on, it waits for speech, then
-// stops by itself after a pause and hands the audio to onEnd.
+// stops by itself after a pause and hands the audio to onEnd; with keepOpen
+// too, it hands each piece over and carries on listening (Type what I say).
 export class Recorder {
   get active() { return Boolean(this.ctx); }
 
-  async start({ vad = true, onEnd, onLevel } = {}) {
+  async start({ vad = true, onEnd, onLevel, keepOpen = false } = {}) {
     if (this.ctx) return;
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -52,7 +53,14 @@ export class Recorder {
       spokenMs += ms;
       quietMs = loud ? 0 : quietMs + ms;
       // ~0.8 s of quiet ends your turn: quick, like a person waiting for you to finish.
-      if (quietMs > 800 || spokenMs > 30000) onEnd?.(this.stop());
+      if (quietMs > 800 || spokenMs > 30000) {
+        if (!keepOpen) { onEnd?.(this.stop()); return; }
+        const pcm = this.take();
+        heard = false;
+        quietMs = 0;
+        spokenMs = 0;
+        onEnd?.(pcm);
+      }
     };
     source.connect(node);
     node.connect(this.ctx.destination);
@@ -66,6 +74,11 @@ export class Recorder {
     for (const t of this.stream.getTracks()) t.stop();
     this.ctx.close().catch(() => {});
     this.ctx = null;
+    return this.take();
+  }
+
+  // The audio recorded so far, and a fresh start for what comes next.
+  take() {
     const length = this.chunks.reduce((n, c) => n + c.length, 0);
     const pcm = new Float32Array(length);
     let at = 0;

@@ -590,6 +590,7 @@ function renderVoiceButtons() {
 
 async function listen(onText) {
   if (V.starting) return;
+  if (V.dictating) stopDictation(); // the microphone is wanted for Scorpion itself
   V.starting = true;
   V.onText = onText;
   try {
@@ -616,21 +617,24 @@ async function heard(pcm) {
   done?.(text);
 }
 
-function micError(err) {
+function micMessage(err) {
   const blocked = err?.name === 'NotAllowedError' || err?.name === 'SecurityError';
-  toast(err?.name === 'MicMuted'
+  return err?.name === 'MicMuted'
     ? `Your microphone is muted. Unmute it (the mic key on your keyboard, or ${IS_MAC ? 'System Settings → Sound → Input' : 'Windows Settings → System → Sound → Input'}) and try again.`
     : blocked
     ? (IS_MAC
       ? 'Scorpion can\'t use the microphone. Allow it in System Settings → Privacy & Security → Microphone.'
       : 'Scorpion can\'t use the microphone. In Windows Settings → Privacy & security → Microphone, turn on microphone access and "Let desktop apps access your microphone".')
-    : err?.name === 'NotFoundError' ? 'No microphone found. Plug one in and try again.' : `Microphone error: ${err?.message || err}`, 9000);
+    : err?.name === 'NotFoundError' ? 'No microphone found. Plug one in and try again.' : `Microphone error: ${err?.message || err}`;
+}
+function micError(err) {
+  toast(micMessage(err), 9000);
   V.talk = false;
   renderVoiceButtons();
 }
 
 async function talkTurn() {
-  if (!V.talk || V.starting || recorder.active || V.transcribing || speaker.busy) return;
+  if (!V.talk || V.dictating || V.starting || recorder.active || V.transcribing || speaker.busy) return;
   if (S.thread && S.running.has(S.thread.id)) return; // resumes when the reply is spoken
   await listen((text) => {
     if (!V.talk) return;
@@ -672,6 +676,68 @@ async function installVoice() {
   V.download = null;
   renderVoiceSettings();
   renderInteract();
+}
+
+// Type what I say (Windows): each sentence you say is transcribed here and
+// typed into the app in front (main/dictation.js), until you say "stop
+// typing", stay quiet for 20 seconds, or press Win+Alt+T (or make the thumb
+// and little finger sign) again. The main process shows a pill meanwhile.
+const DICTATION_QUIET_MS = 20000;
+const D = { watch: 0, queue: Promise.resolve() };
+function toggleDictation() { if (V.dictating) stopDictation(); else startDictation(); }
+async function startDictation() {
+  if (V.dictating) return;
+  if (!S.voice?.installed) { api.dictation({ state: 'error', message: 'Voice needs a one-time download first: Settings → Voice → Install.' }); return; }
+  if (V.talk) stopTalk();
+  orbSys?.stopWake();
+  if (recorder.active) recorder.stop();
+  V.dictating = true;
+  api.warmVoice();
+  dictateTurn();
+}
+function stopDictation(message = '') {
+  if (!V.dictating) return;
+  V.dictating = false;
+  clearInterval(D.watch);
+  if (recorder.active) recorder.stop();
+  api.dictation({ state: message ? 'error' : 'off', message });
+  orbSys?.scheduleWake(600);
+}
+// The microphone stays open the whole time: each pause hands that sentence
+// over (typed in order, while the next one is being said), so nothing said
+// right after a pause is lost to reopening it.
+async function dictateTurn() {
+  if (!V.dictating) return;
+  let lastSound = performance.now();
+  try {
+    if (!(await api.micAccess())) throw Object.assign(new Error('Microphone access denied'), { name: 'NotAllowedError' });
+    await recorder.start({
+      vad: true,
+      keepOpen: true,
+      onEnd: (pcm) => { D.queue = D.queue.then(() => dictateHeard(pcm)); },
+      onLevel: (l) => { if (l > 0.03) lastSound = performance.now(); },
+    });
+  } catch (err) {
+    stopDictation(micMessage(err));
+    return;
+  }
+  api.dictation({ state: 'listening' });
+  clearInterval(D.watch);
+  D.watch = setInterval(() => { if (recorder.active && performance.now() - lastSound > DICTATION_QUIET_MS) stopDictation(); }, 1000);
+}
+async function dictateHeard(pcm) {
+  if (!V.dictating) return;
+  api.dictation({ state: 'typing' });
+  try {
+    const text = await api.transcribe(pcm);
+    if (!V.dictating) return;
+    const r = text ? await api.dictation({ text }) : {};
+    if (r?.stop) { stopDictation(); return; }
+  } catch (err) {
+    stopDictation(errText(err));
+    return;
+  }
+  if (V.dictating) api.dictation({ state: 'listening' });
 }
 
 function stopTalk() {
@@ -1110,6 +1176,9 @@ function handAsMouse(r) {
   if (r.hold === 'fist') orbSys?.togglePause();
   if (orbSys?.paused) return;
   const g = { ...r, hold: r.hold === 'fist' ? null : r.hold };
+  // Thumb and little finger out with another app in front (or while typing):
+  // type what you say into it, instead of talking to Scorpion.
+  if (r.sign === 'shaka' && (V.dictating || !document.hasFocus())) { hands?.flash(V.dictating ? 'Stop typing' : 'Type what I say'); toggleDictation(); g.sign = null; }
   if (IX.open && !orbSys.away) orbSys.handleGlobals(g); else hands?.handleGlobals(g);
   const send = (cmd) => api.handMouse(cmd).catch(() => {});
   if (r.pointer) {
@@ -1832,6 +1901,15 @@ function wire() {
     if (IX.open && !orbSys.away) orbSys.leave(open); else open();
   };
   api.onNavView?.(onNav);
+  api.onDictationToggle?.(toggleDictation);
+  // Settings → Voice: how to start it, with the shortcut Windows gave Scorpion.
+  api.dictation?.({ ask: true }).then((d) => {
+    if (!d?.supported) return;
+    $('#dictation-help').hidden = false;
+    if (d.key) $('#dictation-key').textContent = d.key.replace('Super', 'Win').replace('Control', 'Ctrl');
+    // From Settings, the app in front is Scorpion: a moment to switch to the one to type into.
+    $('#dictation-try').onclick = () => { toast('Click where the words should go: typing starts in 3 seconds.'); setTimeout(startDictation, 3000); };
+  }).catch(() => {});
   palette = initPalette({
     $, esc, api, toast, errText, nav: onNav, live: () => Boolean(S.live),
     ask: (text) => { if (!IX.open) setView('chat'); sendMessage(text); },
