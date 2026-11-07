@@ -35,7 +35,13 @@ async function failure(res) {
 
 export async function listRemoteModels(provider, key, { signal } = {}) {
   const res = await fetch(join(provider.baseUrl, 'models'), { headers: headers(key), signal: signal ?? AbortSignal.timeout(10000) });
-  if (!res.ok) throw await failure(res);
+  if (!res.ok) {
+    const err = await failure(res);
+    if (res.status === 401 || res.status === 403) {
+      err.message = key ? 'The server turned down this API key. Check it and try again.' : 'This server needs an API key. Paste yours in the API key box first.';
+    }
+    throw err;
+  }
   const j = await res.json();
   return (j.data || j.models || []).map((m) => m.id || m.name).filter(Boolean).sort();
 }
