@@ -26,8 +26,18 @@ internet connection to chat.
 - **Multi-step planning**: for bigger tasks the agent writes a plan, then updates it
   live as it works. Plan mode is read-only: it explores and plans but can't change anything.
 - **Specialist agents**: you choose who answers each chat. Scorpion (general) or a
-  specialist: Coder, Researcher, Writer, Data Analyst, File Organizer or Reviewer.
-  You can also create your own agents with their own instructions and tools.
+  specialist: Coder, Researcher, Writer, Data Analyst, File Organizer, PC Cleaner
+  (Windows) or Reviewer. You can also create your own agents with their own
+  instructions and tools.
+- **PC Cleaner** (Windows): finds junk in a fixed list of safe places (your temp
+  folder, crash dumps, npm/pip/uv caches, Edge and Chrome caches, thumbnail
+  caches, and with administrator rights Windows' own temp and log folders), shows
+  what each takes, and deletes only the categories you pick, after you confirm.
+  It never touches Claude or Scorpion session folders, skips files in use, and
+  only reports the Recycle Bin and old installers in Downloads (you empty and
+  delete those yourself). Every clean writes a log under `logs/cleaner` in
+  Scorpion's data folder. For a nightly sweep, make a schedule for this agent
+  (the category "safe" covers what is fit for an unattended run).
 - **Agents working together**: any agent can hand a subtask to a specialist with
   `ask_agent`, for example "write this, then have the Reviewer check it". The
   helper's steps appear nested in the chat.

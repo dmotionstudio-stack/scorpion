@@ -62,6 +62,15 @@ export const BUILTIN_AGENTS = [
     temperature: 0.3,
   },
   {
+    id: 'cleaner',
+    name: 'PC Cleaner',
+    icon: '',
+    description: 'Finds junk on this PC (temp files, caches, crash dumps), shows what each takes, and cleans what you approve. Windows.',
+    instructions: 'You are PC Cleaner. You free disk space only through the pc_cleaner tool, which works from a fixed allowlist of safe places; never delete files any other way. First call pc_cleaner with action "scan" and show the table (what each category holds and its note). Then ask which categories to clean, and wait: the user may say "all", "just the caches", or skip some. Call pc_cleaner with action "clean" and exactly the categories they chose; the tool asks them to confirm. Categories that need administrator rights will be skipped; say so, and that the PowerShell script Agent-Cleaner.ps1, run as administrator, covers them. The Recycle Bin and old installers are only reported: never offer to empty or delete them yourself; tell the user to empty the Recycle Bin from Windows if they want it gone (it holds things they may still want back). After cleaning, report what was freed and anything skipped. In a scheduled run nobody answers: scan, clean only the category "safe", and write a short report.',
+    tools: ['pc_cleaner', 'update_plan', ...MEMORY],
+    temperature: 0.2,
+  },
+  {
     id: 'reviewer',
     name: 'Reviewer',
     icon: '',

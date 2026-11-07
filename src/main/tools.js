@@ -15,6 +15,8 @@ import { describeFaces, insightsStatus } from './face-insights.js';
 import { searchLibrary, itemInfo, tagFile } from './library.js';
 import { getSkill, listSkills, saveSkill } from './skills.js';
 import win from './system.js';
+import { createCleaner, formatBytes } from './pc-cleaner.js';
+import { paths as dataPaths } from './store.js';
 
 // Python is optional; find whichever launcher this computer has, once.
 let pythonCmd;
@@ -707,6 +709,32 @@ export const TOOLS = {
       const target = resolveInside(workspace, p, allowed);
       await win.openPath(target, { reveal: Boolean(reveal) });
       return `${reveal ? 'Showing' : 'Opened'} ${target}.`;
+    },
+  },
+  // The PC cleaner (pc-cleaner.js): sizes first (nothing is deleted), then
+  // the categories the user chose, each only inside its allowlisted places.
+  pc_cleaner: {
+    access: 'system', requires: 'windows', noWorkspace: true, changes: true,
+    approve: ({ action }) => (action === 'clean' ? true : false),
+    describeAction: ({ action, categories }) => (action === 'clean' ? `delete junk files in: ${categories || '(nothing chosen)'}` : 'measure the junk on this PC (nothing is deleted)'),
+    description: 'Clean junk off this PC. action "scan": how much each category holds (nothing is deleted). action "clean": delete what is in the categories listed in categories (comma-separated ids, or "safe" for the ones fit for an unattended run); it asks the user first. Categories that need administrator rights are skipped when Scorpion is not elevated; the Recycle Bin and old installers are only reported. Use "" for categories when scanning.',
+    params: { type: 'object', properties: { action: { enum: ['scan', 'clean'] }, categories: { type: 'string' } } },
+    run({ action = 'scan', categories = '' }) {
+      const cleaner = createCleaner({ logDir: path.join(dataPaths.data, 'logs', 'cleaner') });
+      const size = (n) => formatBytes(n);
+      if (action !== 'clean') {
+        const { rows, total } = cleaner.scan(categories);
+        const note = (r) => (r.reportOnly ? 'reported only' : r.needsAdmin ? 'needs administrator' : r.unattended ? 'safe for unattended' : 'ok');
+        const table = rows.map((r) => `| ${r.id} | ${r.name} | ${size(r.bytes)} | ${note(r)} |`);
+        const old = rows.find((r) => r.id === 'StaleInstallers' && r.bytes);
+        const list = old ? ['', 'Old installers in Downloads (never deleted), biggest first:', ...cleaner.staleInstallers().map((x) => `- ${x.path} (${size(x.bytes)})`)] : [];
+        return ['| id | what | size | note |', '|---|---|---|---|', ...table, '', `Reclaimable now: ${size(total)}.`, ...list].join('\n');
+      }
+      const r = cleaner.clean(categories);
+      const rows = r.rows.map((x) => `- ${x.id}: ${x.status}${x.bytes ? `, freed ${size(x.bytes)}` : ''}`);
+      const disk = r.startFree != null && r.endFree != null ? ` Disk free: ${(r.startFree / 1073741824).toFixed(1)} GB to ${(r.endFree / 1073741824).toFixed(1)} GB.` : '';
+      const skipped = r.failures ? `${r.failures} item(s) were in use or blocked and skipped.` : 'Nothing was skipped.';
+      return [...rows, '', `Freed about ${size(r.freed)}.${disk} ${skipped}${r.log ? ` Log: ${r.log}` : ''}`].join('\n');
     },
   },
   recycle_path: {
