@@ -41,23 +41,14 @@
       <!-- SETTINGS TABS (shown on every settings page) -->
       <header class="settings-header hidden" id="settings-header">
         <button class="btn small ghost" id="back-to-chat">← Back</button>
-        <nav class="stabs" aria-label="Settings sections">
-          <button class="stab" data-view="settings">General</button>
-          <button class="stab" data-view="models">Models</button>
-          <button class="stab" data-view="docs">Documents</button>
-          <button class="stab" data-view="agents">Agents</button>
-          <button class="stab" data-view="skills">Skills</button>
-          <button class="stab" data-view="personality">Personality</button>
-          <button class="stab" data-view="schedules">Schedules</button>
-          <button class="stab" data-view="memory">Memory</button>
-          <button class="stab" data-view="people">People</button>
-          <button class="stab" data-view="connections">Connections</button>
-        </nav>
+        <!-- Filled from settings-nav.js: a few groups, and a second row for a group's pages -->
+        <nav class="stabs" id="settings-groups" aria-label="Settings sections"></nav>
+        <nav class="stabs sub" id="settings-pages" aria-label="Pages in this section"></nav>
       </header>
       <!-- CHAT -->
       <section class="view" id="view-chat">
         <header class="topbar">
-          <select id="agent-picker" class="agent-picker" aria-label="Agent for this chat"></select>
+          <span class="agent-tag hidden" id="agent-tag"></span>
           <div class="model-switch" title="Model used for every chat">
             <span class="status" id="model-status"></span>
             <select id="model-picker" aria-label="Model"></select>
@@ -79,7 +70,8 @@
         </div>
         <form class="composer" id="composer">
           <div class="composer-box">
-            <textarea id="input" rows="1" placeholder="Ask anything, or give the agent a task…  (Enter to send, Shift+Enter for a new line)"></textarea>
+            <div class="slash-menu hidden" id="slash-menu" role="listbox" aria-label="Agents"></div>
+            <textarea id="input" rows="1" placeholder="Ask anything, or type / to run an agent…  (Enter to send, Shift+Enter for a new line)"></textarea>
             <div class="composer-bar">
               <div class="modes" id="modes" role="radiogroup" aria-label="Mode">
                 <button type="button" role="radio" data-mode="chat" title="Just talk. No file or command tools.">Chat</button>
@@ -130,7 +122,7 @@
       <section class="view hidden" id="view-agents">
         <div class="page">
           <h1>Agents</h1>
-          <p class="muted">Specialists with their own instructions and tools. Pick one for a chat from the top bar. Any agent can also hand a subtask to another specialist and use its answer.</p>
+          <p class="muted">Specialists with their own instructions and tools. In a chat, type <b>/</b> and an agent's name to run it, for example <b>/coder fix the failing test</b>; <b>/scorpion</b> goes back to the general assistant. Any agent can also hand a subtask to another specialist and use its answer.</p>
           <div class="row"><button class="btn primary" id="new-agent">＋ New agent</button></div>
           <form class="editor hidden" id="agent-editor">
             <h2 id="agent-editor-title">New agent</h2>

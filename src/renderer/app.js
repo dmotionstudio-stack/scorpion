@@ -16,6 +16,8 @@ import { initOrbBubbles } from './orb-bubbles-ui.js';
 import { initPalette } from './palette.js';
 import { initSystemSettings } from './settings-system.js';
 import { initAppUpdates } from './settings-app-updates.js';
+import { commandOf, parseAgentCommand, suggestAgents } from './agent-commands.js';
+import { SETTINGS_GROUPS, groupOf } from './settings-nav.js';
 
 const api = window.scorpion;
 const $ = (sel) => document.querySelector(sel);
@@ -77,7 +79,7 @@ function setView(view) {
   if (inSettings) S.lastSettingsView = view; else S.lastMainView = view;
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle('hidden', v !== view);
   $('#settings-header').classList.toggle('hidden', !inSettings);
-  document.querySelectorAll('.stab').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+  if (inSettings) renderSettingsNav(view);
   $('#open-settings').classList.toggle('active', inSettings);
   $('#open-library').classList.toggle('active', view === 'library');
   $('#open-home').classList.toggle('active', view === 'home');
@@ -85,6 +87,17 @@ function setView(view) {
   if (view === 'home') home?.show();
   if (view === 'settings') desktopUi?.renderSettings();
   extras?.show(view);
+}
+// The tab bar shows a few groups; a group with several pages shows them in a second
+// row. A group's tab opens the page you last had open in it.
+function renderSettingsNav(view) {
+  const group = groupOf(view);
+  if (group) (S.groupView ||= {})[group.id] = view;
+  $('#settings-groups').innerHTML = SETTINGS_GROUPS.map((g) =>
+    `<button class="stab${g === group ? ' active' : ''}" data-view="${S.groupView?.[g.id] || g.views[0][0]}">${g.label}</button>`).join('');
+  const pages = group && group.views.length > 1 ? group.views : [];
+  $('#settings-pages').innerHTML = pages.map(([v, label]) => `<button class="stab${v === view ? ' active' : ''}" data-view="${v}">${label}</button>`).join('');
+  $('#settings-pages').classList.toggle('hidden', !pages.length);
 }
 let extras = null; // Skills, Personality, Connections and the Memory page extras
 let home = null; // the home screen (home-ui.js)
@@ -106,9 +119,14 @@ function renderTopbar() {
   $('#workspace-chip').title = ws ? `${ws}\nThis chat's workspace. Click to choose another folder.` : 'Choose a folder the agent can work in';
   $('#auto-approve').checked = !!S.settings.autoApprove;
   renderModes();
+  // Agents are run with a slash in the chat box, so the bar only says who is answering
+  // when it isn't the general Scorpion.
   const current = S.thread?.agentId || (S.thread ? 'scorpion' : S.newChatAgent);
-  $('#agent-picker').innerHTML = S.agents.map((a) => `<option value="${esc(a.id)}"${a.id === current ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
-  $('#agent-picker').title = agentById(current).description || '';
+  const agent = agentById(current);
+  const tag = $('#agent-tag');
+  tag.classList.toggle('hidden', agent.id === 'scorpion');
+  tag.innerHTML = `${esc(agent.name)} <span>/scorpion to go back</span>`;
+  tag.title = agent.description || '';
 }
 
 // Model switcher: every chat model in Scorpion's library (and bundled ones).
@@ -1753,9 +1771,31 @@ async function newThread(agentId, workspaceId = null) {
   $('#input').focus();
 }
 
+// Makes `agent` this chat's agent (or the next chat's, when no chat has started).
+async function setChatAgent(agent) {
+  if (!S.thread || !S.thread.messages.length) S.newChatAgent = agent.id;
+  if (S.thread) {
+    if (S.running.has(S.thread.id)) { toast('Wait for the current answer to finish.'); return false; }
+    S.thread = await api.setThreadAgent({ id: S.thread.id, agentId: agent.id });
+  }
+  renderTopbar();
+  return true;
+}
+
 async function sendMessage(text, { spoken = false } = {}) {
   text = text.trim();
   if (!text) return;
+  // "/coder fix this" runs that agent; "/coder" alone just switches to it.
+  const command = parseAgentCommand(text, S.agents);
+  if (command) {
+    if (!(await setChatAgent(command.agent))) return;
+    if (!command.rest) {
+      $('#input').value = ''; autosize(); renderSlashMenu();
+      toast(`${command.agent.name} is answering in this chat.${command.agent.id === 'scorpion' ? '' : ' Type /scorpion to go back.'}`, 3500);
+      return;
+    }
+    text = command.rest;
+  }
   if (IX.open) $('#ix-you').textContent = text;
   if (!S.settings.chatModel) { toast('Pick or download a chat model first.'); setView('models'); return; }
   if (!S.thread) await newThread();
@@ -1763,7 +1803,7 @@ async function sendMessage(text, { spoken = false } = {}) {
   if (S.running.has(thread.id)) return;
   thread.messages.push({ role: 'user', text }, { role: 'assistant', blocks: [], agentId: thread.agentId, model: S.engine?.chatModelName || modelName(S.settings.chatModel) });
   S.running.add(thread.id);
-  $('#input').value = ''; autosize();
+  $('#input').value = ''; autosize(); renderSlashMenu();
   renderThreads(); renderModelSwitch(); renderMessages();
   // In Interact with FACE on, the reply knows who is talking.
   const speakerName = IX.open && FX.on ? FX.speaker?.name || null : null;
@@ -1817,6 +1857,27 @@ function autosize() {
   t.style.height = `${Math.min(t.scrollHeight, 220)}px`;
 }
 
+// The menu of agents that opens above the chat box while a "/command" is typed.
+const slash = { items: [], index: 0, dismissed: false };
+function renderSlashMenu() {
+  const menu = $('#slash-menu');
+  const items = slash.dismissed ? null : suggestAgents($('#input').value, S.agents);
+  slash.items = items || [];
+  if (!items) { menu.classList.add('hidden'); return; }
+  slash.index = Math.min(slash.index, Math.max(0, items.length - 1));
+  menu.innerHTML = items.length
+    ? items.map((a, i) => `<div class="slash-item${i === slash.index ? ' active' : ''}" role="option" aria-selected="${i === slash.index}" data-i="${i}"><b>/${esc(commandOf(a))}</b><span>${esc(a.description || a.name)}</span></div>`).join('')
+    : '<div class="slash-empty">No agent has that name. Enter sends it as plain text.</div>';
+  menu.classList.remove('hidden');
+}
+function pickSlash(i) {
+  const agent = slash.items[i];
+  if (!agent) return;
+  $('#input').value = `/${commandOf(agent)} `;
+  autosize(); renderSlashMenu();
+  $('#input').focus();
+}
+
 async function setSetting(patch) {
   S.settings = await api.updateSettings(patch);
   renderAll();
@@ -1825,7 +1886,7 @@ async function setSetting(patch) {
 // ---------- wiring ----------
 function wire() {
   $('#new-chat').onclick = newThread;
-  document.querySelectorAll('.stab').forEach((b) => (b.onclick = () => setView(b.dataset.view)));
+  $('#settings-header').addEventListener('click', (e) => { const b = e.target.closest('.stab'); if (b) setView(b.dataset.view); });
   $('#open-settings').onclick = () => (MAIN_VIEWS.includes(S.view) ? setView(S.lastSettingsView || 'settings') : setView(S.lastMainView || 'home'));
   $('#back-to-chat').onclick = () => setView(S.lastMainView || 'home');
   $('#open-home').onclick = () => setView('home');
@@ -1847,9 +1908,29 @@ function wire() {
 
   $('#composer').onsubmit = (e) => { e.preventDefault(); sendMessage($('#input').value); };
   $('#input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage($('#input').value); }
+    const open = slash.items.length && !$('#slash-menu').classList.contains('hidden');
+    if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      slash.index = (slash.index + (e.key === 'ArrowDown' ? 1 : slash.items.length - 1)) % slash.items.length;
+      renderSlashMenu();
+      return;
+    }
+    if (open && e.key === 'Tab') { e.preventDefault(); pickSlash(slash.index); return; }
+    if (open && e.key === 'Escape') { e.preventDefault(); slash.dismissed = true; renderSlashMenu(); return; }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      // Enter on a half-typed command completes it; on a whole one, it runs.
+      const picked = open && slash.items[slash.index];
+      if (picked && $('#input').value.trim().toLowerCase() !== `/${commandOf(picked)}`) pickSlash(slash.index);
+      else sendMessage($('#input').value);
+    }
   });
-  $('#input').addEventListener('input', autosize);
+  $('#input').addEventListener('input', () => { autosize(); slash.dismissed = false; slash.index = 0; renderSlashMenu(); });
+  $('#slash-menu').addEventListener('mousedown', (e) => {
+    e.preventDefault(); // keep the cursor in the chat box
+    const item = e.target.closest('.slash-item');
+    if (item) pickSlash(Number(item.dataset.i));
+  });
   $('#stop').onclick = () => { speaker.stop(); if (S.thread) api.stop(S.thread.id); };
   wireVoice();
   wireInteract();
@@ -2091,18 +2172,6 @@ function wire() {
   $('#thinking').onchange = (e) => setSetting({ thinking: e.target.value });
   $('#voice-model').onchange = (e) => setSetting({ voiceModel: e.target.value });
   $('#save-prompt').onclick = () => { setSetting({ systemPrompt: $('#system-prompt').value }); toast('Saved.'); };
-
-  // agent picker: switches this chat's agent, or sets the agent for the next chat
-  $('#agent-picker').onchange = async (e) => {
-    const agentId = e.target.value;
-    if (!S.thread || !S.thread.messages.length) S.newChatAgent = agentId;
-    if (S.thread) {
-      if (S.running.has(S.thread.id)) { toast('Wait for the current answer to finish.'); renderTopbar(); return; }
-      S.thread = await api.setThreadAgent({ id: S.thread.id, agentId });
-    }
-    renderTopbar();
-    toast(`${agentById(agentId).name} is answering in this chat.`, 2500);
-  };
 
   $('#view-agents').onclick = async (e) => {
     const d = e.target.dataset;

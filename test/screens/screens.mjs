@@ -33,6 +33,8 @@ const SCREENS = [
   { name: 'settings', go: `document.querySelector('#open-settings').click(); document.querySelector('[data-view=settings]').click()` },
   { name: 'models', go: `document.querySelector('#open-settings').click(); document.querySelector('[data-view=models]').click()` },
   { name: 'memory', go: `document.querySelector('#open-settings').click(); document.querySelector('[data-view=memory]').click()` },
+  { name: 'agents', go: `document.querySelector('#open-settings').click(); document.querySelector('[data-view=agents]').click()` },
+  { name: 'chat-agents', go: `document.querySelector('#new-chat').click(); const i = document.querySelector('#input'); i.focus(); i.value = '/'; i.dispatchEvent(new Event('input'))` },
   { name: 'palette', go: `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })); const i = document.querySelector('#pal-input'); i.value = 'se'; i.dispatchEvent(new Event('input'))` },
   { name: 'home-bone', go: `document.documentElement.dataset.theme = 'bone'` },
   { name: 'edge', go: `location.href = 'scorpion://app/edge.html'`, size: [76, H], settle: 2500 },

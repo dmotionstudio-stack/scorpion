@@ -25,10 +25,12 @@ internet connection to chat.
   Changes and commands wait for your approval unless you turn on Auto-approve.
 - **Multi-step planning**: for bigger tasks the agent writes a plan, then updates it
   live as it works. Plan mode is read-only: it explores and plans but can't change anything.
-- **Specialist agents**: you choose who answers each chat. Scorpion (general) or a
-  specialist: Coder, Researcher, Writer, Data Analyst, File Organizer, PC Cleaner
-  (Windows) or Reviewer. You can also create your own agents with their own
-  instructions and tools.
+- **Specialist agents**: run one from the chat box with a slash. Type `/` to see the
+  agents, then for example `/coder fix the failing test`; `/coder` on its own makes
+  Coder answer the rest of the chat, and `/scorpion` goes back to the general
+  assistant. The specialists are Coder, Researcher, Writer, Data Analyst, File
+  Organizer, PC Cleaner (Windows) and Reviewer. You can also create your own agents
+  with their own instructions and tools; they run by name (`/my-agent`).
 - **PC Cleaner** (Windows): finds junk in a fixed list of safe places (your temp
   folder, crash dumps, npm/pip/uv caches, Edge and Chrome caches, thumbnail
   caches, and with administrator rights Windows' own temp and log folders), shows

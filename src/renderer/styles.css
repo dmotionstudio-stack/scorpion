@@ -170,7 +170,7 @@ code, pre { font-family: var(--mono); }
 .field label.toggle { display: flex; font-weight: 400; margin-bottom: 6px; }
 
 /* agents & schedules */
-.agent-picker { background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; font-weight: 600; cursor: pointer; max-width: 200px; }
+
 .agent-icon { font-size: 18px; }
 .editor { background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); padding: 16px 18px; margin: 12px 0 18px; display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
 .editor h2 { margin: 0; }
@@ -198,7 +198,7 @@ code, pre { font-family: var(--mono); }
 .model-switch .status.loading { background: var(--warn); animation: pulse .8s infinite alternate; }
 .model-switch .status.error { background: var(--danger); }
 .model-switch select { background: transparent; border: 0; font-weight: 600; padding: 3px 4px; max-width: 220px; cursor: pointer; outline: none; }
-.model-switch select option, .agent-picker option { background: var(--panel); color: var(--text); }
+.model-switch select option { background: var(--panel); color: var(--text); }
 .model-note { font-size: 12px; color: var(--warn); white-space: nowrap; padding-right: 6px; }
 .composer-box { flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
 .composer-box:focus-within { border-color: var(--accent); }
@@ -932,3 +932,19 @@ html.full-wall .sidebar { background: color-mix(in srgb, var(--panel) 62%, trans
 .dictation-help[hidden] { display: none; }
 .dictation-help .row { justify-content: space-between; }
 .dictation-help kbd { padding: 1px 6px; border: 1px solid var(--border); border-radius: 5px; font: inherit; font-size: 0.92em; background: var(--panel-2); }
+
+/* Settings: a second row of pages under the group tabs */
+.stabs.sub { flex-basis: 100%; order: 3; gap: 6px; padding: 0 0 8px; }
+.stabs.sub .stab { border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+.stabs.sub .stab.active { background: var(--panel-2); border-color: var(--accent); }
+
+/* The chat's agent: shown only when it isn't Scorpion, changed with /agent in the chat box */
+.agent-tag { background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; font-weight: 600; white-space: nowrap; }
+.agent-tag span { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+.composer-box { position: relative; }
+.slash-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); max-height: 260px; overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, .35); padding: 4px; z-index: 5; }
+.slash-item { display: flex; gap: 12px; align-items: baseline; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+.slash-item b { flex: none; min-width: 110px; }
+.slash-item span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slash-item.active, .slash-item:hover { background: var(--panel-2); }
+.slash-empty { padding: 8px 10px; color: var(--muted); font-size: 13px; }
