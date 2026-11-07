@@ -106,6 +106,7 @@
       ],
       "icon": "resources/icon.png",
       "files": [
+        "!.claude/**",
         "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**",
         "!node_modules/onnxruntime-node/bin/napi-v3/win32/arm64/**",
         "!node_modules/@node-llama-cpp/linux-*/**",
@@ -129,6 +130,7 @@
       "entitlements": "resources/entitlements.mac.plist",
       "entitlementsInherit": "resources/entitlements.mac.plist",
       "files": [
+        "!.claude/**",
         "!node_modules/onnxruntime-node/bin/napi-v3/win32/**",
         "!node_modules/@node-llama-cpp/linux-*/**",
         "!node_modules/onnxruntime-node/bin/napi-v3/linux/**"
@@ -165,6 +167,7 @@
         }
       },
       "files": [
+        "!.claude/**",
         "!node_modules/onnxruntime-node/bin/napi-v3/win32/**",
         "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**",
         "!node_modules/onnxruntime-node/bin/napi-v3/linux/arm64/**",
