@@ -51,20 +51,57 @@ test('the dot floats while Scorpion is away, above the taskbar, and the wheel gr
 });
 
 test("Stage's strip slides in at the left edge and out when the pointer leaves", opts, async () => {
-  shell.setStage(true);
-  cursor = { x: 0, y: 300 };
-  await new Promise((r) => setTimeout(r, 200));
-  const strip = made.find((w) => w.url.endsWith('stage.html'));
-  assert.ok(strip && strip.visible);
-  assert.equal(strip.opts.focusable, false); // the window in front stays in front
-  assert.deepEqual(strip.bounds, { x: 0, y: 0, width: 230, height: 852 });
-  assert.equal(strip.sent.at(-1)[0], 'stage:show');
-  cursor = { x: 900, y: 300 };
-  await new Promise((r) => setTimeout(r, 450));
-  assert.equal(strip.sent.at(-1)[0], 'stage:hide');
-  assert.equal(strip.visible, false);
-  shell.setStage(false);
-  assert.ok(strip.destroyed);
+  try {
+    shell.setStage(true);
+    cursor = { x: 0, y: 300 };
+    await new Promise((r) => setTimeout(r, 200));
+    const strip = made.find((w) => w.url.endsWith('stage.html'));
+    assert.ok(strip && strip.visible);
+    assert.equal(strip.opts.focusable, false); // the window in front stays in front
+    // Only the band where the cards sit (three cards' worth, centered), not the whole edge.
+    assert.deepEqual(strip.bounds, { x: 0, y: 141, width: 230, height: 570 });
+    assert.equal(strip.sent.at(-1)[0], 'stage:show');
+    cursor = { x: 900, y: 300 };
+    await new Promise((r) => setTimeout(r, 450));
+    assert.equal(strip.sent.at(-1)[0], 'stage:hide');
+    assert.equal(strip.visible, false);
+    shell.setStage(false);
+    assert.ok(strip.destroyed);
+  } finally { shell.setStage(false); }
+});
+
+test("Stage comes in only level with its cards: the rest of the edge is the apps'", opts, async () => {
+  try {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    shell.setStage(true);
+    shell.stageSized(300); // the page: its cards (with padding) are 300 tall
+    // The band is centered on the work area (852 tall): y 276 to 576.
+    for (const y of [0, 100, 270, 580, 700, 851]) {
+      cursor = { x: 0, y };
+      await wait(200);
+      assert.equal(made.filter((w) => w.url.endsWith('stage.html')).at(-1)?.visible ?? false, false, `the edge at y ${y} is not Stage's`);
+    }
+    cursor = { x: 0, y: 280 };
+    await wait(200);
+    const strip = made.filter((w) => w.url.endsWith('stage.html')).at(-1);
+    assert.ok(strip.visible);
+    assert.deepEqual(strip.bounds, { x: 0, y: 276, width: 230, height: 300 });
+    // Cards that need more room (or fewer): the band follows, never past the screen or under the minimum.
+    shell.stageSized(5000);
+    assert.deepEqual(strip.bounds, { x: 0, y: 0, width: 230, height: 852 });
+    shell.stageSized(80);
+    assert.deepEqual(strip.bounds, { x: 0, y: 306, width: 230, height: 240 });
+    shell.stageSized('nonsense'); // ignored
+    assert.deepEqual(strip.bounds, { x: 0, y: 306, width: 230, height: 240 });
+    // Out along the edge, well past the band: it goes (a little past it, it stays).
+    cursor = { x: 0, y: 580 };
+    await wait(450);
+    assert.equal(strip.sent.at(-1)[0], 'stage:show');
+    cursor = { x: 0, y: 700 };
+    await wait(450);
+    assert.equal(strip.sent.at(-1)[0], 'stage:hide');
+    assert.equal(strip.visible, false);
+  } finally { shell.setStage(false); }
 });
 
 test('the dot stays where it was dropped, whole inside the screen', () => {
@@ -155,10 +192,11 @@ test('the rail on the left: it floats there, and Stage comes in from the right',
   assert.deepEqual(rail.sent.at(-1), ['shell:rail', { hidden: false }]);
   shell.setFloatingDot(false);
   shell.setStage(true);
+  shell.stageSized(570); // three cards' worth
   cursor = { x: 1599, y: 300 };
   await new Promise((r) => setTimeout(r, 200));
   const strip = made.filter((w) => w.url.endsWith('stage.html')).at(-1);
-  assert.deepEqual(strip.bounds, { x: 1600 - 230, y: 0, width: 230, height: 852 });
+  assert.deepEqual(strip.bounds, { x: 1600 - 230, y: 141, width: 230, height: 570 });
   shell.setStage(false);
 });
 

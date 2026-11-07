@@ -46,6 +46,12 @@ let railHeld = 0; // until when it stays (a menu from it is open)
 // in from the screen's left edge when the pointer touches it (stage.html).
 // A window just minimized flies into it from the middle of the screen.
 const STAGE_W = 230;
+// Stage takes only the band of the edge where its cards sit (centered, as
+// the cards are): the pointer brings it in there and nowhere else along the
+// edge, and the rest of the edge stays the apps'. The page says how tall its
+// cards are (stageSized); until it has, three cards' worth.
+const STAGE_MIN_H = 240;
+let stageSpan = 570;
 // From the right edge instead while the taskbar is on the left.
 const sideForStage = () => (railEdge() === 'left' ? 'right' : 'left');
 let stageSide = 'left';
@@ -423,8 +429,8 @@ export function refreshRail() {
 
 // ---------- Stage ----------
 // The pointer at the screen's left edge (the right, with the taskbar on the
-// left; stage.js follows the same setting) slides the strip in; moving well
-// away from it slides it out. The pointer is only watched while Stage (or
+// left; stage.js follows the same setting), level with where the cards sit,
+// slides the strip in; moving well away from it slides it out. The pointer is only watched while Stage (or
 // the taskbar's auto-hide) is on. On Scorpion OS the shell host shows the
 // strip as a panel and watches the edge itself.
 export function setStage(on) {
@@ -440,10 +446,20 @@ function makeStage() {
   stage.loaded = new Promise((resolve) => stage.webContents.once('did-finish-load', resolve));
   stage.on('closed', () => { stage = null; stageShown = false; arriving = false; });
 }
+const stageBandHeight = (a) => Math.min(a.height, Math.max(STAGE_MIN_H, stageSpan));
 const stripBounds = () => {
   const a = deps.screen.getPrimaryDisplay().workArea;
-  return { x: stageSide === 'right' ? a.x + a.width - STAGE_W : a.x, y: a.y, width: STAGE_W, height: a.height };
+  const h = stageBandHeight(a);
+  return { x: stageSide === 'right' ? a.x + a.width - STAGE_W : a.x, y: a.y + Math.round((a.height - h) / 2), width: STAGE_W, height: h };
 };
+// The page's cards are this tall now (CSS pixels, with their padding).
+export function stageSized(height) {
+  const h = Math.round(Number(height));
+  if (!Number.isFinite(h) || h <= 0) return;
+  stageSpan = h;
+  // Not mid-flight: the window covers the screen then, and is fitted after.
+  if (stageOn && stageShown && !arriving && stage && !stage.isDestroyed()) stage.setBounds(stripBounds());
+}
 async function showStage() {
   if (!stage || stage.isDestroyed()) makeStage();
   stageSide = sideForStage();
@@ -505,11 +521,15 @@ function lookAtPointer() {
   const a = d.workArea;
   const r = d.bounds;
   if (stageOn && !arriving) {
-    const level = p.y >= a.y && p.y < a.y + a.height;
+    // Level with the band where the cards are (a little more once it's
+    // out, so the pointer drifting along the edge doesn't lose it).
+    const band = stripBounds();
+    const level = p.y >= band.y && p.y < band.y + band.height;
+    const near = p.y >= band.y - 40 && p.y < band.y + band.height + 40;
     // How far in from Stage's edge the pointer is.
     const inward = sideForStage() === 'right' ? a.x + a.width - 1 - p.x : p.x - a.x;
     if (!stageShown && level && inward <= 1) showStage().catch(() => {});
-    else if (stageShown && Date.now() > stageStay && (inward > STAGE_W + 40 || !level)) hideStage();
+    else if (stageShown && Date.now() > stageStay && (inward > STAGE_W + 40 || !near)) hideStage();
   }
   if (hidesNow()) {
     // How far in from the taskbar's outer edge the pointer is (beyond it,

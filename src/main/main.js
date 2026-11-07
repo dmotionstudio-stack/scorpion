@@ -2033,6 +2033,8 @@ function registerIpc() {
   // Stage: on or off (the wheel, Settings, the palette), and a window picked
   // from its strip comes forward while the one in front steps aside.
   h('shell:stage', (on) => setStage(on));
+  // The strip's page says how tall its cards are: Stage takes just that band of the edge.
+  h('shell:stageSize', (height) => desktop.stageSized(height));
   // The summon dot dragged (each move, then where it's dropped, which is
   // kept), asked where it is, or put back in its corner.
   // The taskbar's inner edge dragged: its size, kept when let go (the room it keeps follows).

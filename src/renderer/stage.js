@@ -15,11 +15,21 @@ const strip = document.getElementById('st-strip');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 let busy = false;
 
+// Tells Windows how tall the cards are (with the strip's padding), so Stage
+// takes only that band of the screen's edge (shell.js).
+function reportSize() {
+  const first = strip.firstElementChild;
+  const last = strip.lastElementChild;
+  if (!first || window.scorpionHost) return;
+  api.shellStageSize?.(Math.ceil(last.offsetTop + last.offsetHeight - first.offsetTop + 48)).catch?.(() => {});
+}
+
 // minimized: the window that just flew in is listed even though it's away.
 async function fill() {
   const list = stageWindows(await api.shellWindows().catch(() => []));
   if (!list.length) {
     strip.innerHTML = '<div class="st-empty">No other windows open</div>';
+    reportSize();
     return;
   }
   strip.innerHTML = list.map((w, i) => {
@@ -30,6 +40,7 @@ async function fill() {
       <span class="st-kind">${esc(kindOf(w))}${w.minimized ? ' · minimized' : ''}</span>
     </button>`;
   }).join('');
+  reportSize();
   for (const w of list) {
     api.constPreview({ hwnd: w.hwnd }).then((src) => {
       const el = strip.querySelector(`[data-thumb="${CSS.escape(w.hwnd)}"]`);

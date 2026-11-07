@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   // out, and a window just minimized flying into it.
   shellStage: invoke('shell:stage'),
   shellStagePick: invoke('shell:stagePick'),
+  shellStageSize: invoke('shell:stageSize'),
   onStageShow: on('stage:show'),
   onStageHide: on('stage:hide'),
   onStageArrive: on('stage:arrive'),
