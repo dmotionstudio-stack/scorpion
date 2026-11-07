@@ -157,7 +157,8 @@ form.addEventListener('submit', async (e) => {
       location.href = data.url;
       return;
     }
-    if (data.demo) {
+    // No server behind the pages (a static copy of the site) answers 404.
+    if (data.demo || res.status === 404) {
       showAlert('info', 'Payments are not switched on for this site yet. Once the store owner adds a Stripe key, this button opens the secure payment page.');
     } else {
       showAlert('error', data.error || 'Something went wrong. Please try again.');

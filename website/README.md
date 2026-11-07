@@ -81,6 +81,18 @@ The redirect reveals the final file address, so anyone a buyer shares it with
 can download too. If that matters, host the files somewhere that issues
 short-lived signed links (S3, R2) and sign them in `api/download.js`.
 
+## Deploy (Hugging Face Space)
+
+The site runs as a Docker Space: `Dockerfile` starts `dev-server.mjs` on port
+7860, so the pages and the `/api` checkout functions both work.
+
+1. Create a Space at huggingface.co/new-space with the **Docker** SDK (Blank).
+2. Push this folder's files to the Space's git repository, with
+   `hf-space/README.md` as the Space's `README.md` (Hugging Face reads its
+   settings from that file's header).
+3. In the Space's **Settings → Variables and secrets**, add `STRIPE_SECRET_KEY`,
+   `DOWNLOAD_BASE_URL` and `SITE_URL` as secrets.
+
 ## Deploy (Vercel)
 
 1. Create a Vercel project with **Root Directory** set to `website`.

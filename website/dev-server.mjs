@@ -1,5 +1,6 @@
-// Local preview: serves the site and runs the /api functions the same way
-// Vercel does (Web Request in, Response out).
+// Serves the site and runs the /api functions the same way Vercel does (Web
+// Request in, Response out). Local preview, and the Hugging Face Space's
+// server (see Dockerfile, which sets PORT=7860).
 //   node dev-server.mjs            -> http://localhost:4321
 // Set STRIPE_SECRET_KEY (a sk_test_ key) and DOWNLOAD_BASE_URL to try real checkout.
 
