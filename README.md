@@ -554,6 +554,7 @@ Scorpion needs a model file once. You can get one in any of three ways:
 |---|---|---|
 | `qwen3-4b` | Recommended chat + agent model | 2.5 GB |
 | `qwen3.5-4b` | Newest Qwen; best Qwen for Haitian Creole | 2.7 GB |
+| `gpt-oss-20b` | The smartest; needs 16 GB of memory | 12.1 GB |
 | `nomic-embed` | Required for documents | 140 MB |
 
 ## Build installers
