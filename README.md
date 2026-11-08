@@ -17,11 +17,12 @@ internet connection to chat.
   and all its tools as holographic tiles (each with a live status line) that fill the
   screen. The sidebar can be hidden for more room (the button in its corner, or
   Ctrl+B). Everything underneath is the same local AI.
-- **Chat** with local models (Qwen, Llama, any GGUF file), with streaming and Markdown.
-- **Agent**: Scorpion reads, writes and edits files and runs terminal commands inside a
-  workspace folder you choose. For files anywhere else it asks first: *Allow*,
+- **Chat** with local models (Qwen, gpt-oss, any GGUF file), with streaming and Markdown.
+- **Agent**: Scorpion reads, writes and edits files and runs terminal commands. On
+  Windows and macOS it can reach every file on the computer (see *Full file access*
+  below); where that is off (Scorpion OS, or if you turn it off) it works inside a
+  workspace folder you choose and asks first for files anywhere else: *Allow*,
   *Don't allow*, or *Always allow this folder* (you can remove those in Settings).
-  With no workspace set, it asks you to choose one the first time it needs files.
   Changes and commands wait for your approval unless you turn on Auto-approve.
 - **Multi-step planning**: for bigger tasks the agent writes a plan, then updates it
   live as it works. Plan mode is read-only: it explores and plans but can't change anything.
@@ -66,7 +67,7 @@ internet connection to chat.
   and Swahili use your computer's voice for that language. Scorpion listens in the
   language you choose and replies in it, typed or spoken. Haitian Creole has no
   dedicated voice yet, so the French voice reads it (with a French accent), and
-  Gemma 3 4B writes the most natural Creole.
+  Qwen3.5 4B writes the best Creole of the models here.
 - **Interact**: a holographic orb that takes over the whole screen for talking face
   to face (Interact in the sidebar, or Ctrl+I). The orb shows what Scorpion is
   doing (standby, listening, thinking, speaking) and pulses with your voice and its
@@ -83,10 +84,15 @@ internet connection to chat.
 - **Online mode** (off by default): the agent can search the web (DuckDuckGo, with
   Wikipedia as a fallback) and read pages for current information, and names its
   sources. Turn it on in Settings or by clicking the Offline badge in the sidebar.
-- **Full file access** (optional): Settings → File access → *Full access* lets the
-  agent read, create, edit and move files anywhere on the computer without asking
-  which folder. Changes and commands still need your OK unless Auto-approve is on,
-  and system folders (Windows, Program Files, /System, /usr…) stay read-only.
+- **Full file access** (on by default on Windows and macOS): Settings → File access
+  lets the agent read, create, edit and move files anywhere on the computer without
+  asking which folder; choose *Ask before using folders outside the workspace* to
+  limit it. Changes and commands still need your OK unless Auto-approve is on, and
+  system folders (Windows, Program Files, /System, /usr…) stay read-only. The Files
+  screen shows your folders and every drive: on a Mac the startup disk and what is
+  mounted under /Volumes. macOS also asks before an app reads Desktop, Documents,
+  Downloads or other disks; Settings has a button that opens Full Disk Access, where
+  switching Scorpion on lets it reach everything.
 - **Skills** (Settings → Skills): folders with a `SKILL.md` that teach the agent how
   to do a kind of job your way. Only names and one-line descriptions sit in the
   prompt; the agent reads a whole skill when a task matches. Four come built in,
@@ -534,8 +540,6 @@ Scorpion needs a model file once. You can get one in any of three ways:
 |---|---|---|
 | `qwen3-4b` | Recommended chat + agent model | 2.5 GB |
 | `qwen3.5-4b` | Newest Qwen; best Qwen for Haitian Creole | 2.7 GB |
-| `llama3.2-3b` | Fast general chat | 2.0 GB |
-| `llama3.2-1b` | Low-memory computers | 0.8 GB |
 | `nomic-embed` | Required for documents | 140 MB |
 
 ## Build installers

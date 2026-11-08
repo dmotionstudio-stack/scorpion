@@ -328,10 +328,11 @@
           <div class="field">
             <label for="file-access">File access</label>
             <select id="file-access">
-              <option value="ask">Ask before using folders outside the workspace (recommended)</option>
               <option value="full">Full access to every file on this computer</option>
+              <option value="ask">Ask before using folders outside the workspace</option>
             </select>
             <p class="muted small" id="file-access-hint"></p>
+            <div class="row hidden" id="file-privacy-row"><button class="btn small" type="button" id="file-privacy">Open macOS privacy settings…</button><span class="muted small">macOS asks before an app reads Desktop, Documents, Downloads or other disks. Under Full Disk Access, switch Scorpion on to let it reach everything.</span></div>
           </div>
           <div class="field">
             <label>Hand gestures</label>
@@ -569,7 +570,6 @@
     </div>
   </div>
   <div class="toast hidden" id="toast" role="status"></div>
-  <button class="full-exit hidden" id="full-exit" type="button" title="Leave full screen (Ctrl+Esc, or Esc twice). F11 brings it back."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>Exit full screen</button>
 
   <!-- Shown while a model loads (start-up, switching models, reinstall). -->
   <div class="wait-overlay hidden" id="wait" role="alertdialog" aria-modal="true" aria-labelledby="wait-title" aria-describedby="wait-step">

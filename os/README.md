@@ -22,7 +22,7 @@ The ISO is built by GitHub Actions (building one needs Linux; Windows can't):
 
 The run also publishes that Scorpion build to the update repository (part
 **Update repository**). Options in **Run workflow**: **model** picks the built-in
-model (a catalog id: `qwen3-4b`, `llama3.2-3b`, `llama3.2-1b`, `gemma3-1b`, or
+model (a catalog id: `qwen3-4b`, `qwen3.5-4b`, `gpt-oss-20b`, or
 `none` for a 1.9 GB ISO without one), and **publish** can be turned off for a
 test build.
 

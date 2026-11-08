@@ -17,7 +17,9 @@ const DEFAULT_SETTINGS = {
   allowedFolders: [], // other folders the user chose "Always allow" for
   online: false, // Online mode: web search and page reading for the agent
   browserEnabled: true, // in Online mode, the agent may also use its own browser window
-  fileAccess: 'ask', // 'ask' = workspace + allowed folders; 'full' = every file on the computer
+  // 'full' = every file on the computer (the default on Windows and macOS: changes and commands still ask first);
+  // 'ask' = the workspace and folders you allowed (the default on Scorpion OS).
+  fileAccess: process.platform === 'win32' || process.platform === 'darwin' ? 'full' : 'ask',
   contextSize: 8192,
   gpuLayers: 'auto', // 'auto' or how many model layers to run on the GPU (0 = CPU only)
   temperature: 0.6,

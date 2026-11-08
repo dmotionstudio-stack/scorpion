@@ -36,6 +36,7 @@ import winctl from './system.js';
 import { createUpdates } from './updates.js';
 import { createAppUpdates } from './app-updates.js';
 import { createDictation } from './dictation.js';
+import { listFolder } from './files-list.js';
 import * as appFrame from './orb-frame.js';
 import * as appIcons from './app-icons.js';
 import * as constellations from './constellations.js';
@@ -1327,28 +1328,6 @@ async function fileIcon(exe) {
   return icons.get(exe);
 }
 
-// A folder for the Files screen; no folder means "This PC" (the drives).
-function listFolder(dir) {
-  if (!dir) {
-    const drives = [];
-    for (let c = 67; c <= 90; c++) { const d = `${String.fromCharCode(c)}:\\`; if (fs.existsSync(d)) drives.push({ name: d, path: d, dir: true }); }
-    const home = os.homedir();
-    const places = ['Desktop', 'Documents', 'Downloads', 'Pictures', 'Music', 'Videos'].map((n) => ({ name: n, path: path.join(home, n), dir: true })).filter((p) => fs.existsSync(p.path));
-    return { dir: null, parent: null, items: [...places, ...drives] };
-  }
-  const items = [];
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    let st = null;
-    try { st = fs.statSync(p); } catch { /* no access */ }
-    if (!st) continue;
-    items.push({ name: e.name, path: p, dir: st.isDirectory(), size: st.isDirectory() ? null : st.size, modified: st.mtimeMs, hidden: e.name.startsWith('.') || /^(desktop\.ini|thumbs\.db|\$recycle\.bin|system volume information)$/i.test(e.name) });
-  }
-  items.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-  const parent = path.dirname(dir);
-  return { dir, parent: parent === dir ? '' : parent, items };
-}
-
 // Folders open in Scorpion's Files screen while it is the desktop, otherwise in
 // File Explorer.
 function openFolder(p) {
@@ -2319,6 +2298,9 @@ function registerIpc() {
   h('shell:apps', async (fresh) => (await winctl.listApps({ fresh: Boolean(fresh) })).map((a) => ({ id: a.id, name: a.name })));
   h('shell:launch', async ({ id, name }) => winctl.launchApp({ id, name }, { viaExplorer: desktop.shellMode() !== 'shell' }));
   h('files:list', (dir) => listFolder(dir));
+  // macOS asks before an app reads Desktop, Documents, Downloads or other disks; Full Disk Access is how it is told
+  // yes for everything. Only the system's own Privacy page is opened: the choice is the user's.
+  h('files:privacy', () => (process.platform === 'darwin' ? shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles').then(() => true) : false));
   h('files:open', (p) => winctl.openPath(p));
   // A website (an orb bubble of your own), in the default browser: only web addresses.
   h('link:open', (url) => {

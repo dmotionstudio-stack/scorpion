@@ -100,6 +100,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellPinned: invoke('shell:pinned'),
   filesList: invoke('files:list'),
   filesOpen: invoke('files:open'),
+  openFilePrivacy: invoke('files:privacy'),
   openLink: invoke('link:open'),
   filesNewFolder: invoke('files:newFolder'),
   filesRename: invoke('files:rename'),

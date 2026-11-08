@@ -298,7 +298,8 @@ test('every catalog entry is well formed and fast models carry a tested skill', 
     if (c.skill) assert.ok(['agent', 'tools', 'chat'].includes(c.skill), c.id);
   }
   assert.equal(CATALOG[0].skill, 'agent'); // the default pick must handle Build mode
-  for (const id of ['qwen3.5-4b', 'gemma3-4b', 'llama3.2-1b', 'gemma3-1b']) assert.ok(ids.has(id), id);
+  for (const id of ['qwen3-4b', 'qwen3.5-4b', 'gpt-oss-20b', 'nomic-embed']) assert.ok(ids.has(id), id);
+  for (const id of ['gemma3-4b', 'gemma3-1b', 'llama3.2-3b', 'llama3.2-1b']) assert.ok(!ids.has(id), `${id} was removed`);
   // Qwen models that did poorly with the agent (see the Qwen comparison) stay out.
   for (const id of ['qwen3-1.7b', 'qwen2.5-0.5b', 'qwen2.5-1.5b', 'qwen2.5-coder-1.5b', 'qwen2.5-7b']) assert.ok(!ids.has(id), id);
 });
@@ -340,9 +341,10 @@ test('files outside the workspace need the user to allow their folder', async ()
   assert.equal(asked.length, 2);
 });
 
-test('with no workspace, the agent asks the user to choose one', async () => {
+test('with no workspace (and full access off), the agent asks the user to choose one', async () => {
   const chosen = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-chosen-'));
-  const settings = { ...store.getSettings(), workspace: null, mode: 'build', autoApprove: true };
+  // Full access is the default on Windows and macOS: this is the other way.
+  const settings = { ...store.getSettings(), fileAccess: 'ask', workspace: null, mode: 'build', autoApprove: true };
   const base = { settings, agent: agents.getAgent('scorpion'), rag: { hasDocuments: () => false }, emit() {}, requestApproval: async () => true };
   // Without a way to ask (scheduled runs), file tools stay hidden.
   assert.ok(!('read_file' in buildFunctions(base)));

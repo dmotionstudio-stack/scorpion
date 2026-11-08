@@ -785,7 +785,7 @@ function languageNote(l) {
   if (l.id === 'en') return 'Scorpion listens, replies and speaks in English.';
   const base = `Scorpion listens to ${l.name} and replies in ${l.name}.`;
   if (l.speech === 'system') return `${base} It speaks with your computer's ${l.name} voice, if one is installed (Windows: Settings → Time & language → Speech).`;
-  const tip = l.id === 'ht' && !/gemma/i.test(S.settings.chatModel || '') ? ' Tip: Gemma 3 4B (Models) writes the most natural Creole.' : '';
+  const tip = l.id === 'ht' && !/qwen3\.5/i.test(S.settings.chatModel || '') ? ' Tip: Qwen3.5 4B (Models) writes the best Creole of the models here.' : '';
   if (l.approximate) return `${base} There is no ${l.name} voice yet, so the French voice reads the replies: understandable, but with a French accent.${tip}`;
   return `${base} ${l.voiceReady ? `Its ${l.name} voice is installed.` : `Its ${l.name} voice is a one-time download of about ${gb(S.voice?.languageVoiceBytes || 0)}.`}`;
 }
@@ -1679,6 +1679,7 @@ function renderSettings() {
   $('#file-access-hint').textContent = full
     ? 'Scorpion can read, create, edit and move files anywhere on this computer. Changes and commands still ask first unless Auto-approve is on. System folders (Windows, Program Files) stay read-only.'
     : 'Scorpion works in the workspace folder and asks before touching files anywhere else.';
+  $('#file-privacy-row').classList.toggle('hidden', !IS_MAC || !full);
   $('#allowed-folders-field').classList.toggle('hidden', full);
   const allowed = S.settings.allowedFolders || [];
   $('#allowed-folders').innerHTML = allowed.length
@@ -2237,18 +2238,17 @@ function wire() {
     renderSettings();
     applyWall();
   };
-  const showFullExit = () => { $('#full-exit').classList.toggle('hidden', !S.fullMode); applyWall(); };
-  $('#full-exit').onclick = () => api.setFullMode(false);
-  showFullExit();
+  const fullModeChanged = () => applyWall();
+  fullModeChanged();
   // Full mode can change before this page hears of it (Scorpion OS's first
   // start), so the main process is also asked at start and whenever the
   // window changes size (which every change of full mode does).
-  const askFullMode = () => api.isFullMode?.().then((on) => { S.fullMode = Boolean(on); showFullExit(); }).catch(() => {});
+  const askFullMode = () => api.isFullMode?.().then((on) => { S.fullMode = Boolean(on); fullModeChanged(); }).catch(() => {});
   askFullMode();
   addEventListener('resize', () => { clearTimeout(askFullMode.t); askFullMode.t = setTimeout(askFullMode, 250); });
   api.onFullMode?.((on) => {
     S.fullMode = on;
-    showFullExit();
+    fullModeChanged();
     if (on) toast('Full screen. To leave: Ctrl+Esc, or press Esc twice. F11 brings it back.', 6000);
   });
   $('#login-start').onchange = async (e) => { S.loginStart = await api.setLoginStart(e.target.value); e.target.value = S.loginStart; $('#open-at-login').checked = S.loginStart !== 'off'; };
@@ -2275,6 +2275,7 @@ function wire() {
     renderSettings();
     renderModes();
   };
+  $('#file-privacy').onclick = () => api.openFilePrivacy().catch((err) => toast(errText(err), 'error'));
   $('#allowed-folders').onclick = async (e) => {
     const f = e.target.closest('[data-unallow]')?.dataset.unallow;
     if (!f) return;

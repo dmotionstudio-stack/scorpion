@@ -12,7 +12,7 @@ on:
         description: Scorpion OS version
         default: "0.1"
       model:
-        description: Built-in model (a catalog id like qwen3-4b, llama3.2-1b, or none)
+        description: Built-in model (a catalog id like qwen3-4b, qwen3.5-4b, or none)
         default: qwen3-4b
       publish:
         description: Publish this Scorpion build to the update repository

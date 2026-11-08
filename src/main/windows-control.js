@@ -217,6 +217,8 @@ export const isRunnable = (p) => RUNNABLE.has(path.extname(String(p)).toLowerCas
 
 export function openPath(p, { reveal = false } = {}) {
   if (!fs.existsSync(p)) throw new Error(`${p} does not exist`);
+  // macOS: Finder's own open (-R shows the item in its folder).
+  if (process.platform === 'darwin') return new Promise((resolve) => execFile('open', reveal ? ['-R', p] : [p], () => resolve(p)));
   if (shellActive) {
     const isDir = fs.statSync(p).isDirectory();
     if (isDir || reveal) return folderOpener ? folderOpener(isDir ? p : path.dirname(p), isDir ? null : p) : p;
@@ -229,6 +231,11 @@ export function openPath(p, { reveal = false } = {}) {
 export async function recyclePath(p) {
   if (!fs.existsSync(p)) throw new Error(`${p} does not exist`);
   const dir = fs.statSync(p).isDirectory();
+  if (process.platform === 'darwin') {
+    // The Trash through Finder, with the path passed as an argument (never pasted into the script).
+    await new Promise((resolve, reject) => execFile('osascript', ['-e', 'on run argv', '-e', 'tell application "Finder" to delete (POSIX file (item 1 of argv) as alias)', '-e', 'end run', p], { timeout: 120000 }, (err) => (err ? reject(err) : resolve())));
+    return { recycled: p, folder: dir };
+  }
   await runPs(`Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::${dir ? 'DeleteDirectory' : 'DeleteFile'}(${psQuote(p)}, 'OnlyErrorDialogs', 'SendToRecycleBin')`, { timeout: 120000 });
   return { recycled: p, folder: dir };
 }
