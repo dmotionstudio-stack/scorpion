@@ -942,3 +942,21 @@ html.full-wall .sidebar { background: color-mix(in srgb, var(--panel) 62%, trans
 .slash-item span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slash-item.active, .slash-item:hover { background: var(--panel-2); }
 .slash-empty { padding: 8px 10px; color: var(--muted); font-size: 13px; }
+
+/* Models → Scan this computer. */
+.scan-panel { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 4px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius, 10px); background: var(--panel); max-width: 860px; }
+.scan-panel.hidden { display: none; }
+.scan-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.scan-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); }
+.scan-main { flex: 1; min-width: 0; }
+.scan-main .title, .scan-main .muted { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.scan-meta { display: flex; gap: 6px; flex: none; }
+.scan-actions { display: flex; gap: 6px; flex: none; }
+
+/* Settings → General shows one tab's fields at a time. */
+#view-settings .field.sec-off { display: none !important; }
+
+/* A change in Settings is kept at once: this says so. */
+.settings-header { position: relative; }
+.save-flash { position: absolute; right: 18px; top: 14px; font-size: 12.5px; color: var(--accent); opacity: 0; transition: opacity .25s; pointer-events: none; }
+.save-flash.on { opacity: 1; }

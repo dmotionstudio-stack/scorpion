@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS = {
   mcpServers: [], // MCP tool servers: { id, name, transport: 'stdio'|'http'|'sse', command, args, url, enabled, trusted }
   fallbackSource: null, // used when the chosen source fails before answering: 'local', a provider id, or null
   embedModel: null, // absolute path to an embedding .gguf (for documents)
+  modelFiles: [], // models found on this computer and used where they are: { path, name? } (Models → Scan this computer)
   workspace: null, // the active workspace: the folder new chats start in
   workspaces: [], // saved workspaces: { id, name, path, addedAt, lastUsed }
   allowedFolders: [], // other folders the user chose "Always allow" for

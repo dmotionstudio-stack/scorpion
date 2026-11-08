@@ -37,6 +37,7 @@ import { createUpdates } from './updates.js';
 import { createAppUpdates } from './app-updates.js';
 import { createDictation } from './dictation.js';
 import { listFolder } from './files-list.js';
+import { scanForModels, commonFolders, wholeComputerRoots, isGguf } from './model-scan.js';
 import * as appFrame from './orb-frame.js';
 import * as appIcons from './app-icons.js';
 import * as constellations from './constellations.js';
@@ -552,7 +553,7 @@ function ensureTray() {
 }
 
 function modelEnv() {
-  return { resourcesPath: process.resourcesPath, appRoot: APP_ROOT };
+  return { resourcesPath: process.resourcesPath, appRoot: APP_ROOT, linked: store.getSettings().modelFiles || [] };
 }
 
 function scheduleView() {
@@ -1884,6 +1885,42 @@ function registerIpc() {
     return models.importModel(r.filePaths[0]);
   });
   h('model:delete', (file) => uninstall(file));
+  // Models found on this computer (Models → Scan this computer): the search, and what to do with a find.
+  // Nothing is copied or changed by the search itself.
+  let modelScan = null;
+  h('models:scan', async ({ where = 'common' } = {}) => {
+    if (modelScan) throw new Error('A search is already running');
+    modelScan = new AbortController();
+    const known = new Set(models.listLocalModels(modelEnv()).map((m) => m.path));
+    const roots = where === 'all' ? wholeComputerRoots() : commonFolders();
+    try {
+      const r = await scanForModels({ roots, known, signal: modelScan.signal, maxMs: where === 'all' ? 240_000 : 60_000, onProgress: (p) => send('models:scan', p) });
+      return { ...r, where, searched: roots.length };
+    } finally { modelScan = null; }
+  });
+  h('models:scanStop', () => { modelScan?.abort(); return true; });
+  // Use a found model where it is (the file is never moved, copied or deleted).
+  h('models:link', ({ path: file, name }) => {
+    if (!file || !fs.existsSync(file) || !isGguf(file)) throw new Error('That is not a model file (GGUF)');
+    const list = store.getSettings().modelFiles || [];
+    if (!list.some((l) => l.path === file)) store.updateSettings({ modelFiles: [...list, { path: file, ...(name ? { name: String(name).slice(0, 80) } : {}) }] });
+    return true;
+  });
+  // Stop listing one. Only the list changes: the file stays where it is.
+  h('models:unlink', async (file) => {
+    const s = store.getSettings();
+    if (s.chatModel === file) { await engine.unloadChatModel(); store.updateSettings({ chatModel: null }); }
+    if (s.embedModel === file) store.updateSettings({ embedModel: null });
+    store.updateSettings({ modelFiles: (s.modelFiles || []).filter((l) => l.path !== file) });
+    await autoSelectModels();
+    send('model:status', { loading: false, info: await engine.engineInfo() });
+    return true;
+  });
+  // Copy a found model into Scorpion's own folder.
+  h('models:copyIn', async ({ path: file, name }) => {
+    if (!file || !fs.existsSync(file) || !isGguf(file)) throw new Error('That is not a model file (GGUF)');
+    return models.importModel(file, /\.gguf$/i.test(file) ? null : name || 'model');
+  });
   h('model:uninstallCatalog', (id) => {
     const item = models.CATALOG.find((c) => c.id === id);
     const local = item && models.findInstalled(item, models.listLocalModels(modelEnv()));

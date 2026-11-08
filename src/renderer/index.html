@@ -44,6 +44,7 @@
         <!-- Filled from settings-nav.js: a few groups, and a second row for a group's pages -->
         <nav class="stabs" id="settings-groups" aria-label="Settings sections"></nav>
         <nav class="stabs sub" id="settings-pages" aria-label="Pages in this section"></nav>
+        <span class="save-flash" id="save-flash" role="status" aria-live="polite"></span>
       </header>
       <!-- CHAT -->
       <section class="view" id="view-chat">
@@ -99,7 +100,8 @@
           <div class="engine-info" id="engine-info"></div>
           <h2>On this computer</h2>
           <div class="cards" id="local-models"></div>
-          <div class="row"><button class="btn" id="import-model">Import .gguf file…</button></div>
+          <div class="row"><button class="btn" id="import-model">Import .gguf file…</button><button class="btn" id="scan-models" title="Look for model files already on this computer (Downloads, LM Studio, Ollama and more)">Scan this computer for models…</button></div>
+          <div class="scan-panel hidden" id="scan-panel" aria-live="polite"></div>
           <h2>From other sources <span class="muted small">(Ollama, LM Studio or another model server)</span></h2>
           <div class="cards" id="source-models"></div>
           <div class="row"><button class="btn" id="open-connections">Add or manage sources…</button></div>
@@ -264,7 +266,7 @@
       <section class="view hidden" id="view-settings">
         <div class="page">
           <h1>General</h1>
-          <div class="field sys-card" id="sys-card" hidden>
+          <div class="field sys-card" data-sec="system" id="sys-card" hidden>
             <label>This computer</label>
             <div class="sys-block">
               <div class="sys-line"><b>Updates</b><span class="muted small" id="sys-upd-status"></span></div>
@@ -283,7 +285,7 @@
               <p class="muted small">Puts programs and system settings back as they were at that moment, from the next restart. Your files, chats and documents are never touched.</p>
             </div>
           </div>
-          <div class="field sys-card" id="app-upd-field" hidden>
+          <div class="field sys-card" data-sec="system" id="app-upd-field" hidden>
             <label>Updates</label>
             <div class="sys-block">
               <div class="sys-line"><b>Scorpion</b><span class="muted small" id="app-upd-status"></span></div>
@@ -297,17 +299,17 @@
               <p class="muted small"><span id="app-upd-note"></span> New versions come from Scorpion's releases on GitHub; the check only asks for the newest version number.</p>
             </div>
           </div>
-          <div class="field">
+          <div class="field" data-sec="look">
             <label>Theme</label>
             <div class="theme-grid" id="theme-grid"></div>
           </div>
-          <div class="field">
+          <div class="field" data-sec="look">
             <label>Accessibility</label>
             <label class="toggle"><input type="checkbox" data-access="bigText"><span>Bigger text</span></label>
             <label class="toggle"><input type="checkbox" data-access="screenReader"><span>Screen reader: reads the screen aloud (Orca on Scorpion OS, Narrator on Windows)</span></label>
             <label class="toggle"><input type="checkbox" data-access="keyboard"><span>Keyboard on the screen</span></label>
           </div>
-          <div class="field">
+          <div class="field" data-sec="look">
             <label for="glass">Glass sidebar</label>
             <select id="glass">
               <option value="auto">On</option>
@@ -315,17 +317,17 @@
             </select>
             <p class="muted small" id="glass-hint"></p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="privacy">
             <label>Workspace folder</label>
             <div class="row"><code id="ws-path">Not set</code><button class="btn" id="choose-ws">Choose…</button><button class="btn" id="open-ws">Open</button></div>
             <p class="muted small">The agent reads, writes and runs commands in this folder. For files anywhere else, Scorpion asks you first.</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="privacy">
             <label>Online mode</label>
             <label class="toggle"><input type="checkbox" id="online-mode"><span>Let Scorpion search the internet and read web pages</span></label>
             <p class="muted small">Off: Scorpion never uses the network while you chat. On: the agent can look things up (DuckDuckGo, Wikipedia) and read pages for current information, and names its sources. Your chats, files and voice still stay on this computer.</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="privacy">
             <label for="file-access">File access</label>
             <select id="file-access">
               <option value="full">Full access to every file on this computer</option>
@@ -334,12 +336,12 @@
             <p class="muted small" id="file-access-hint"></p>
             <div class="row hidden" id="file-privacy-row"><button class="btn small" type="button" id="file-privacy">Open macOS privacy settings…</button><span class="muted small">macOS asks before an app reads Desktop, Documents, Downloads or other disks. Under Full Disk Access, switch Scorpion on to let it reach everything.</span></div>
           </div>
-          <div class="field">
+          <div class="field" data-sec="voice">
             <label>Hand gestures</label>
             <label class="toggle"><input type="checkbox" id="hands-always"><span>Hand gestures on (camera). On Windows your hand is the mouse, everywhere: your index finger moves the real pointer over the whole screen; pinch clicks, thumb + middle right-clicks, fist then open double-clicks, a held pinch drags, two fingers scroll. A held fist pauses it</span></label>
             <p class="muted small">While gestures are on, the camera runs whenever Scorpion is open (even behind other windows) and rests while Scorpion is minimized; on a Mac, only while the orb is open. Your hand isn't shown on screen, only a small status line. The video stays on this computer and is never recorded. With no hand in view it checks less often, to save power.</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="system">
             <label for="perf-level">Performance</label>
             <select id="perf-level">
               <option value="full">Full: everything as designed</option>
@@ -350,20 +352,20 @@
             <div class="row"><button class="btn small" type="button" id="welcome-again">Show the welcome again</button><span class="muted small">The spoken first start: internet, model, voice, face, hands.</span></div>
             <p class="muted small"><span id="perf-now"></span> Balanced draws the orb at a calmer frame rate, checks the taskbar's windows less often and looks at fewer camera frames for hand tracking. Light goes further: the orb in lower detail, background media work (Library, faces) on fewer cores, and chats with the fastest model installed here when your chosen one is slow on this computer. No model is removed; Full brings your chosen model back.</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="look">
             <label for="orb-look">Orb look</label>
             <select id="orb-look">
               <option value="classic">The orb sphere</option>
               <option value="constellation">A constellation map of your projects</option>
             </select>
-            <div class="row"><label for="const-shortcut" class="small">Summon shortcut</label><input class="text-input narrow" id="const-shortcut" placeholder="Super+Space" aria-label="Summon shortcut"><button class="btn small" type="button" id="const-shortcut-save">Set</button><span class="muted small" id="const-shortcut-now"></span></div>
+            <div class="row"><label for="const-shortcut" class="small">Summon shortcut</label><input class="text-input narrow" id="const-shortcut" placeholder="Super+Space" aria-label="Summon shortcut" title="Press Enter, or click away, to use it"><span class="muted small" id="const-shortcut-now">Applied when you press Enter or click away.</span></div>
             <label class="toggle"><input type="checkbox" data-const="recommend"><span>Recommendations: the most relevant items orbit closest (recent, frequent, usual at this time, open now)</span></label>
             <label class="toggle"><input type="checkbox" data-const="motion"><span>Motion: drifting, twinkling and gliding</span></label>
             <label class="toggle"><input type="checkbox" data-const="large"><span>Bigger items and more space</span></label>
             <label class="toggle"><input type="checkbox" data-const="contrast"><span>High contrast: plain labels, and status in words (open, missing)</span></label>
             <p class="muted small">The settings above are for the constellation map. Projects are constellations: their apps, folders, documents and websites orbit them. Click an item to open it, the star to resume the project, drag one item onto another to connect them, or anywhere to pin it there. Scroll out for the galaxy of all projects; type to search; List shows the same as plain lists. Shortcut examples: Super+Space, Super+Alt+Space, Control+Shift+Space (Windows keeps Win+Space for keyboard layouts; then Win+Alt+Space is used).</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="desktop">
             <label>Full screen</label>
             <label class="toggle"><input type="checkbox" id="full-at-start"><span>Start Scorpion in full screen, over every other window, with no window buttons</span></label>
             <div class="row"><button class="btn" id="full-now" type="button">Full screen now</button></div>
@@ -376,11 +378,11 @@
               </select></div>
             <p class="muted small">To leave full screen: Ctrl+Esc, or press Esc twice quickly. F11 goes back to full screen. Apps you open from Scorpion show inside the orb, on top of it. Windows itself (Ctrl+Alt+Delete, sign-in, its own alerts) can still come in front.</p>
           </div>
-          <div class="field" id="orb-bubbles-field">
+          <div class="field" data-sec="look" id="orb-bubbles-field">
             <label>The orb's bubbles</label>
             <div id="orb-bubbles"></div>
           </div>
-          <div class="field">
+          <div class="field" data-sec="desktop">
             <label for="login-start">When I sign in</label>
             <select id="login-start">
               <option value="off">Don't start Scorpion</option>
@@ -389,31 +391,31 @@
             </select>
             <p class="muted small">Open the orb: Scorpion starts with the orb filling the screen, greets you by name when face recognition is installed, and waits until you speak to it (or say "Scorpion" with the wake word on).</p>
           </div>
-          <div class="field" id="layout-field">
+          <div class="field" data-sec="desktop" id="layout-field">
             <label>Windows and taskbar</label>
             <div id="layout-settings"></div>
           </div>
-          <div class="field hidden" id="desktop-field">
+          <div class="field hidden" data-sec="desktop" id="desktop-field">
             <label>Windows desktop</label>
             <div id="desktop-settings"></div>
           </div>
-          <div class="field" id="allowed-folders-field">
+          <div class="field" data-sec="privacy" id="allowed-folders-field">
             <label>Always allowed folders</label>
             <div id="allowed-folders"></div>
             <p class="muted small">Folders outside the workspace you chose "Always allow" for. Remove one to be asked again.</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="privacy">
             <label>Always allowed commands</label>
             <div id="allowed-commands"></div>
             <p class="muted small">Commands you chose "Always allow this command" for run without asking. Only the exact same command counts. Scorpion also stops a task when the same step fails three times in a row.</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="chat">
             <label>Memory</label>
             <label class="toggle"><input type="checkbox" id="memory-enabled"><span>Remember facts about me across chats</span></label>
             <label class="toggle"><input type="checkbox" id="recall-enabled"><span>Recall relevant parts of earlier conversations</span></label>
             <p class="muted small">Turn off to make every chat start fresh. Your saved memories are kept until you delete them.</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="voice">
             <label>Voice</label>
             <div id="voice-setup"></div>
             <div id="voice-options" class="hidden">
@@ -432,7 +434,7 @@
             </div>
             <p class="muted small">Talk with the microphone button (one message) or the conversation button (hands-free). Listening and speaking run on this computer: a one-time download of about 230 MB, then no internet. Scorpion's voices speak English; it understands the language you choose.</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="system">
             <label for="gpu-layers">GPU offload</label>
             <select id="gpu-layers">
               <option value="auto">Auto (recommended)</option>
@@ -442,17 +444,17 @@
             </select>
             <p class="muted small">How much of the model runs on the graphics card. Lower it if a model fails to load or crashes while answering; Scorpion already steps down automatically when loading fails.</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="system">
             <label for="ctx-size">Context size (tokens)</label>
             <select id="ctx-size"><option>4096</option><option>8192</option><option>16384</option><option>32768</option></select>
             <p class="muted small">Larger remembers more but uses more memory. Scorpion lowers it automatically if it doesn't fit.</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="chat">
             <label for="temperature">Creativity (temperature): <span id="temp-val"></span></label>
             <input type="range" id="temperature" min="0" max="1.5" step="0.05">
             <label class="toggle"><input type="checkbox" id="precise-answers"><span>Precise answers to questions: questions of fact are answered with low creativity (requests to write or brainstorm keep the setting above)</span></label>
           </div>
-          <div class="field">
+          <div class="field" data-sec="chat">
             <label for="thinking">Thinking (gpt-oss)</label>
             <select id="thinking">
               <option value="auto">Automatic: short for conversation, more for Plan and Build (recommended)</option>
@@ -462,10 +464,10 @@
             </select>
             <p class="muted small">How long models that think before answering (gpt-oss) spend thinking. Other models ignore this.</p>
           </div>
-          <div class="field">
+          <div class="field" data-sec="chat">
             <label for="system-prompt">Custom instructions</label>
             <textarea id="system-prompt" rows="5" placeholder="Optional. Replaces Scorpion's default personality, e.g. 'You are a senior Python engineer. Answer briefly.'"></textarea>
-            <div class="row"><button class="btn" id="save-prompt">Save</button></div>
+            <p class="muted small" id="prompt-state">Saved as you type.</p>
           </div>
         </div>
       </section>

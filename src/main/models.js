@@ -67,6 +67,18 @@ function bundledDirs(resourcesPath, appRoot) {
   return dirs;
 }
 
+// One model file as the Models page lists it. name: when the file's own name says
+// nothing (Ollama keeps its models as hash-named blobs).
+function modelEntry(file, source, name = null) {
+  return {
+    path: file,
+    name: name || path.basename(file).replace(/\.gguf$/i, '').replace(/^hf_[^_]+_/, ''),
+    bytes: fs.statSync(file).size,
+    kind: isEmbeddingFile(file) || /embed/i.test(name || '') ? 'embedding' : 'chat',
+    source,
+  };
+}
+
 function scan(dir, source) {
   if (!dir || !fs.existsSync(dir)) return [];
   const out = [];
@@ -76,13 +88,7 @@ function scan(dir, source) {
     // Skip non-first shards of split models; llama.cpp loads them via part 1.
     const shard = entry.name.match(/-(\d{5})-of-\d{5}\.gguf$/i);
     if (shard && shard[1] !== '00001') continue;
-    out.push({
-      path: file,
-      name: entry.name.replace(/\.gguf$/i, '').replace(/^hf_[^_]+_/, ''),
-      bytes: fs.statSync(file).size,
-      kind: isEmbeddingFile(file) ? 'embedding' : 'chat',
-      source,
-    });
+    out.push(modelEntry(file, source));
   }
   return out;
 }
@@ -93,12 +99,15 @@ export function catalogRank(model) {
   return i === -1 ? CATALOG.length : i;
 }
 
-export function listLocalModels({ resourcesPath, appRoot }) {
+// linked: models found on this computer and used where they are ({ path, name? });
+// one that has since gone is simply not listed.
+export function listLocalModels({ resourcesPath, appRoot, linked = [] }) {
   fs.mkdirSync(paths.models, { recursive: true });
   const seen = new Set();
   return [
     ...bundledDirs(resourcesPath, appRoot).flatMap((d) => scan(d, 'bundled')),
     ...scan(paths.models, 'library'),
+    ...linked.filter((l) => l?.path && fs.existsSync(l.path)).map((l) => modelEntry(l.path, 'linked', l.name || null)),
   ].filter((m) => !seen.has(m.path) && seen.add(m.path))
     .sort((a, b) => catalogRank(a) - catalogRank(b));
 }
@@ -160,11 +169,17 @@ export function cancelDownload(id) {
 }
 
 // Copy a .gguf the user picked (e.g. from a USB stick) into the library.
-export async function importModel(srcPath) {
-  if (!srcPath.toLowerCase().endsWith('.gguf')) throw new Error('Pick a .gguf model file');
+// Copies a model file into Scorpion's library. name: a model whose file has no
+// .gguf name (Ollama's blobs) is copied under that name.
+export async function importModel(srcPath, name = null) {
+  if (!name && !srcPath.toLowerCase().endsWith('.gguf')) throw new Error('Pick a .gguf model file');
   fs.mkdirSync(paths.models, { recursive: true });
-  const dest = path.join(paths.models, path.basename(srcPath));
-  if (path.resolve(dest) !== path.resolve(srcPath)) await fs.promises.copyFile(srcPath, dest);
+  const fileName = name ? `${String(name).replace(/\s*\(Ollama\)$/i, '').replace(/[^\w.+-]+/g, '-').replace(/^-+|-+$/g, '') || 'model'}.gguf` : path.basename(srcPath);
+  const dest = path.join(paths.models, fileName);
+  if (path.resolve(dest) === path.resolve(srcPath)) return dest;
+  // Already copied (same size): nothing to do.
+  if (fs.existsSync(dest) && fs.statSync(dest).size === fs.statSync(srcPath).size) return dest;
+  await fs.promises.copyFile(srcPath, dest);
   return dest;
 }
 

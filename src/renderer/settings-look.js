@@ -33,10 +33,14 @@ export function initLookSettings({ $, api, S, setSetting, toast, IX, startWelcom
     S.settings = await api.updateSettings({ orbLook: e.target.value });
     if (IX.open) toast('The new look shows the next time the orb opens.');
   };
-  $('#const-shortcut-save').onclick = async () => {
+  // The summon shortcut is tried as soon as you finish typing it (Enter, or click away).
+  const applyShortcut = async () => {
     const got = await api.constShortcut($('#const-shortcut').value.trim());
     $('#const-shortcut-now').textContent = got ? `In use: ${got}` : 'That combination is taken by the system or another app.';
+    if (got) document.dispatchEvent(new Event('settings-saved'));
   };
+  $('#const-shortcut').onchange = applyShortcut;
+  $('#const-shortcut').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } };
   for (const box of document.querySelectorAll('[data-const]')) {
     box.onchange = async () => {
       S.settings = await api.updateSettings({ constellation: { ...constellationOptions(S.settings), [box.dataset.const]: box.checked } });

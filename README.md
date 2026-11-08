@@ -105,6 +105,18 @@ internet connection to chat.
   stays saved); once a day, while the computer is idle, *dreaming* turns what you
   said into lasting memories (with a diary, using only a model on your computer or
   network); and *standing intents* remember "when X comes up, remind me of Y".
+- **Models already on your computer** (Settings → Models → *Scan this computer for
+  models…*): looks in the usual places (Downloads, Documents, Desktop, LM Studio,
+  GPT4All, Jan, the Hugging Face cache, Ollama and a `Models` folder on any drive),
+  or across the whole computer, and lists every model file it finds (a file counts
+  only if it really is a GGUF model). *Use here* adds a find where it is, so nothing
+  is copied; *Copy in* puts a copy in Scorpion's folder. *Remove from list* stops
+  using a found model and never deletes the file. The search only reads folder
+  listings.
+- **Settings keep themselves**: a change is saved the moment you make it, and a
+  "✓ Saved" note shows in the Settings bar (custom instructions save as you type;
+  the summon shortcut applies when you press Enter or click away). General has a
+  tab for each part: Look, Desktop, Privacy, Chat, Voice and hands, System.
 - **More model sources** (Settings → Connections): Ollama, LM Studio, or any
   OpenAI-compatible server, on your computer or in the cloud with your own key
   (stored encrypted), with a fallback model if the chosen one fails.
@@ -353,6 +365,8 @@ if you copy the file from another computer.
 
 - **Download**: open **Settings → Models** and click **Download** next to
   **Qwen3 4B** (2.5 GB, the recommended model).
+- **Already on this computer**: **Settings → Models → Scan this computer for models…**
+  finds model files you downloaded for other tools.
 - **Copy from another computer**: copy a `.gguf` file onto a USB drive, then use
   **Settings → Models → Import .gguf file…**. On Windows, Scorpion keeps its
   models in `%APPDATA%\Scorpion\models`; on a Mac, in

@@ -16,10 +16,31 @@ import { initOrbBubbles } from './orb-bubbles-ui.js';
 import { initPalette } from './palette.js';
 import { initSystemSettings } from './settings-system.js';
 import { initAppUpdates } from './settings-app-updates.js';
+import { initModelScan } from './model-scan-ui.js';
 import { commandOf, parseAgentCommand, suggestAgents } from './agent-commands.js';
-import { SETTINGS_GROUPS, groupOf } from './settings-nav.js';
+import { SETTINGS_GROUPS, GENERAL_SECTIONS, groupOf } from './settings-nav.js';
 
-const api = window.scorpion;
+// Every settings change that goes through here says "Saved" in the Settings header.
+// (A copy, not a Proxy: the object the preload exposes is read-only, and a Proxy
+// that returns another function for one of its properties is refused.)
+const api = {
+  ...window.scorpion,
+  updateSettings: async (...args) => {
+    const saved = await window.scorpion.updateSettings(...args);
+    document.dispatchEvent(new Event('settings-saved'));
+    return saved;
+  },
+};
+let savedFlashTimer = 0;
+function flashSaved() {
+  const el = document.getElementById('save-flash');
+  if (!el) return;
+  el.textContent = '✓ Saved';
+  el.classList.add('on');
+  clearTimeout(savedFlashTimer);
+  savedFlashTimer = setTimeout(() => el.classList.remove('on'), 1600);
+}
+document.addEventListener('settings-saved', flashSaved);
 const $ = (sel) => document.querySelector(sel);
 const S = {
   settings: {}, models: [], catalog: [], threads: [], documents: [], memories: [], agents: [], tools: [], schedules: [], engine: {},
@@ -96,8 +117,29 @@ function renderSettingsNav(view) {
   $('#settings-groups').innerHTML = SETTINGS_GROUPS.map((g) =>
     `<button class="stab${g === group ? ' active' : ''}" data-view="${S.groupView?.[g.id] || g.views[0][0]}">${g.label}</button>`).join('');
   const pages = group && group.views.length > 1 ? group.views : [];
-  $('#settings-pages').innerHTML = pages.map(([v, label]) => `<button class="stab${v === view ? ' active' : ''}" data-view="${v}">${label}</button>`).join('');
-  $('#settings-pages').classList.toggle('hidden', !pages.length);
+  // General is one page with a tab for each part of it.
+  const sections = view === 'settings' ? GENERAL_SECTIONS : [];
+  $('#settings-pages').innerHTML = sections.length
+    ? sections.map(([id, label]) => `<button class="stab${id === generalSection() ? ' active' : ''}" data-section="${id}">${label}</button>`).join('')
+    : pages.map(([v, label]) => `<button class="stab${v === view ? ' active' : ''}" data-view="${v}">${label}</button>`).join('');
+  $('#settings-pages').classList.toggle('hidden', !pages.length && !sections.length);
+  if (view === 'settings') applyGeneralSection();
+}
+// General's tab: the last one you had open (kept on this computer).
+function generalSection() {
+  if (!S.generalSection) { try { S.generalSection = localStorage.getItem('generalSection') || ''; } catch { /* default */ } }
+  return GENERAL_SECTIONS.some(([id]) => id === S.generalSection) ? S.generalSection : GENERAL_SECTIONS[0][0];
+}
+// Shows only the fields of the open tab.
+function applyGeneralSection() {
+  const open = generalSection();
+  for (const f of document.querySelectorAll('#view-settings .field[data-sec]')) f.classList.toggle('sec-off', f.dataset.sec !== open);
+}
+// Opens a tab of General (also from outside: the taskbar's Customize, the update notice).
+function showGeneralSection(id) {
+  S.generalSection = id;
+  try { localStorage.setItem('generalSection', id); } catch { /* not kept */ }
+  if (S.view === 'settings') renderSettingsNav('settings');
 }
 let extras = null; // Skills, Personality, Connections and the Memory page extras
 let home = null; // the home screen (home-ui.js)
@@ -110,6 +152,7 @@ let orbBubblesUi = null; // Settings → General: the orb's bubbles (orb-bubbles
 let palette = null; // the command palette, Ctrl+K (palette.js)
 let systemSettings = null; // Settings → This computer on Scorpion OS (settings-system.js)
 let appUpdatesUi = null; // Settings → Updates on Windows and macOS (settings-app-updates.js)
+let modelScanUi = null; // Models → Scan this computer (model-scan-ui.js)
 
 // ---------- top bar ----------
 function renderTopbar() {
@@ -379,7 +422,7 @@ function renderModels() {
       <div class="title">${esc(m.name)}</div>
       <div><span class="tag">${m.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${gb(m.bytes)}</span><span class="tag">${m.source}</span>${fitTag(m.fit)}${skillTag(m.skill)}${selected ? '<span class="tag on">in use</span>' : ''}</div>
       <div class="row">${selected ? '' : `<button class="btn small primary" data-use="${esc(m.path)}" data-kind="${m.kind}">Use</button>`}
-      ${m.source === 'library' ? `<button class="btn small" data-delmodel="${esc(m.path)}" data-size="${m.bytes}">Uninstall</button>` : '<span class="muted small">Comes with the installer</span>'}</div></div>`;
+      ${m.source === 'library' ? `<button class="btn small" data-delmodel="${esc(m.path)}" data-size="${m.bytes}">Uninstall</button>` : m.source === 'linked' ? `<button class="btn small" data-unlink="${esc(m.path)}" title="${esc(m.path)}">Remove from list</button><span class="muted small" title="${esc(m.path)}">Used where it is</span>` : '<span class="muted small">Comes with the installer</span>'}</div></div>`;
   }).join('') || '<div class="muted">No models installed. Download one below ("Fast here" runs best on this PC) or import a .gguf file.</div>';
 
   const installed = (c) => {
@@ -1887,7 +1930,11 @@ async function setSetting(patch) {
 // ---------- wiring ----------
 function wire() {
   $('#new-chat').onclick = newThread;
-  $('#settings-header').addEventListener('click', (e) => { const b = e.target.closest('.stab'); if (b) setView(b.dataset.view); });
+  $('#settings-header').addEventListener('click', (e) => {
+    const b = e.target.closest('.stab');
+    if (!b) return;
+    if (b.dataset.section) showGeneralSection(b.dataset.section); else setView(b.dataset.view);
+  });
   $('#open-settings').onclick = () => (MAIN_VIEWS.includes(S.view) ? setView(S.lastSettingsView || 'settings') : setView(S.lastMainView || 'home'));
   $('#back-to-chat').onclick = () => setView(S.lastMainView || 'home');
   $('#open-home').onclick = () => setView('home');
@@ -1946,14 +1993,15 @@ function wire() {
   lookSettings = initLookSettings({ $, api, S, setSetting, toast, IX, startWelcome: () => welcome.start({ force: true }) });
   systemSettings = initSystemSettings({ $, esc, api, toast, errText });
   appUpdatesUi = initAppUpdates({ $, api, S, toast, errText });
+  modelScanUi = initModelScan({ api, $, esc, toast, errText, refresh });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
   const onNav = ({ view, dir, select, signin, search, talk, query, section }) => {
     // Typing on the intent wheel: the command palette, with what was typed.
     if (view === 'palette') { palette.open(query || ''); return; }
     // The "Updates ready" notice and "Software updates": Settings → This computer.
     // The taskbar's Customize…: Settings → Windows and taskbar.
-    if (view === 'settings' && section === 'layout') { const go = () => { setView('settings'); requestAnimationFrame(() => $('#layout-field')?.scrollIntoView({ block: 'start' })); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
-    if (view === 'settings' && section === 'system') { const go = () => { setView('settings'); systemSettings?.show(); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
+    if (view === 'settings' && section === 'layout') { const go = () => { showGeneralSection('desktop'); setView('settings'); requestAnimationFrame(() => $('#layout-field')?.scrollIntoView({ block: 'start' })); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
+    if (view === 'settings' && section === 'system') { const go = () => { showGeneralSection('system'); setView('settings'); systemSettings?.show(); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
     // The intent wheel's Talk: the orb, listening.
     if (view === 'orb' && talk) {
       const ready = () => { if (!S.voice?.installed) $('#ix-input').focus(); else if (!V.talk) startTalk(); };
@@ -2085,6 +2133,10 @@ function wire() {
       setView('connections');
     } else if (t.dataset.use) {
       await setSetting(t.dataset.kind === 'embedding' ? { embedModel: t.dataset.use } : { chatModel: t.dataset.use, chatSource: 'local' });
+    } else if (t.dataset.unlink) {
+      if (!confirm(`Stop listing ${modelName(t.dataset.unlink)}?\n\nThe file stays where it is: only Scorpion forgets it.`)) return;
+      try { await api.unlinkModel(t.dataset.unlink); toast('Removed from the list. The file was not touched.'); } catch (err) { toast(errText(err)); }
+      refresh();
     } else if (t.dataset.delmodel || t.dataset.uninstall) {
       const name = t.dataset.delmodel ? modelName(t.dataset.delmodel) : S.catalog.find((c) => c.id === t.dataset.uninstall)?.name;
       const size = Number(t.dataset.size) ? ` and free ${gb(Number(t.dataset.size))}` : '';
@@ -2172,7 +2224,15 @@ function wire() {
   $('#precise-answers').onchange = (e) => setSetting({ preciseAnswers: e.target.checked });
   $('#thinking').onchange = (e) => setSetting({ thinking: e.target.value });
   $('#voice-model').onchange = (e) => setSetting({ voiceModel: e.target.value });
-  $('#save-prompt').onclick = () => { setSetting({ systemPrompt: $('#system-prompt').value }); toast('Saved.'); };
+  // Custom instructions are kept as you type (a moment after you pause, and when you click away).
+  let promptTimer = 0;
+  const savePrompt = async () => {
+    clearTimeout(promptTimer);
+    promptTimer = 0;
+    try { await setSetting({ systemPrompt: $('#system-prompt').value }); $('#prompt-state').textContent = 'Saved.'; } catch (err) { $('#prompt-state').textContent = errText(err); }
+  };
+  $('#system-prompt').oninput = () => { $('#prompt-state').textContent = 'Saving…'; clearTimeout(promptTimer); promptTimer = setTimeout(savePrompt, 700); };
+  $('#system-prompt').onblur = () => { if (promptTimer) savePrompt(); };
 
   $('#view-agents').onclick = async (e) => {
     const d = e.target.dataset;
