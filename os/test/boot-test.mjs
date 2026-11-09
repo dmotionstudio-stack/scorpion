@@ -134,7 +134,8 @@ if (result === 'RUNNING') {
   if (crashBright != null && crashBright < NOT_BLACK) problems.push('the screen is black after swaylock crashed');
 
   console.log('1d. Sleep and wake…');
-  if (await until(/SCORPION-SLEEPING/, 60)) {
+  // The steps wait (up to 180 s) for the live image to stop being read before sleeping.
+  if (await until(/SCORPION-SLEEPING/, 240)) {
     let asleep = false;
     const end = Date.now() + 90_000;
     while (Date.now() < end && !seen(/SCORPION-WOKE/)) {
