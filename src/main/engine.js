@@ -34,9 +34,37 @@ function setEffort(slot, effort) {
 export const usesReasoningEffort = (slot = 'main') => slots[slot].harmony;
 const embed = { path: null, model: null, context: null };
 
+// What llama.cpp complained about most recently (errors only), kept so that a
+// model which won't load can be explained in words (explainLoadFailure).
+const recentLog = [];
+function keepLog(level, message) {
+  const line = String(message).trim();
+  if (!line) return;
+  recentLog.push(line);
+  if (recentLog.length > 60) recentLog.shift();
+  console.error('[node-llama-cpp]', line);
+}
+
+// Why a model file wouldn't load, from llama.cpp's own error lines, for the
+// person who picked it. Never "damaged, download it again" unless that is what
+// llama.cpp said: a file built for a different engine version is not damaged.
+export function explainLoadFailure(lines, name) {
+  const text = lines.join('\n');
+  const first = lines.find((l) => /error|fail|wrong|missing|unknown|unsupported|expected/i.test(l) && !/failed to load model$/i.test(l)) || lines[0] || '';
+  const detail = first.replace(/^llama_[a-z_]+: (error loading model: )?/i, '').replace(/^error loading model( hyperparameters)?: /i, '').slice(0, 160);
+  const arch = /unknown model architecture: '([^']+)'/i.exec(text)?.[1];
+  if (arch) return `${name} is a "${arch}" model, a kind this version of Scorpion's engine doesn't know yet. A newer Scorpion may run it.`;
+  if (/failed to allocate|memory allocation of size|out of memory|ErrorOutOfDeviceMemory|ErrorOutOfHostMemory|cudaMalloc|bad_alloc/i.test(text)) return `${name} needs more memory than this computer can give it. Pick a smaller model, or a smaller version (quantization) of it.`;
+  if (/hyperparameters|key [\w.]+ (has wrong|not found|is missing)|wrong array length/i.test(text)) return `${name} was made for a different version of the engine, so Scorpion can't read its settings (${detail}). The file is not damaged. Look for another upload or quantization of the same model; the plain text-only version often works.`;
+  if (/wrong number of tensors|missing tensor|tensor '[^']*' (not found|has wrong)|done_getting_tensors|tensor.*(not found|missing)/i.test(text)) return `${name} has parts the engine doesn't expect (${detail}). Models with a vision or extra prediction part built into the file often do this. Look for the text-only version.`;
+  // (A cut-off file can also make the loader itself fail on a missing header: "Cannot read properties of undefined".)
+  if (/invalid magic|invalid gguf|not a gguf|gguf magic|unsupported gguf version|reading 'architecture'|cannot read propert|file is too short|failed to read|data is not within file bounds|unexpectedly reached end|corrupt|incomplete/i.test(text)) return `${name} could not be loaded. The file looks damaged or incomplete: uninstall it in Models and download it again.`;
+  return `${name} could not be loaded${detail ? `: ${detail}` : '.'} If the file is fine it may need a newer Scorpion; another upload or quantization of the same model may work.`;
+}
+
 async function ensureLlama() {
   // build: 'never' — an installed app must never try to compile llama.cpp.
-  llama ??= await getLlama({ build: 'never', logLevel: LlamaLogLevel.error });
+  llama ??= await getLlama({ build: 'never', logLevel: LlamaLogLevel.error, logger: keepLog });
   return llama;
 }
 
@@ -47,7 +75,7 @@ async function ensureLlama() {
 // build with zero layers offloaded.
 let cpuLlama = null;
 async function ensureCpuLlama() {
-  cpuLlama ??= await getLlama({ build: 'never', gpu: false, logLevel: LlamaLogLevel.error })
+  cpuLlama ??= await getLlama({ build: 'never', gpu: false, logLevel: LlamaLogLevel.error, logger: keepLog })
     .catch(() => ensureLlama());
   return cpuLlama;
 }
@@ -146,6 +174,7 @@ async function loadChatModelNow(modelPath, { contextSize = 8192, gpuLayers: requ
     : typeof requested === 'number' ? [requested, ...[8, 0].filter((n) => n < requested)]
     : [requested, 16, 8, 0];
   for (const gpuLayers of attempts) {
+    recentLog.length = 0;
     try {
       const l = gpuLayers === 0 ? await ensureCpuLlama() : await ensureLlama();
       chat.model = await l.loadModel({ modelPath, gpuLayers, onLoadProgress: (p) => onProgress?.(p) });
@@ -154,9 +183,11 @@ async function loadChatModelNow(modelPath, { contextSize = 8192, gpuLayers: requ
     } catch (err) { loadErr = err; }
   }
   if (!chat.model) {
-    // Even CPU-only failed, so the file itself is the problem (often a cut-off
-    // download). Say so plainly instead of llama.cpp's internal error.
-    const err = new Error(`${name || path.basename(modelPath)} could not be loaded. The file looks damaged or incomplete: uninstall it in Models and download it again.`);
+    // Even CPU-only failed, so the file itself is the problem. Say why in words
+    // (a cut-off download, a file made for another engine version...) instead of
+    // llama.cpp's internal error.
+    // (The loader's own error counts too: a file it rejects before llama.cpp sees it leaves nothing in the log.)
+    const err = new Error(explainLoadFailure([...recentLog.splice(0), ...(loadErr?.message ? [loadErr.message] : [])], name || path.basename(modelPath).replace(/\.gguf$/i, '')));
     err.cause = loadErr;
     throw err;
   }
@@ -192,6 +223,23 @@ async function loadChatModelNow(modelPath, { contextSize = 8192, gpuLayers: requ
   chat.session = newSession(chat, chat.context.getSequence());
   chat.path = modelPath;
   return engineInfo();
+}
+
+// Whether a model file can be used: { ok: true } or { ok: false, reason }. It
+// is loaded for real on the CPU with nothing on the graphics card: the weights
+// are memory-mapped, not read, so it takes a few seconds and little memory (a
+// vocabulary-only load is quicker but skips the model-specific settings, which
+// is where a file made for another engine version gives itself away).
+export async function checkModelFile(modelPath) {
+  const l = await ensureCpuLlama();
+  recentLog.length = 0;
+  try {
+    const model = await l.loadModel({ modelPath, gpuLayers: 0, useMmap: true });
+    await model.dispose();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: explainLoadFailure([...recentLog.splice(0), ...(err?.message ? [err.message] : [])], path.basename(modelPath).replace(/\.gguf$/i, '')) };
+  }
 }
 
 export function unloadChatModel(slot = 'main') {

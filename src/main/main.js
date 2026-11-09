@@ -1882,6 +1882,8 @@ function registerIpc() {
   h('model:import', async () => {
     const r = await dialog.showOpenDialog(win, { title: 'Import a GGUF model', filters: [{ name: 'GGUF model', extensions: ['gguf'] }], properties: ['openFile'] });
     if (r.canceled || !r.filePaths[0]) return null;
+    const usable = await engine.checkModelFile(r.filePaths[0]);
+    if (!usable.ok) throw new Error(usable.reason);
     return models.importModel(r.filePaths[0]);
   });
   h('model:delete', (file) => uninstall(file));
@@ -1900,8 +1902,10 @@ function registerIpc() {
   });
   h('models:scanStop', () => { modelScan?.abort(); return true; });
   // Use a found model where it is (the file is never moved, copied or deleted).
-  h('models:link', ({ path: file, name }) => {
+  h('models:link', async ({ path: file, name }) => {
     if (!file || !fs.existsSync(file) || !isGguf(file)) throw new Error('That is not a model file (GGUF)');
+    const usable = await engine.checkModelFile(file);
+    if (!usable.ok) throw new Error(usable.reason);
     const list = store.getSettings().modelFiles || [];
     if (!list.some((l) => l.path === file)) store.updateSettings({ modelFiles: [...list, { path: file, ...(name ? { name: String(name).slice(0, 80) } : {}) }] });
     return true;
@@ -1919,6 +1923,8 @@ function registerIpc() {
   // Copy a found model into Scorpion's own folder.
   h('models:copyIn', async ({ path: file, name }) => {
     if (!file || !fs.existsSync(file) || !isGguf(file)) throw new Error('That is not a model file (GGUF)');
+    const usable = await engine.checkModelFile(file);
+    if (!usable.ok) throw new Error(usable.reason);
     return models.importModel(file, /\.gguf$/i.test(file) ? null : name || 'model');
   });
   h('model:uninstallCatalog', (id) => {

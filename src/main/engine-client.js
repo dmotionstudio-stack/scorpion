@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as local from './engine.js';
 
-export { modelFit, compactHistory, lastModelText, parseTextToolCalls } from './engine.js';
+export { modelFit, compactHistory, lastModelText, parseTextToolCalls, explainLoadFailure } from './engine.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -147,6 +147,7 @@ const via = (fn) => (...args) => (separate() ? remote(fn, ...args) : local[fn](.
 export const hardwareInfo = via('hardwareInfo');
 export const engineInfo = via('engineInfo');
 export const loadChatModel = via('loadChatModel');
+export const checkModelFile = via('checkModelFile');
 export const unloadChatModel = via('unloadChatModel');
 export const runTurn = via('runTurn');
 export const warmUp = via('warmUp');
