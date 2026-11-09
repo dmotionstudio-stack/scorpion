@@ -14,7 +14,7 @@ import { execFileSync } from 'node:child_process';
 
 const DAY = 86_400_000;
 // A name like claude, claude-1234 or claudeXYZ in the path: never.
-const NEVER = /\\claude($|\\|-)/i;
+const NEVER = /[\\/]claude($|[\\/]|-)/i;
 
 // Names matching a pattern with * (case-insensitive), as the script's -like.
 const like = (name, pattern) => new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`, 'i').test(name);

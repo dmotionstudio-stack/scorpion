@@ -11,7 +11,9 @@ const PLACES = { win32: ['Desktop', 'Documents', 'Downloads', 'Pictures', 'Music
 // The top level. `io` is for tests: { exists, readdir, realpath }.
 export function rootItems({ platform = process.platform, home = os.homedir(), io = {} } = {}) {
   const exists = io.exists || fs.existsSync;
-  const places = (PLACES[platform] || PLACES.win32).map((n) => ({ name: n, path: path.join(home, n), dir: true })).filter((p) => exists(p.path));
+  // Paths are built the way that system writes them, whichever system this runs on.
+  const P = platform === 'win32' ? path.win32 : path.posix;
+  const places = (PLACES[platform] || PLACES.win32).map((n) => ({ name: n, path: P.join(home, n), dir: true })).filter((p) => exists(p.path));
   const drives = [];
   if (platform === 'darwin') {
     drives.push({ name: 'Macintosh HD', path: '/', dir: true });
