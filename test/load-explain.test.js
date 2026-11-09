@@ -30,6 +30,14 @@ test('too big for the memory, with the graphics card or without', () => {
   }
 });
 
+test('a model that loads but whose working memory (context) does not fit says so and what to lower', () => {
+  for (const line of ['Failed to create context', 'llama_init_from_model: failed to initialize the context: failed to allocate compute pp buffers']) {
+    const m = explainLoadFailure(['ggml_vulkan: Device memory allocation of size 542117888 failed.', line], 'Defiant');
+    assert.match(m, /^Defiant loads, but there isn't enough memory left for its working space/);
+    assert.match(m, /Lower the context size/);
+  }
+});
+
 test('extra parts built into the file (vision, prediction heads) are named as the likely cause', () => {
   const m = explainLoadFailure(['llama_model_load: error loading model: done_getting_tensors: wrong number of tensors; expected 883, got 427', 'llama_model_load_from_file_impl: failed to load model'], 'WithVision');
   assert.match(m, /has parts the engine doesn't expect/);

@@ -54,6 +54,7 @@ export function explainLoadFailure(lines, name) {
   const detail = first.replace(/^llama_[a-z_]+: (error loading model: )?/i, '').replace(/^error loading model( hyperparameters)?: /i, '').slice(0, 160);
   const arch = /unknown model architecture: '([^']+)'/i.exec(text)?.[1];
   if (arch) return `${name} is a "${arch}" model, a kind this version of Scorpion's engine doesn't know yet. A newer Scorpion may run it.`;
+  if (/failed to create context|failed to initialize the context|compute (pp )?buffers/i.test(text)) return `${name} loads, but there isn't enough memory left for its working space at this context size. Lower the context size in Settings → General → System, or pick a smaller model.`;
   if (/failed to allocate|memory allocation of size|out of memory|ErrorOutOfDeviceMemory|ErrorOutOfHostMemory|cudaMalloc|bad_alloc/i.test(text)) return `${name} needs more memory than this computer can give it. Pick a smaller model, or a smaller version (quantization) of it.`;
   if (/hyperparameters|key [\w.]+ (has wrong|not found|is missing)|wrong array length/i.test(text)) return `${name} was made for a different version of the engine, so Scorpion can't read its settings (${detail}). The file is not damaged. Look for another upload or quantization of the same model; the plain text-only version often works.`;
   if (/wrong number of tensors|missing tensor|tensor '[^']*' (not found|has wrong)|done_getting_tensors|tensor.*(not found|missing)/i.test(text)) return `${name} has parts the engine doesn't expect (${detail}). Models with a vision or extra prediction part built into the file often do this. Look for the text-only version.`;
@@ -159,40 +160,10 @@ export function loadChatModel(modelPath, options = {}) {
   return inQueue(options.slot || 'main', () => loadChatModelNow(modelPath, options));
 }
 
-async function loadChatModelNow(modelPath, { contextSize = 8192, gpuLayers: requested = 'auto', name = null, onProgress, slot = 'main' } = {}) {
-  const chat = slots[slot];
-  if (chat.path === modelPath && chat.model && chat.requestedGpuLayers === requested) return engineInfo();
-  await disposeChat(chat);
-  // The automatic GPU-offload estimate can overshoot on shared-memory GPUs. If
-  // it fails, fall back conservatively (generation needs memory beyond what
-  // loading does), down to CPU-only. A number from Settings is tried first.
-  // "CPU only" (0 layers) always uses the pure-CPU build, which is faster.
-  const hw = await hardwareInfo();
-  const bytes = fs.statSync(modelPath).size;
-  let loadErr;
-  const attempts = requested === 0 || (requested === 'auto' && prefersCpu(bytes, hw)) ? [0]
-    : typeof requested === 'number' ? [requested, ...[8, 0].filter((n) => n < requested)]
-    : [requested, 16, 8, 0];
-  for (const gpuLayers of attempts) {
-    recentLog.length = 0;
-    try {
-      const l = gpuLayers === 0 ? await ensureCpuLlama() : await ensureLlama();
-      chat.model = await l.loadModel({ modelPath, gpuLayers, onLoadProgress: (p) => onProgress?.(p) });
-      chat.backend = gpuLayers === 0 ? 'cpu' : (l.gpu || 'cpu');
-      break;
-    } catch (err) { loadErr = err; }
-  }
-  if (!chat.model) {
-    // Even CPU-only failed, so the file itself is the problem. Say why in words
-    // (a cut-off download, a file made for another engine version...) instead of
-    // llama.cpp's internal error.
-    // (The loader's own error counts too: a file it rejects before llama.cpp sees it leaves nothing in the log.)
-    const err = new Error(explainLoadFailure([...recentLog.splice(0), ...(loadErr?.message ? [loadErr.message] : [])], name || path.basename(modelPath).replace(/\.gguf$/i, '')));
-    err.cause = loadErr;
-    throw err;
-  }
-  chat.name = name;
-  chat.requestedGpuLayers = requested;
+// The working memory (context) for a model that is loaded, as big as fits:
+// the size asked for, then half of it, down to 2048. Throws when even that
+// doesn't fit (loadChatModelNow then tries fewer layers on the graphics card).
+async function makeContext(chat, hw, contextSize) {
   // A second sequence lets a helper agent run while the main chat waits on it,
   // but each sequence costs a full context of memory. The main chat's context
   // matters more, so keep 2 sequences only if the main one still gets (almost)
@@ -216,9 +187,52 @@ async function loadChatModelNow(modelPath, { contextSize = 8192, gpuLayers: requ
       chat.context = await chat.model.createContext({ contextSize: { min: Math.min(2048, size), max: size }, flashAttention: fa });
     } catch (err) {
       if (fa) { fa = false; size *= 2; continue; } // retry this size without flash attention
-      if (size <= 2048) { await disposeChat(chat); throw err; }
+      if (size <= 2048) throw err;
     }
   }
+}
+
+async function loadChatModelNow(modelPath, { contextSize = 8192, gpuLayers: requested = 'auto', name = null, onProgress, slot = 'main' } = {}) {
+  const chat = slots[slot];
+  if (chat.path === modelPath && chat.model && chat.requestedGpuLayers === requested) return engineInfo();
+  await disposeChat(chat);
+  // The automatic GPU-offload estimate can overshoot on shared-memory GPUs. If
+  // it fails, fall back conservatively (generation needs memory beyond what
+  // loading does), down to CPU-only. A number from Settings is tried first.
+  // "CPU only" (0 layers) always uses the pure-CPU build, which is faster.
+  const hw = await hardwareInfo();
+  const bytes = fs.statSync(modelPath).size;
+  let loadErr;
+  const attempts = requested === 0 || (requested === 'auto' && prefersCpu(bytes, hw)) ? [0]
+    : typeof requested === 'number' ? [requested, ...[8, 0].filter((n) => n < requested)]
+    : [requested, 16, 8, 0];
+  for (const gpuLayers of attempts) {
+    recentLog.length = 0;
+    try {
+      const l = gpuLayers === 0 ? await ensureCpuLlama() : await ensureLlama();
+      chat.model = await l.loadModel({ modelPath, gpuLayers, onLoadProgress: (p) => onProgress?.(p) });
+      chat.backend = gpuLayers === 0 ? 'cpu' : (l.gpu || 'cpu');
+      // The model fitting isn't enough: its working memory (the context) has to fit
+      // in what the card has left too. If it doesn't, this split is given up, and
+      // the next one (fewer layers on the card) is tried from a clean start.
+      await makeContext(chat, hw, contextSize);
+      break;
+    } catch (err) {
+      loadErr = err;
+      await disposeChat(chat);
+    }
+  }
+  if (!chat.model) {
+    // Even CPU-only failed, so the file itself is the problem. Say why in words
+    // (a cut-off download, a file made for another engine version...) instead of
+    // llama.cpp's internal error.
+    // (The loader's own error counts too: a file it rejects before llama.cpp sees it leaves nothing in the log.)
+    const err = new Error(explainLoadFailure([...recentLog.splice(0), ...(loadErr?.message ? [loadErr.message] : [])], name || path.basename(modelPath).replace(/\.gguf$/i, '')));
+    err.cause = loadErr;
+    throw err;
+  }
+  chat.name = name;
+  chat.requestedGpuLayers = requested;
   chat.harmony = chat.model.fileInfo?.metadata?.general?.architecture === 'gpt-oss';
   chat.session = newSession(chat, chat.context.getSequence());
   chat.path = modelPath;
