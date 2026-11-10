@@ -301,7 +301,10 @@ test('every catalog entry is well formed and fast models carry a tested skill', 
   for (const id of ['qwen3-4b', 'qwen3.5-4b', 'gpt-oss-20b', 'nomic-embed']) assert.ok(ids.has(id), id);
   for (const id of ['gemma3-4b', 'gemma3-1b', 'llama3.2-3b', 'llama3.2-1b']) assert.ok(!ids.has(id), `${id} was removed`);
   // Qwen models that did poorly with the agent (see the Qwen comparison) stay out.
-  for (const id of ['qwen3-1.7b', 'qwen2.5-0.5b', 'qwen2.5-1.5b', 'qwen2.5-coder-1.5b', 'qwen2.5-7b']) assert.ok(!ids.has(id), id);
+  for (const id of ['qwen2.5-0.5b', 'qwen2.5-1.5b', 'qwen2.5-coder-1.5b', 'qwen2.5-7b']) assert.ok(!ids.has(id), id);
+  // Qwen3 1.7B is there only as the fallback for computers too slow for the 4B models, and says what it can't do.
+  assert.equal(CATALOG.find((c) => c.id === 'qwen3-1.7b').skill, 'chat');
+  assert.ok(CATALOG.findIndex((c) => c.id === 'qwen3-1.7b') > CATALOG.findIndex((c) => c.id === 'qwen3-4b'), 'never ahead of the recommended model');
 });
 
 test('tool calls written as text are recognised so the task does not stall', async () => {

@@ -97,9 +97,13 @@ export function isFactualQuestion(text) {
   return QUESTION_RE.test(t) && !CREATIVE_RE.test(t);
 }
 
-// gpt-oss thinking level: short for conversation, more for planning and building.
-export function thinkingFor(setting, { mode, spoken }) {
-  if (['low', 'medium', 'high'].includes(setting)) return setting;
+// How long a model thinks before it answers: 'off', 'low', 'medium' or 'high' (the
+// Thinking switch in the chat). Automatic: none on a computer where the model is
+// slow (thinking is most of the wait there), short for conversation, more for
+// planning and building.
+export function thinkingFor(setting, { mode, spoken, slow = false }) {
+  if (['off', 'low', 'medium', 'high'].includes(setting)) return setting;
+  if (slow) return 'off';
   return spoken || mode === 'chat' ? 'low' : 'medium';
 }
 

@@ -55,6 +55,12 @@
             <select id="model-picker" aria-label="Model"></select>
             <span class="model-note" id="model-note"></span>
           </div>
+          <div class="model-switch think-switch" title="How long the model thinks before it answers. Less is faster, more is for hard questions">
+            <span class="muted small">Thinking</span>
+            <select id="thinking-picker" aria-label="Thinking">
+              <option value="auto">Auto</option><option value="off">Off (fastest)</option><option value="low">Quick</option><option value="medium">Normal</option><option value="high">Deep</option>
+            </select>
+          </div>
           <div class="spacer"></div>
           <button class="chip" id="workspace-chip" title="Folder the agent can work in"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>No workspace</span></button>
           <label class="toggle" title="Run file edits and commands without asking">
@@ -98,6 +104,7 @@
           <h1>Models</h1>
           <p class="muted">Models run entirely on this computer with llama.cpp. Get one once (download, or import a <code>.gguf</code> file from a USB drive) and Scorpion works with no internet forever after.</p>
           <div class="engine-info" id="engine-info"></div>
+          <div class="speed-card" id="speed-card"></div>
           <h2>On this computer</h2>
           <div class="cards" id="local-models"></div>
           <div class="row"><button class="btn" id="import-model">Import .gguf file…</button><button class="btn" id="scan-models" title="Look for model files already on this computer (Downloads, LM Studio, Ollama and more)">Scan this computer for models…</button></div>
@@ -464,14 +471,15 @@
             <label class="toggle"><input type="checkbox" id="precise-answers"><span>Precise answers to questions: questions of fact are answered with low creativity (requests to write or brainstorm keep the setting above)</span></label>
           </div>
           <div class="field" data-sec="chat">
-            <label for="thinking">Thinking (gpt-oss)</label>
+            <label for="thinking">Thinking</label>
             <select id="thinking">
-              <option value="auto">Automatic: short for conversation, more for Plan and Build (recommended)</option>
-              <option value="low">Low: fastest replies</option>
-              <option value="medium">Medium</option>
-              <option value="high">High: slowest, for hard problems</option>
+              <option value="auto">Automatic: none where the model is slow here, short for conversation, more for Plan and Build (recommended)</option>
+              <option value="off">Off: the fastest replies</option>
+              <option value="low">Quick</option>
+              <option value="medium">Normal</option>
+              <option value="high">Deep: slowest, for hard problems</option>
             </select>
-            <p class="muted small">How long models that think before answering (gpt-oss) spend thinking. Other models ignore this.</p>
+            <p class="muted small">How long a model thinks before it answers (gpt-oss, Qwen3.5 and Qwen3 do; others ignore this). Thinking is most of the wait on a slow computer. The same switch is at the top of every chat.</p>
           </div>
           <div class="field" data-sec="chat">
             <label for="system-prompt">Custom instructions</label>

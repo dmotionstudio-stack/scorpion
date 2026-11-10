@@ -2,6 +2,7 @@ import { app, BrowserWindow, screen, ipcMain, dialog, protocol, net, shell, Noti
 import { textMenuTemplate } from './text-menu.js';
 import { cleanGroups, groupOf, setGroup, freeGroupNames } from '../renderer/taskbar-core.js';
 import { createClock } from './clock.js';
+import { recommend } from './speed.js';
 import { NEW_KINDS, createItem } from './new-items.js';
 import path from 'node:path';
 import os from 'node:os';
@@ -587,6 +588,7 @@ async function state() {
   return {
     settings: store.getSettings(),
     hardware: hw,
+    speed: await speedTable().then((t) => ({ pick: t.pick?.path ?? null, rows: t.rows.map((r) => ({ path: r.path, tps: r.tps, level: r.level?.id ?? null, label: r.level?.label ?? '' })) })).catch(() => ({ pick: null, rows: [] })),
     models: models.listLocalModels(modelEnv()).map((m) => ({ ...m, fit: fit(m.kind, m.bytes), skill: models.CATALOG.find((c) => models.findInstalled(c, [m]))?.skill })),
     catalog: models.CATALOG.map((c) => ({ ...c, fit: fit(c.kind, parseSize(c.size)) })),
     threads: store.listThreads(),
@@ -638,6 +640,8 @@ async function autoSelectModels() {
   // A workspace folder from another computer doesn't exist here.
   if (s.workspace && !fs.existsSync(s.workspace)) patch.workspace = null;
   if (Object.keys(patch).length) store.updateSettings(patch);
+  // On the computer's own speed: the model that answers comfortably here (not while one is loaded and answering).
+  if (!running.size) await autoPickModel().catch(() => {});
 }
 
 // Uninstall a library model. If it was in use, switch to the next best model
@@ -686,6 +690,28 @@ function applyLowCpu() {
   const on = libraryLowCpu || currentPerf() === 'light';
   setLowCpu(on);
   faces.setFaceThreads(on ? 1 : 0);
+}
+
+// How fast each installed chat model answers on this computer, about, and the one that
+// suits it best (speed.js): from the computer's memory speed, cores and graphics card.
+async function speedTable() {
+  const hw = await engine.hardwareInfo().catch(() => null);
+  const list = models.listLocalModels(modelEnv()).filter((m) => m.kind === 'chat')
+    .map((m) => ({ path: m.path, name: m.name, bytes: m.bytes, rank: models.catalogRank(m), ...models.speedInfo(m) }));
+  // Thinking counts against a model that thinks (conservative: a slow answer is worse than a less capable one).
+  return { hw, ...recommend(list, hw, hw?.memGBs, { thinking: 'auto' }) };
+}
+const isSlowHere = async (file) => {
+  try { const r = (await speedTable()).rows.find((x) => x.path === file); return Boolean(r) && r.tps != null && r.tps < 12; } catch { return false; }
+};
+const thinkingLevel = async (setting, { mode, spoken }, file) => thinkingFor(setting, { mode, spoken, slow: file ? await isSlowHere(file) : false });
+// Scorpion picks the model for this computer's speed, until one is chosen by hand.
+async function autoPickModel() {
+  if (store.getSettings().modelAuto === false) return false;
+  const { pick } = await speedTable();
+  if (!pick || pick.path === store.getSettings().chatModel) return false;
+  store.updateSettings({ chatModel: pick.path });
+  return true;
 }
 
 // The best installed model that runs fast on this computer, when the given
@@ -970,7 +996,7 @@ async function warmUp({ spoken = false } = {}) {
   return engine.warmUp({
     systemPrompt: promptFor(settings, agent, { canAskForFolders: true, spoken }),
     functions,
-    effort: engine.usesReasoningEffort(slot) ? thinkingFor(base.thinking, { mode: settings.mode, spoken }) : null,
+    effort: await thinkingLevel(base.thinking, { mode: settings.mode, spoken }, voicePath || (await effectiveChatModel())),
     slot,
   });
 }
@@ -1016,7 +1042,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
   const searcher = rag.createSearcher(settings);
   let streamed = '';
   const info = source.remote ? { contextSize: source.contextSize || 32768, maxToolChars: 16000 } : await engine.engineInfo();
-  const effort = !source.remote && engine.usesReasoningEffort(slot) ? thinkingFor(settings.thinking, { mode: settings.mode, spoken }) : null;
+  const effort = source.remote ? null : await thinkingLevel(settings.thinking, { mode: settings.mode, spoken }, slot === 'voice' ? await voiceModelPath() : await effectiveChatModel());
   // Questions of fact: the model's most likely answer, not a creative one.
   const baseTemperature = agent.temperature ?? settings.temperature;
   const temperature = settings.preciseAnswers !== false && isFactualQuestion(text) ? Math.min(baseTemperature, 0.2) : baseTemperature;
@@ -1854,7 +1880,11 @@ function registerIpc() {
   }
   h('settings:update', async (patch) => {
     const before = store.getSettings();
+    // Choosing a model by hand keeps it (until Auto is chosen again).
+    if (patch.chatModel && patch.chatModel !== before.chatModel && !('modelAuto' in patch)) patch = { ...patch, modelAuto: false };
+    if (patch.modelAuto === true && before.modelAuto === false) await autoPickModel().catch(() => {});
     const next = store.updateSettings(patch);
+    if (patch.modelAuto === true && next.chatModel && next.chatModel !== before.chatModel) loadChat().catch(() => {});
     if ((patch.glass !== undefined && patch.glass !== before.glass) || (patch.theme && patch.theme !== before.theme)) applyGlass();
     if (patch.chatModel && patch.chatModel !== before.chatModel) loadChat().catch(() => {});
     else if (((patch.contextSize && patch.contextSize !== before.contextSize) || (patch.gpuLayers !== undefined && patch.gpuLayers !== before.gpuLayers)) && engine.isChatReady()) {

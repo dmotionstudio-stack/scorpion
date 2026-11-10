@@ -25,7 +25,8 @@ const DEFAULT_SETTINGS = {
   gpuLayers: 'auto', // 'auto' or how many model layers to run on the GPU (0 = CPU only)
   temperature: 0.6,
   preciseAnswers: true, // questions of fact are answered with low randomness (temperature 0.2)
-  thinking: 'auto', // gpt-oss reasoning effort: 'auto' (low for conversation, medium for Plan/Build), 'low', 'medium', 'high'
+  thinking: 'auto', // how long a model thinks before answering: 'auto' (none where the model is slow, short for conversation, more for Plan/Build), 'off', 'low', 'medium', 'high'
+  modelAuto: true, // Scorpion picks the chat model that suits this computer's speed; off once one is chosen by hand
   voiceModel: 'auto', // model for spoken turns: 'auto' (a fast one when the chat model is slow here), 'same', or a .gguf path
   lastChatMode: 'build',
   faceInsightsLive: true, // Interact's face camera shows expression, age and gender (when installed)
@@ -103,6 +104,8 @@ const MIGRATIONS = [
   //    in Settings → General → Voice and hands).
   //    Also: Stage and the summon dot are gone, with their settings.
   (s) => {
+    // The model someone chose stays the model: only a fresh install picks by speed.
+    if (s.chatModel) s.modelAuto = false;
     s.handsAlwaysOn = false; s.talkAtStart = false; s.wakeWord = false;
     for (const k of ['stage', 'minimizeToStage', 'summonDot', 'dotAt']) delete s[k];
     if (s.wheel && typeof s.wheel === 'object') delete s.wheel.button;

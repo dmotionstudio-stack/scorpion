@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { getLlama, LlamaChatSession, LlamaLogLevel, HarmonyChatWrapper } from 'node-llama-cpp';
+import { measureMemoryTrusted, THINK_BUDGET } from './speed.js';
 
 let llama = null;
 // Two model slots: "main" answers chats; "voice" is an optional fast model kept
@@ -22,7 +23,12 @@ const newSession = (slot, contextSequence, systemPrompt) => new LlamaChatSession
 
 // Changing the effort rebuilds the session on the same sequence: what was
 // already read stays, and only the part from the change on is read again.
-function setEffort(slot, effort) {
+// The thinking level the person (or Auto) chose: 'off', 'low', 'medium' or 'high'. gpt-oss
+// can't be told to skip thinking in its own format, so Off is its lowest effort plus a
+// budget of no thinking at all (below); other models only get the budget.
+const effortFor = (level) => (level === 'off' ? 'low' : level);
+function setEffort(slot, level) {
+  const effort = effortFor(level);
   if (!slot.harmony || !effort || effort === (slot.effort || 'medium')) return;
   const sequence = slot.session.sequence;
   try { slot.session.dispose({ disposeSequence: false }); } catch { /* already gone */ }
@@ -105,6 +111,10 @@ export async function hardwareInfo() {
     dedicatedVram: Math.max(0, total - unified),
     sharedVram: unified,
     ram: os.totalmem(),
+    cores: os.cpus().length || 1,
+    cpu: os.cpus()[0]?.model?.replace(/s+/g, ' ').trim() || '',
+    // How fast this computer reads its memory (GB/s, measured once): what decides how fast a model answers (speed.js).
+    memGBs: measureMemoryTrusted({ pause: () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150) }),
   };
   return hardware;
 }
@@ -311,9 +321,12 @@ export function warmUp({ systemPrompt, functions, effort = null, slot = 'main' }
   });
 }
 
-function promptOptions({ functions, temperature, signal, onText, onThought, maxTokens = 3072 }) {
+function promptOptions({ functions, temperature, signal, onText, onThought, maxTokens = 3072, effort = null }) {
+  const thoughtTokens = THINK_BUDGET[effort];
   return {
     functions,
+    // How much a model may think before it answers (none for Off): thinking is most of the wait on a slow computer.
+    ...(thoughtTokens !== undefined ? { budgets: { thoughtTokens } } : {}),
     temperature,
     signal,
     stopOnAbortSignal: true,
@@ -481,7 +494,7 @@ async function runTurnUnlocked({ threadId, history, systemPrompt, text, function
       }]));
       let overflowed = false;
       try {
-        await session.prompt(prompt, promptOptions({ functions: watched, temperature, signal: segmentStop.signal, onText, onThought, maxTokens }));
+        await session.prompt(prompt, promptOptions({ functions: watched, temperature, signal: segmentStop.signal, onText, onThought, maxTokens, effort }));
       } catch (err) {
         // A reply outgrew the context before any tool call let us pause.
         // Compact hard and continue (at most twice); files already written stay

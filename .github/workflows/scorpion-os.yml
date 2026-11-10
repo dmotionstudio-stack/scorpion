@@ -12,8 +12,8 @@ on:
         description: Scorpion OS version
         default: "0.1"
       model:
-        description: Built-in model (a catalog id like qwen3-4b, qwen3.5-4b, or none)
-        default: qwen3-4b
+        description: Built-in models, comma separated catalog ids (qwen3-4b,qwen3-1.7b: Scorpion picks the one that suits the computer; or none)
+        default: qwen3-4b,qwen3-1.7b
       publish:
         description: Publish this Scorpion build to the update repository
         type: boolean
@@ -23,7 +23,7 @@ on:
 
 env:
   SCORPION_OS_VERSION: ${{ inputs.version || '0.1' }}
-  SCORPION_MODEL: ${{ inputs.model || 'qwen3-4b' }}
+  SCORPION_MODEL: ${{ inputs.model || 'qwen3-4b,qwen3-1.7b' }}
 
 jobs:
   linux-app:
@@ -124,7 +124,7 @@ jobs:
         if: env.SCORPION_MODEL != 'none'
         with:
           path: bundle
-          key: bundle-${{ env.SCORPION_MODEL }}-voice-v1
+          key: bundle-${{ replace(env.SCORPION_MODEL, ',', '+') }}-voice-v1
       - uses: actions/setup-node@v4
         if: env.SCORPION_MODEL != 'none'
         with:
@@ -135,7 +135,7 @@ jobs:
         run: |
           if [ ! -f bundle/voice/installed.json ] || ! ls bundle/models/*.gguf >/dev/null 2>&1; then
             npm ci --ignore-scripts
-            node scripts/fetch-models.mjs bundle/models "$SCORPION_MODEL"
+            node scripts/fetch-models.mjs bundle/models ${SCORPION_MODEL//,/ }
             node --input-type=module -e "const v = await import('./src/main/voice.js'); v.initVoice('bundle'); await v.installVoice(); console.log(v.voiceStatus());"
           fi
           du -sh bundle/*

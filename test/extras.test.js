@@ -450,6 +450,18 @@ test('precise answers: questions of fact get a low temperature, creative request
   assert.equal(thinkingFor('auto', { mode: 'build', spoken: true }), 'low');
   assert.equal(thinkingFor('auto', { mode: 'build', spoken: false }), 'medium');
   assert.equal(thinkingFor('high', { mode: 'chat', spoken: true }), 'high');
+  // Off is a choice; Automatic turns thinking off where the model is slow, whatever the mode.
+  assert.equal(thinkingFor('off', { mode: 'build', spoken: false }), 'off');
+  assert.equal(thinkingFor('auto', { mode: 'build', spoken: false, slow: true }), 'off');
+  assert.equal(thinkingFor('auto', { mode: 'chat', spoken: true, slow: true }), 'off');
+  assert.equal(thinkingFor('medium', { mode: 'chat', spoken: true, slow: true }), 'medium', 'a choice is kept even when slow');
+});
+
+test('thinking levels become a budget of thinking: none for Off, a little for Quick, none set for Deep', async () => {
+  const { THINK_BUDGET } = await import('../src/main/speed.js');
+  assert.equal(THINK_BUDGET.off, 0);
+  assert.ok(THINK_BUDGET.low > 0 && THINK_BUDGET.low < THINK_BUDGET.medium);
+  assert.equal(THINK_BUDGET.high, undefined);
 });
 
 test('running Windows: name matching, safe quoting, approval rules, modes', async () => {

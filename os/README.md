@@ -18,13 +18,22 @@ The ISO is built by GitHub Actions (building one needs Linux; Windows can't):
    ISO and checks Scorpion comes up; its pictures are in the
    `boot-test-pictures` artifact).
 3. Download the `scorpion-os-iso` artifact: `scorpion-os-0.1-amd64.iso` and its
-   `.sha256` (about 4.7 GB with the built-in model).
+   `.sha256` (about 5.8 GB with the two built-in models).
 
 The run also publishes that Scorpion build to the update repository (part
 **Update repository**). Options in **Run workflow**: **model** picks the built-in
-model (a catalog id: `qwen3-4b`, `qwen3.5-4b`, `gpt-oss-20b`, or
-`none` for a 1.9 GB ISO without one), and **publish** can be turned off for a
-test build.
+models (catalog ids, comma separated: `qwen3-4b,qwen3-1.7b` by default, or
+`qwen3.5-4b`, `gpt-oss-20b`, or `none` for a 1.9 GB ISO without one), and
+**publish** can be turned off for a test build.
+
+**Which model it uses.** With more than one model built in, Scorpion measures the
+computer the first time it starts (processor cores, memory and its speed, graphics
+card) and uses the most capable model that answers comfortably there: a slow computer
+gets the small one, a fast one the bigger one. **Settings → Models** shows the
+estimate for each model and why; choosing a model by hand keeps it until
+**Automatic** is chosen again. How long a model *thinks* before it answers is the
+**Thinking** switch at the top of every chat (Auto turns it off where the model
+is slow).
 
 To build on your own Ubuntu 24.04 machine (about 25 GB free, an hour):
 

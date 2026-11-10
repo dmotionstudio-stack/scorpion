@@ -12,6 +12,10 @@ import { paths } from './store.js';
 //   tools  - calls simple tools correctly, but failed the Build-mode file test
 //   chat   - failed the tool tests; use it for conversation only
 // Entries without `skill` haven't been through that check.
+// tier: how capable it is, 1 to 3. thinks: it thinks before it answers (the
+// Thinking switch in the chat turns that down or off). activeGB: what it reads
+// for each word when that is much less than its file (mixture of experts);
+// speed.js uses these to work out how fast it answers on a computer.
 export const CATALOG = [
   {
     id: 'qwen3-4b',
@@ -20,6 +24,7 @@ export const CATALOG = [
     uri: 'hf:unsloth/Qwen3-4B-Instruct-2507-GGUF/Qwen3-4B-Instruct-2507-Q4_K_M.gguf',
     size: '2.5 GB',
     skill: 'agent',
+    tier: 2,
     note: 'Recommended. Passed every agent test, and the fastest reply of the 4B models. Apache-2.0.',
   },
   {
@@ -29,6 +34,8 @@ export const CATALOG = [
     uri: 'hf:unsloth/Qwen3.5-4B-GGUF/Qwen3.5-4B-Q4_K_M.gguf',
     size: '2.7 GB',
     skill: 'agent',
+    tier: 2,
+    thinks: true,
     note: 'Newest Qwen (2026). Passed every agent test and writes the best Haitian Creole of the Qwen models; thinks briefly first, so about a quarter slower than Qwen3 4B. Apache-2.0.',
   },
   {
@@ -38,7 +45,21 @@ export const CATALOG = [
     uri: 'hf:ggml-org/gpt-oss-20b-GGUF/gpt-oss-20b-MXFP4.gguf',
     size: '12.1 GB',
     skill: 'agent',
+    tier: 3,
+    thinks: true,
+    activeGB: 2.6,
     note: 'OpenAI\'s open model: the smartest here, for harder questions. Needs 16 GB RAM; on a small graphics card it runs on the processor (about 20 tokens/sec on a laptop). Apache-2.0.',
+  },
+  {
+    id: 'qwen3-1.7b',
+    kind: 'chat',
+    name: 'Qwen3 1.7B',
+    uri: 'hf:unsloth/Qwen3-1.7B-GGUF/Qwen3-1.7B-Q4_K_M.gguf',
+    size: '1.1 GB',
+    skill: 'chat',
+    tier: 1,
+    thinks: true,
+    note: 'Only for computers where the 4B models are too slow: about twice as fast, fine for conversation, but it did poorly in the agent tests, so it is unreliable with tools and long jobs. Scorpion picks it by itself only when nothing better runs comfortably. Apache-2.0.',
   },
   {
     id: 'nomic-embed',
@@ -91,6 +112,16 @@ function scan(dir, source) {
     out.push(modelEntry(file, source));
   }
   return out;
+}
+
+// The catalog entry a model file is (by its file name), or null.
+export function catalogEntry(model) {
+  return CATALOG.find((c) => c.kind === 'chat' && String(model.name || '').toLowerCase() === c.uri.split('/').pop().replace(/.gguf$/i, '').toLowerCase()) || null;
+}
+// What speed.js needs to know about a model file: its tier, whether it thinks, what it reads for each word.
+export function speedInfo(model) {
+  const c = catalogEntry(model);
+  return { tier: c?.tier, thinks: Boolean(c?.thinks), activeBytes: c?.activeGB ? Math.round(c.activeGB * 1024 ** 3) : 0 };
 }
 
 // Position in the catalog (recommended first); unknown files sort last.

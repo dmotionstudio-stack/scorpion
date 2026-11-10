@@ -194,16 +194,25 @@ function renderModelSwitch() {
   else if (S.engine?.chatModel && S.engine.chatModel === selected) cls = 'ready';
   else if (selected) note = 'not loaded';
   const sel = $('#model-picker');
-  const local = chatModels.map((m) => `<option value="${esc(m.path)}"${!remoteId && m.path === selected ? ' selected' : ''}>${esc(m.name)}${m.bytes ? ` · ${gb(m.bytes)}` : ''}</option>`).join('');
+  const auto = S.settings.modelAuto !== false;
+  const local = chatModels.map((m) => `<option value="${esc(m.path)}"${!remoteId && m.path === selected ? ' selected' : ''}>${esc(m.name)}${m.bytes ? ` · ${gb(m.bytes)}` : ''}${speedLabel(m.path) ? ` · ${speedLabel(m.path)}` : ''}${auto && m.path === selected && !remoteId ? ' · automatic' : ''}</option>`).join('');
   const remote = sources.map((p) => `<option value="source:${esc(p.id)}"${p.id === remoteId ? ' selected' : ''}>${esc(p.model || '(choose a model)')} · ${esc(p.name)}</option>`).join('');
   sel.innerHTML = chatModels.length || sources.length
     ? (sources.length ? `<optgroup label="On this computer">${local}</optgroup><optgroup label="Other sources">${remote}</optgroup>` : local)
+      + (chatModels.length > 1 && !auto ? '<option value="__auto">Automatic: the best for this computer</option>' : '')
       + '<option value="__manage">Manage models…</option>'
     : '<option value="__manage">No models — get one…</option>';
   sel.disabled = Boolean(st?.loading) || S.running.size > 0;
   sel.title = st?.error || (S.running.size ? 'Wait for the answer to finish before switching models' : 'Switch the model used for chatting');
   $('#model-status').className = `status ${cls}`;
   $('#model-note').textContent = note;
+  const think = ['off', 'low', 'medium', 'high'].includes(S.settings.thinking) ? S.settings.thinking : 'auto';
+  if ($('#thinking-picker').value !== think) $('#thinking-picker').value = think;
+}
+// How fast a model answers here, about ("Good · about 12 words/s"), from the computer's own speed (speed.js).
+function speedLabel(path) {
+  const r = (S.speed?.rows || []).find((x) => x.path === path);
+  return r && r.label ? r.label : '';
 }
 
 // Modes are per chat; a chat that hasn't been created yet uses the composer's choice.
@@ -403,10 +412,30 @@ const SKILL = {
   chat: ['skill-chat', 'Chat only', 'Did not use tools reliably in testing. Best for conversation.'],
 };
 const skillTag = (skill) => (SKILL[skill] ? `<span class="tag ${SKILL[skill][0]}" title="${SKILL[skill][2]}">${SKILL[skill][1]}</span>` : '');
+const speedTag = (path) => {
+  const r = (S.speed?.rows || []).find((x) => x.path === path);
+  return r?.label ? `<span class="tag speed-${r.level}" title="About ${r.tps > 0 ? `${Math.round(r.tps)} words a second` : 'none: it does not fit in this computer\'s memory'}, worked out from this computer's memory speed, processor and graphics card.">${esc(r.label)}${r.tps > 0 ? ` · ~${Math.round(r.tps)}/s` : ''}</span>` : '';
+};
 const fitTag = (fit) => (FIT[fit] ? `<span class="tag ${FIT[fit][0]}" title="${FIT[fit][2]}">${FIT[fit][1]}</span>` : '');
 
+function renderSpeedCard() {
+  const hw = S.hardware;
+  const box = $('#speed-card');
+  if (!hw) { box.hidden = true; return; }
+  box.hidden = false;
+  const gpu = hw.dedicatedVram ? `graphics card with ${(hw.dedicatedVram / 1024 ** 3).toFixed(0)} GB` : hw.gpu === 'metal' ? 'Apple graphics (shared memory)' : hw.sharedVram ? 'integrated graphics' : 'no graphics card used';
+  const chat = S.models.filter((m) => m.kind === 'chat');
+  const best = S.speed?.pick && chat.find((m) => m.path === S.speed.pick);
+  const auto = S.settings.modelAuto !== false;
+  box.innerHTML = `<div><b>This computer</b>: ${hw.cores || '?'} processor cores · ${(hw.ram / 1024 ** 3).toFixed(0)} GB memory${hw.memGBs ? ` (about ${Math.round(hw.memGBs)} GB/s)` : ''} · ${esc(gpu)}${hw.cpu ? `<div class="muted small">${esc(hw.cpu)}</div>` : ''}</div>
+    <div class="muted small">How fast a model answers depends mostly on how fast this computer reads its memory and how big the model is. The tags below are estimates.</div>
+    <div class="row">${best ? `<span>Best for this computer: <b>${esc(best.name)}</b>${auto ? ' (in use, automatically)' : ''}</span>` : '<span class="muted">No installed model fits this computer well.</span>'}${!auto && best ? '<button class="btn small primary" id="auto-model" type="button">Choose it automatically</button>' : ''}</div>`;
+  const b = $('#auto-model');
+  if (b) b.onclick = () => setSetting({ modelAuto: true });
+}
 function renderModels() {
   const e = S.engine || {};
+  renderSpeedCard();
   $('#engine-info').innerHTML = e.error ? `<span class="err">Engine error: ${esc(e.error)}</span>` : `Hardware acceleration: <strong>${esc(e.gpu === 'cpu' ? 'CPU only' : String(e.gpu).toUpperCase())}</strong>${e.totalLayers ? ` · ${e.gpuLayers} of ${e.totalLayers} layers on GPU · ${e.contextSize} token context${e.flashAttention ? ' · flash attention' : ''}` : ''}${S.hardware?.dedicatedVram ? ` · ${gb(S.hardware.dedicatedVram)} graphics memory` : ''}`;
   const sources = S.settings.providers || [];
   const remoteInUse = sources.some((p) => p.id === S.settings.chatSource);
@@ -422,7 +451,7 @@ function renderModels() {
     const selected = (m.path === S.settings.chatModel && !remoteInUse) || m.path === S.settings.embedModel;
     return `<div class="card ${selected ? 'selected' : ''}">
       <div class="title">${esc(m.name)}</div>
-      <div><span class="tag">${m.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${gb(m.bytes)}</span><span class="tag">${m.source}</span>${fitTag(m.fit)}${skillTag(m.skill)}${selected ? '<span class="tag on">in use</span>' : ''}</div>
+      <div><span class="tag">${m.kind === 'embedding' ? 'documents' : 'chat'}</span><span class="tag">${gb(m.bytes)}</span><span class="tag">${m.source}</span>${fitTag(m.fit)}${speedTag(m.path)}${skillTag(m.skill)}${selected ? '<span class="tag on">in use</span>' : ''}</div>
       <div class="row">${selected ? '' : `<button class="btn small primary" data-use="${esc(m.path)}" data-kind="${m.kind}">Use</button>`}
       ${m.source === 'library' ? `<button class="btn small" data-delmodel="${esc(m.path)}" data-size="${m.bytes}">Uninstall</button>` : m.source === 'linked' ? `<button class="btn small" data-unlink="${esc(m.path)}" title="${esc(m.path)}">Remove from list</button><span class="muted small" title="${esc(m.path)}">Used where it is</span>` : '<span class="muted small">Comes with the installer</span>'}</div></div>`;
   }).join('') || '<div class="muted">No models installed. Download one below ("Fast here" runs best on this PC) or import a .gguf file.</div>';
@@ -1739,7 +1768,7 @@ function renderSettings() {
     ? commands.map((c) => `<div class="row"><code>${esc(c)}</code><button class="btn small" data-unallow-command="${esc(c)}">Remove</button></div>`).join('')
     : '<span class="muted small">None</span>';
   $('#precise-answers').checked = S.settings.preciseAnswers !== false;
-  $('#thinking').value = ['low', 'medium', 'high'].includes(S.settings.thinking) ? S.settings.thinking : 'auto';
+  $('#thinking').value = ['off', 'low', 'medium', 'high'].includes(S.settings.thinking) ? S.settings.thinking : 'auto';
   const chatModels = S.models.filter((m) => m.kind === 'chat');
   const vm = S.settings.voiceModel || 'auto';
   $('#voice-model').innerHTML = `<option value="auto">Automatic: a fast model when the chat model is slow here</option><option value="same">Same as the chat model</option>${chatModels.map((m) => `<option value="${esc(m.path)}">${esc(m.name)}</option>`).join('')}`;
@@ -2109,8 +2138,10 @@ function wire() {
   $('#choose-ws').onclick = $('#workspace-chip').onclick;
   $('#open-ws').onclick = () => api.openWorkspace();
   $('#modes').onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); };
+  $('#thinking-picker').onchange = (e) => setSetting({ thinking: e.target.value });
   $('#model-picker').onchange = async (e) => {
     const value = e.target.value;
+    if (value === '__auto') { S.modelStatus = { loading: true, name: 'the best model' }; await setSetting({ modelAuto: true }); toast('Choosing the best model for this computer…', 2500); return; }
     if (value === '__manage') { renderModelSwitch(); setView('models'); return; }
     if (value.startsWith('source:')) {
       const p = (S.settings.providers || []).find((x) => x.id === value.slice(7));
