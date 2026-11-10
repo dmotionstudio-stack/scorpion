@@ -12,7 +12,7 @@ on:
         description: Scorpion OS version
         default: "0.1"
       model:
-        description: Built-in models, comma separated catalog ids (qwen3.5-4b,qwen3-1.7b: Scorpion picks the one that suits the computer; or none)
+        description: 'Built-in models, comma separated catalog ids (Scorpion picks the one that suits the computer), or none'
         default: qwen3.5-4b,qwen3-1.7b
       publish:
         description: Publish this Scorpion build to the update repository
@@ -120,11 +120,14 @@ jobs:
           name: scorpion-linux
           path: app
       # The model and voice Scorpion OS starts with (no download needed).
+      # (A cache key can't hold a comma, and workflow expressions have no replace.)
+      - name: Name for the model cache
+        run: echo "BUNDLE_KEY=$(echo "$SCORPION_MODEL" | tr ',' '+')" >> "$GITHUB_ENV"
       - uses: actions/cache@v4
         if: env.SCORPION_MODEL != 'none'
         with:
           path: bundle
-          key: bundle-${{ replace(env.SCORPION_MODEL, ',', '+') }}-voice-v1
+          key: bundle-${{ env.BUNDLE_KEY }}-voice-v1
       - uses: actions/setup-node@v4
         if: env.SCORPION_MODEL != 'none'
         with:
