@@ -1748,6 +1748,18 @@ function renderOnlineBadge() {
   b.textContent = on ? '● Online: web search on' : '● Offline & private';
   b.classList.toggle('online', on);
   b.title = on ? 'Scorpion may search the web and read pages. Click to go offline.' : 'Scorpion makes no network requests while you chat. Click to go online.';
+  // Unrestricted mode, one click below it.
+  const free = S.settings.unrestricted === true;
+  const u = $('#unrestricted-badge');
+  u.textContent = free ? '● Unrestricted: on' : '● Unrestricted: off';
+  u.classList.toggle('unrestricted', free);
+  u.title = free ? 'Scorpion downloads and runs things without asking, in chats you start. Click to turn it off.' : 'Click to let Scorpion use the internet freely and download and run things without asking (you confirm first).';
+}
+async function toggleUnrestricted() {
+  const turnOn = S.settings.unrestricted !== true;
+  if (turnOn && !confirm('Unrestricted mode: in chats you start, Scorpion will use the internet freely, download models, agents and apps, and run commands, all without asking you.\n\nA web page it reads could try to trick it into running something harmful. Every action is written to an activity log you can read.\n\nTurn it on?')) return;
+  await setSetting({ unrestricted: turnOn });
+  toast(turnOn ? 'Unrestricted mode is on.' : 'Unrestricted mode is off.');
 }
 
 // ---------- settings page ----------
@@ -2392,6 +2404,7 @@ function wire() {
   };
   $('#unrestricted-log').onclick = () => api.unrestrictedLog().catch((err) => toast(errText(err), 'error'));
   $('#online-badge').onclick = () => setOnline(!S.settings.online);
+  $('#unrestricted-badge').onclick = toggleUnrestricted;
   $('#file-access').onchange = async (e) => {
     const full = e.target.value === 'full';
     if (full && !confirm('Give Scorpion access to every file on this computer?\n\nIt can then read, create, edit and move any of your files. Changes and commands still ask for your approval unless Auto-approve is on. System folders stay read-only.')) {
