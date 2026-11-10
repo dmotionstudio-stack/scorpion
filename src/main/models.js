@@ -141,6 +141,16 @@ export async function downloadModel(id, onProgress) {
   }
 }
 
+// Download a model from a Hugging Face address (hf:user/repo/file.gguf), into the library.
+export async function downloadUri(uri, onProgress) {
+  if (!/^hf:[^/\s]+\/[^/\s]+\/\S+\.gguf$/i.test(String(uri))) throw new Error('That is not a model address (hf:user/repo/file.gguf).');
+  const downloader = await createModelDownloader({
+    modelUri: uri, dirPath: paths.models, showCliProgress: false, skipExisting: true,
+    onProgress: ({ totalSize, downloadedSize }) => onProgress?.({ totalSize, downloadedSize }),
+  });
+  try { return await downloader.download(); } catch (err) { removePartial(downloader.entrypointFilePath); throw err; }
+}
+
 function removePartial(file) {
   if (file) fs.rmSync(`${file}.ipull`, { force: true });
 }

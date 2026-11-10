@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS = {
   workspace: null, // the active workspace: the folder new chats start in
   workspaces: [], // saved workspaces: { id, name, path, addedAt, lastUsed }
   allowedFolders: [], // other folders the user chose "Always allow" for
+  trustedFolders: [], // folders Scorpion may build in without asking: file changes and commands inside them run by themselves (Build mode); never system folders
   online: false, // Online mode: web search and page reading for the agent
   browserEnabled: true, // in Online mode, the agent may also use its own browser window
   // 'full' = every file on the computer (the default on Windows and macOS: changes and commands still ask first);
@@ -32,6 +33,7 @@ const DEFAULT_SETTINGS = {
   faceInsightsLive: true, // Interact's face camera shows expression, age and gender (when installed)
   lockLiveness: true, // face lock refuses photos and screens (when liveness is installed) // mode of the newest chat, used to warm the model up for the next one
   autoApprove: false, // run write/exec tools without asking
+  unrestricted: false, // Unrestricted mode (Settings → Privacy): the internet is on, Scorpion downloads models, agents and apps and runs commands without asking, and every one is written to the activity log. Only in chats you start yourself
   commandAllowlist: [], // exact commands the user chose "Always allow" for
   memoryEnabled: true, // saved memories + remember/forget tools
   recallEnabled: true, // bring back relevant snippets from other chats

@@ -17,6 +17,7 @@ import { initPalette } from './palette.js';
 import { initSystemSettings } from './settings-system.js';
 import { initAppUpdates } from './settings-app-updates.js';
 import { initClockSettings } from './settings-clock.js';
+import { initBuildDock } from './build-dock.js';
 import { initModelScan } from './model-scan-ui.js';
 import { commandOf, parseAgentCommand, suggestAgents } from './agent-commands.js';
 import { SETTINGS_GROUPS, GENERAL_SECTIONS, groupOf } from './settings-nav.js';
@@ -154,6 +155,7 @@ let palette = null; // the command palette, Ctrl+K (palette.js)
 let systemSettings = null; // Settings → This computer on Scorpion OS (settings-system.js)
 let appUpdatesUi = null; // Settings → Updates on Windows and macOS (settings-app-updates.js)
 let clockUi = null; // Settings → Date and time (settings-clock.js)
+let buildDock = null; // Build's side panel: Preview and Terminal, and the Trust chip (build-dock.js)
 let modelScanUi = null; // Models → Scan this computer (model-scan-ui.js)
 
 // ---------- top bar ----------
@@ -176,6 +178,11 @@ function renderTopbar() {
 
 // Model switcher: every chat model in Scorpion's library (and bundled ones).
 function renderModelSwitch() {
+  // A strip across the top while Unrestricted mode is on, so it is never forgotten.
+  let banner = document.getElementById('unrestricted-banner');
+  if (!banner) { banner = document.createElement('div'); banner.id = 'unrestricted-banner'; banner.className = 'unrestricted-banner hidden'; banner.textContent = 'Unrestricted mode is on: Scorpion downloads and runs things without asking (Settings → Privacy turns it off)'; document.body.append(banner); }
+  banner.classList.toggle('hidden', S.settings.unrestricted !== true);
+  buildDock?.renderTrust();
   const st = S.modelStatus;
   const selected = S.settings.chatModel;
   const chatModels = S.models.filter((m) => m.kind === 'chat');
@@ -1745,6 +1752,7 @@ function renderSettings() {
   renderVoiceSettings();
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
   $('#online-mode').checked = Boolean(S.settings.online);
+  $('#unrestricted-mode').checked = S.settings.unrestricted === true;
   renderOnlineBadge();
   const full = S.settings.fileAccess === 'full';
   $('#file-access').value = full ? 'full' : 'ask';
@@ -2029,6 +2037,7 @@ function wire() {
   systemSettings = initSystemSettings({ $, esc, api, toast, errText });
   appUpdatesUi = initAppUpdates({ $, api, S, toast, errText });
   clockUi = initClockSettings({ $, api, toast, errText });
+  buildDock = initBuildDock({ $, api, S, toast, errText, setSetting });
   modelScanUi = initModelScan({ api, $, esc, toast, errText, refresh });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
   const onNav = ({ view, dir, select, signin, search, talk, query, section }) => {
@@ -2364,6 +2373,12 @@ function wire() {
     toast(on ? 'Online mode on: Scorpion can search the web and read pages.' : 'Offline: Scorpion makes no network requests while you chat.');
   };
   $('#online-mode').onchange = (e) => setOnline(e.target.checked);
+  $('#unrestricted-mode').onchange = async (e) => {
+    if (e.target.checked && !confirm('Unrestricted mode: in chats you start, Scorpion will use the internet freely, download models, agents and apps, and run commands, all without asking you.\n\nA web page it reads could try to trick it into running something harmful. Every action is written to an activity log you can read.\n\nTurn it on?')) { e.target.checked = false; return; }
+    await setSetting({ unrestricted: e.target.checked });
+    toast(e.target.checked ? 'Unrestricted mode is on.' : 'Unrestricted mode is off.');
+  };
+  $('#unrestricted-log').onclick = () => api.unrestrictedLog().catch((err) => toast(errText(err), 'error'));
   $('#online-badge').onclick = () => setOnline(!S.settings.online);
   $('#file-access').onchange = async (e) => {
     const full = e.target.value === 'full';

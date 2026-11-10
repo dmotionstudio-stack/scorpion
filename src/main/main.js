@@ -1,8 +1,12 @@
-import { app, BrowserWindow, screen, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage, session, systemPreferences, powerMonitor, safeStorage, desktopCapturer, globalShortcut, clipboard } from 'electron';
+import { app, WebContentsView, BrowserWindow, screen, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage, session, systemPreferences, powerMonitor, safeStorage, desktopCapturer, globalShortcut, clipboard } from 'electron';
 import { textMenuTemplate } from './text-menu.js';
 import { cleanGroups, groupOf, setGroup, freeGroupNames } from '../renderer/taskbar-core.js';
 import { createClock } from './clock.js';
+import { createDevServers, localUrlFrom, isLocalUrl } from './devserver.js';
+import { createPreview } from './preview.js';
+import { SCAN_SCRIPT, describe as describePage } from './agent-browser.js';
 import { createDrives, driveLabel } from './drives.js';
+import { downloadFile, fetchJson, humanSize } from './fetcher.js';
 import { recommend } from './speed.js';
 import { NEW_KINDS, createItem } from './new-items.js';
 import path from 'node:path';
@@ -1007,6 +1011,83 @@ async function warmUp({ spoken = false } = {}) {
  * `approve` decides write/exec actions; chats ask the user in the UI, schedules
  * use their "allow changes" setting. `workspace` overrides the folder.
  */
+// The activity log of Unrestricted mode: one line a tool call, kept in the data folder (Settings → Privacy opens it).
+const unrestrictedLog = () => path.join(store.paths.data, 'unrestricted-log.jsonl');
+function logUnrestricted({ name, summary, args }) {
+  try {
+    const short = (v) => (typeof v === 'string' ? v.slice(0, 500) : v);
+    const safeArgs = Object.fromEntries(Object.entries(args || {}).map(([k, v]) => [k, short(v)]));
+    fs.appendFileSync(unrestrictedLog(), `${JSON.stringify({ at: new Date().toISOString(), tool: name, summary: String(summary || '').slice(0, 300), args: safeArgs })}\n`);
+  } catch { /* the log is a record, never a reason to stop */ }
+}
+// What the agent's download tools do (tools.js): into the workspace or Downloads, into the model library, into the agents.
+// Local servers (the terminal's processes and Build's dev servers) and the preview beside the chat.
+const devServers = createDevServers({
+  onData: (id, text) => send('dev:data', { id, text }),
+  onExit: (id, code) => send('dev:exit', { id, code }),
+  onAddress: (id, url) => { send('dev:address', { id, url }); showPreview(url); },
+});
+let previewPane = null;
+const preview = () => (previewPane ??= createPreview({
+  WebContentsView, session, getWindow: () => win, openExternal: (u) => shell.openExternal(u), onState: (s) => send('preview:state', s),
+}));
+// Open a page in the preview; the chat's pane opens too.
+function showPreview(url) {
+  const target = localUrlFrom(url);
+  if (!target) throw new Error('The preview shows pages on this computer only (localhost).');
+  send('preview:open', { url: target });
+  setTimeout(() => preview().load(target).catch(() => {}), 150); // once the pane has its place
+  return target;
+}
+function agentServices(settings, signal) {
+  return {
+    startServer({ command, name, cwd }) {
+      const s = devServers.start({ command, name, cwd });
+      logUnrestricted({ name: 'started server', summary: `${s.command} in ${s.cwd}`, args: {} });
+      return `Started "${s.name}" (${s.command}). It keeps running; read its output with server_logs. When it prints an address the preview opens it.`;
+    },
+    stopServer({ name }) { const s = devServers.stop(name); return `Stopped "${s.name}".`; },
+    serverLogs({ name }) {
+      const s = devServers.logs(name);
+      return `"${s.name}" is ${s.running ? 'running' : `stopped (exit code ${s.exitCode})`}${s.url ? `, address ${s.url}` : ''}.\n\n${s.output || '(no output yet)'}`;
+    },
+    openPreview({ url }) {
+      const target = url ? showPreview(url) : (() => { const u = devServers.list().find((x) => x.running && x.url)?.url; if (!u) throw new Error('No running server has printed an address yet. Start one, or give the address.'); return showPreview(u); })();
+      return `Opened ${target} in the preview.`;
+    },
+    checkPreview: () => preview().snapshot(describePage, SCAN_SCRIPT),
+    async downloadFile({ url, name }) {
+      const dir = settings.workspace && fs.existsSync(settings.workspace) ? settings.workspace : app.getPath('downloads');
+      const r = await downloadFile(url, dir, { signal, name });
+      logUnrestricted({ name: 'downloaded', summary: `${r.url} -> ${r.path} (${humanSize(r.bytes)}, sha256 ${r.sha256})`, args: {} });
+      return `Saved ${r.path}: ${humanSize(r.bytes)}, SHA-256 ${r.sha256}. Compare the checksum with the publisher's before running it.`;
+    },
+    async downloadModel({ source }) {
+      const src = String(source || '').trim();
+      let file;
+      const cat = models.CATALOG.find((m) => m.id === src);
+      if (cat) file = await models.downloadModel(cat.id);
+      else if (/^hf:/i.test(src)) file = await models.downloadUri(src);
+      else {
+        if (!/\.gguf(\?|$)/i.test(src)) throw new Error('Give a catalog id, an hf: address or a link to a .gguf file.');
+        file = (await downloadFile(src, store.paths.models, { signal })).path;
+      }
+      const usable = await engine.checkModelFile(file);
+      if (!usable.ok) { fs.rmSync(file, { force: true }); throw new Error(`The download is not usable and was removed: ${usable.reason}`); }
+      send('model:status', { loading: false, info: await engine.engineInfo() });
+      send('settings:changed', store.getSettings());
+      logUnrestricted({ name: 'downloaded model', summary: `${src} -> ${file}`, args: {} });
+      return `Installed ${path.basename(file)} (${humanSize(fs.statSync(file).size)}). It is in the model picker now; Scorpion checked that it loads.`;
+    },
+    async addAgent({ url }) {
+      const def = await fetchJson(url, { signal });
+      const saved = agents.saveAgent({ name: def.name, description: def.description, instructions: def.instructions, tools: def.tools, temperature: def.temperature });
+      logUnrestricted({ name: 'added agent', summary: `${saved.name} from ${url}`, args: {} });
+      return `Added the agent "${saved.name}". It is in the / list.`;
+    },
+  };
+}
+
 async function runAgentTurn({ thread, text, displayText = text, approve, workspace, mode, interactive = false, spoken = false, speaker = null, mood = null, intents = interactive }) {
   const threadId = thread.id;
   if (running.has(threadId)) throw new Error('Scorpion is still answering in this chat');
@@ -1014,6 +1095,9 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
   const full = base.fileAccess === 'full';
   // Full access: every drive is allowed, and relative paths start at home.
   const settings = turnSettings(base, { workspace, mode, thread });
+  // Unrestricted mode (Settings → Privacy) is for chats someone started themselves; a scheduled run or a message from outside never gets it.
+  if (base.unrestricted === true && interactive) Object.assign(settings, { unrestricted: true, online: true, autoApprove: true });
+  else settings.unrestricted = false;
   const agent = agents.getAgent(thread.agentId || 'scorpion');
   let source = activeSource();
   // Spoken turns use the fast voice model when the chat model is slow here.
@@ -1071,6 +1155,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
       signal: controller.signal,
       functions: buildFunctions({
         settings, agent, rag: searcher, memory, threadId, emit, requestApproval, requestFolderAccess, allowedFolders, ...toolFlags(),
+        services: agentServices(settings, controller.signal), onUnrestricted: logUnrestricted,
         signal: controller.signal, streamedText: () => streamed,
         runHelper: (opts) => (source.remote ? remote.runRemoteHelper({ ...opts, provider: source, apiKey: providerKey(source) }) : engine.runHelperTurn({ ...opts, slot })),
         maxToolChars: info.maxToolChars ?? undefined,
@@ -2202,6 +2287,26 @@ function registerIpc() {
     if (action === 'set') return clock.setManual({ date, time });
     return clock.status();
   });
+  // The terminal and servers panel (Build): what is running, its output, and commands the person types
+  // (their own: nothing asks). The preview pane's place, address and buttons.
+  const workDir = () => { const w = store.getSettings().workspace; return w && fs.existsSync(w) ? w : os.homedir(); };
+  let termCount = 0;
+  h('dev:list', () => devServers.list());
+  h('dev:logs', ({ name } = {}) => devServers.logs(name, 400));
+  h('dev:run', ({ command } = {}) => devServers.start({ name: `$ ${++termCount}: ${String(command).slice(0, 24)}`, command, cwd: workDir() }));
+  h('dev:stop', ({ name } = {}) => devServers.stop(name));
+  h('dev:input', ({ name, text } = {}) => { devServers.write(name, String(text ?? '')); return true; });
+  h('preview:bounds', (rect = {}) => { preview().setBounds(rect); return true; });
+  h('preview:go', ({ url } = {}) => showPreview(url));
+  h('preview:nav', ({ action } = {}) => preview().nav(action));
+  h('preview:state', () => preview().state());
+  // Unrestricted mode's activity log: opened in the default text program.
+  h('unrestricted:log', async () => {
+    const f = unrestrictedLog();
+    if (!fs.existsSync(f)) fs.writeFileSync(f, '');
+    await winctl.openPath(f);
+    return f;
+  });
   h('sys:snapshots', async ({ action, id } = {}) => {
     if (process.platform !== 'linux' || !winctl.snapshotsAvailable()) return { supported: false, list: [] };
     if (action === 'undo') {
@@ -2724,6 +2829,8 @@ app.on('before-quit', (e) => {
   if (appFrame.framed()) { e.preventDefault(); appFrame.setPanel(null).finally(() => app.quit()); return; }
   leaving = true;
   desktop.setAway(false);
+  devServers.stopAll(); // servers started from Scorpion stop with it
+  previewPane?.destroy();
   if (desktop.shellMode()) { e.preventDefault(); for (const w of BrowserWindow.getAllWindows()) w.hide(); desktop.stopShell().finally(() => app.quit()); return; }
   winctl.stopPsKept();
   quitting = true; scheduler.stopScheduler(); for (const m of mcp.allStatus()) mcp.disconnect(m.id); tg?.stop(); for (const c of running.values()) c.abort(); engine.shutdown(); });

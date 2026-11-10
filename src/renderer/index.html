@@ -63,6 +63,8 @@
           </div>
           <div class="spacer"></div>
           <button class="chip" id="workspace-chip" title="Folder the agent can work in"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>No workspace</span></button>
+          <button class="chip hidden" id="trust-chip" aria-pressed="false">Trust folder</button>
+          <button class="chip" id="toggle-dock" title="Preview a page from a server on this computer, and see the terminal"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 21h8"/></svg>Preview</button>
           <label class="toggle" title="Run file edits and commands without asking">
             <input type="checkbox" id="auto-approve"><span>Auto-approve</span>
           </label>
@@ -70,6 +72,31 @@
         </header>
         <div class="chat-body">
           <div class="messages" id="messages"></div>
+          <aside class="dock-panel hidden" id="dock-panel" aria-label="Preview and terminal">
+            <div class="dock-tabs" role="tablist">
+              <button type="button" role="tab" data-dock-tab="preview" aria-selected="true">Preview</button>
+              <button type="button" role="tab" data-dock-tab="terminal" aria-selected="false">Terminal</button>
+              <span class="spacer"></span>
+              <button type="button" class="chip" id="dock-close" aria-label="Close the panel">Close</button>
+            </div>
+            <div class="dock-pane" id="dock-preview">
+              <div class="dock-bar">
+                <button type="button" class="btn small" id="preview-back" aria-label="Back" disabled>←</button>
+                <button type="button" class="btn small" id="preview-forward" aria-label="Forward" disabled>→</button>
+                <button type="button" class="btn small" id="preview-reload" aria-label="Reload">↻</button>
+                <input type="text" id="preview-url" placeholder="localhost:3000" aria-label="Address (this computer only)" spellcheck="false">
+                <button type="button" class="btn small" id="preview-external" title="Open this page in your browser">Browser</button>
+                <button type="button" class="btn small" id="preview-devtools" title="Inspect the page">Inspect</button>
+              </div>
+              <div class="dock-sub muted small"><span id="preview-title"></span><span id="preview-errors" class="error-text"></span></div>
+              <div class="preview-host" id="preview-host"><p class="muted">Ask Scorpion in Build mode to make something and start it, or type an address such as <code>localhost:3000</code>. Only pages on this computer open here.</p></div>
+            </div>
+            <div class="dock-pane hidden" id="dock-terminal">
+              <div class="dock-bar"><select id="dev-proc" aria-label="Running"></select><button type="button" class="btn small" id="dev-stop" disabled>Stop</button></div>
+              <pre class="dev-out" id="dev-out" tabindex="0"></pre>
+              <form class="dev-form" id="dev-form"><span class="muted">$</span><input type="text" id="dev-line" placeholder="Run a command in the workspace, e.g. npm run dev" aria-label="Command" spellcheck="false" autocomplete="off"><button type="submit" class="btn small primary">Run</button><button type="button" class="btn small" id="dev-send" disabled title="Send this line to the running program instead">Send</button></form>
+            </div>
+          </aside>
           <aside class="plan-panel hidden" id="plan-panel">
             <h3>Plan</h3>
             <ol id="plan-list"><li class="muted">The agent's step-by-step plan appears here for multi-step tasks.</li></ol>
@@ -332,6 +359,8 @@
           <div class="field" data-sec="privacy">
             <label>Online mode</label>
             <label class="toggle"><input type="checkbox" id="online-mode"><span>Let Scorpion search the internet and read web pages</span></label>
+            <label class="toggle unrestricted-toggle"><input type="checkbox" id="unrestricted-mode"><span><b>Unrestricted mode</b>: in chats you start, Scorpion uses the internet freely, downloads models, agents and apps, and runs commands without asking. Every one is written to an activity log.</span></label>
+            <div class="row"><button class="btn small" type="button" id="unrestricted-log">Show the activity log</button><span class="muted small">Risky: a web page Scorpion reads could try to make it run something harmful. Turn it off again any time.</span></div>
             <p class="muted small">Off: Scorpion never uses the network while you chat. On: the agent can look things up (DuckDuckGo, Wikipedia) and read pages for current information, and names its sources. Your chats, files and voice still stay on this computer.</p>
           </div>
           <div class="field" data-sec="privacy">

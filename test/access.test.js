@@ -66,3 +66,80 @@ test('web: local network addresses are refused and pages become plain text', () 
   assert.match(text, /Scorpions\nThey glow under UV\./);
   assert.doesNotMatch(text, /evil|menu/);
 });
+
+test('Unrestricted mode: downloads and risky actions run without asking and are logged; without it they ask', async () => {
+  const run = async (settingsPatch) => {
+    const asked = [];
+    const logged = [];
+    const downloaded = [];
+    const fns = buildFunctions({
+      settings: { ...store.getSettings(), mode: 'build', workspace: os.tmpdir(), ...settingsPatch },
+      agent: agents.getAgent('scorpion'), rag: { hasDocuments: () => false }, emit() {}, streamedText: () => '',
+      requestApproval: async (info) => { asked.push(info.name); return false; }, // the person says no to everything that asks
+      onUnrestricted: (e) => logged.push(e.name),
+      services: { downloadFile: async ({ url }) => { downloaded.push(url); return `saved ${url}`; } },
+      extraTools: { dangerous: { access: 'system', changes: true, noWorkspace: true, approve: () => 'always', description: 'x', params: { type: 'object', properties: {} }, async run() { return 'ran'; } } },
+    });
+    const a = await fns.download_file.handler({ url: 'https://example.com/tool.zip' });
+    const b = await fns.dangerous.handler({});
+    return { asked, logged, downloaded, a, b };
+  };
+  // Online but not unrestricted: both ask, and a "no" stops them.
+  const normal = await run({ online: true, autoApprove: false });
+  assert.deepEqual(normal.asked, ['download_file', 'dangerous']);
+  assert.deepEqual(normal.downloaded, []);
+  assert.deepEqual(normal.logged, []);
+  // Auto-approve alone still asks for the 'always' ones.
+  assert.deepEqual((await run({ online: true, autoApprove: true })).asked, ['dangerous']);
+  // Unrestricted: nothing asks, both run, both are in the log.
+  const free = await run({ online: true, autoApprove: true, unrestricted: true });
+  assert.deepEqual(free.asked, []);
+  assert.deepEqual(free.downloaded, ['https://example.com/tool.zip']);
+  assert.deepEqual(free.logged, ['download_file', 'dangerous']);
+  assert.equal(free.b, 'ran');
+  // The downloads are only offered online, and the prompt says what the mode is.
+  const names = Object.keys(buildFunctions({ agent: agents.getAgent('scorpion'), rag: { hasDocuments: () => false }, emit() {}, requestApproval: async () => true, settings: { ...store.getSettings(), mode: 'build', workspace: os.tmpdir() } }));
+  for (const n of ['download_file', 'download_model', 'add_agent']) assert.ok(!names.includes(n), `${n} is online only`);
+  assert.match(buildSystemPrompt({ ...store.getSettings(), mode: 'build', unrestricted: true, online: true, workspace: os.tmpdir() }, { docNames: [] }), /UNRESTRICTED MODE/);
+  assert.doesNotMatch(buildSystemPrompt({ ...store.getSettings(), mode: 'build', online: true, workspace: os.tmpdir() }, { docNames: [] }), /UNRESTRICTED MODE/);
+});
+
+test('a trusted folder: edits and commands inside it run without asking, anywhere else they ask, and "always" still asks', async () => {
+  const { isTrusted } = await import('../src/main/agent.js');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-trust-'));
+  const inside = path.join(root, 'site');
+  fs.mkdirSync(inside);
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-other-'));
+  assert.ok(isTrusted({ workspace: root, trustedFolders: [root] }));
+  assert.ok(isTrusted({ workspace: inside, trustedFolders: [root] }), 'a folder inside a trusted one');
+  assert.ok(!isTrusted({ workspace: root + '-sibling', trustedFolders: [root] }), 'a folder that only starts with the same letters');
+  assert.ok(!isTrusted({ workspace: other, trustedFolders: [root] }));
+  assert.ok(!isTrusted({ workspace: root, trustedFolders: [] }));
+  assert.ok(!isTrusted({ trustedFolders: [root] }));
+  if (process.platform === 'win32') assert.ok(isTrusted({ workspace: root.toUpperCase(), trustedFolders: [root] }), 'Windows ignores case');
+
+  const run = async (workspace, trustedFolders) => {
+    const asked = [];
+    const started = [];
+    const fns = buildFunctions({
+      settings: { ...store.getSettings(), mode: 'build', workspace, trustedFolders, autoApprove: false },
+      agent: agents.getAgent('scorpion'), rag: { hasDocuments: () => false }, emit() {}, streamedText: () => 'x\n```\nhi\n```\n',
+      requestApproval: async (info) => { asked.push(info.name); return false; },
+      services: { startServer: async ({ command, cwd }) => { started.push([command, path.basename(cwd)]); return 'started'; } },
+      extraTools: { dangerous: { access: 'system', changes: true, noWorkspace: true, approve: () => 'always', description: 'x', params: { type: 'object', properties: {} }, async run() { return 'ran'; } } },
+    });
+    const server = await fns.start_server.handler({ command: 'npm run dev', subdir: '.' });
+    const file = await fns.write_file.handler({ path: 'index.html' });
+    const risky = await fns.dangerous.handler({});
+    return { asked, started, server, file, risky };
+  };
+  const trusted = await run(inside, [root]);
+  assert.deepEqual(trusted.asked, ['dangerous'], 'only the always-ask action asks');
+  assert.deepEqual(trusted.started, [['npm run dev', 'site']]);
+  assert.ok(fs.existsSync(path.join(inside, 'index.html')));
+  const untrusted = await run(other, [root]);
+  assert.deepEqual(untrusted.asked, ['start_server', 'write_file', 'dangerous']);
+  assert.deepEqual(untrusted.started, []);
+  assert.ok(!fs.existsSync(path.join(other, 'index.html')));
+  for (const d of [root, other]) fs.rmSync(d, { recursive: true, force: true });
+});

@@ -969,6 +969,28 @@ html.full-wall .sidebar { background: color-mix(in srgb, var(--panel) 62%, trans
 .save-flash { position: absolute; right: 18px; top: 14px; font-size: 12.5px; color: var(--accent); opacity: 0; transition: opacity .25s; pointer-events: none; }
 .save-flash.on { opacity: 1; }
 
+/* Build's side panel: Preview and Terminal (build-dock.js). The preview itself is a view the window docks over .preview-host. */
+.dock-panel { width: 46%; min-width: 340px; max-width: 70%; border-left: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.dock-panel.hidden { display: none; }
+.dock-tabs { display: flex; gap: 4px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.dock-tabs [role=tab] { background: none; border: 0; color: var(--muted); padding: 5px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+.dock-tabs [role=tab][aria-selected=true] { color: var(--text); background: var(--panel-2); }
+.dock-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.dock-pane.hidden { display: none; }
+.dock-bar { display: flex; gap: 4px; padding: 6px 8px; align-items: center; }
+.dock-bar input[type=text], .dock-bar select { flex: 1; min-width: 0; }
+.dock-sub { display: flex; justify-content: space-between; gap: 8px; padding: 0 10px 4px; }
+.preview-host { flex: 1; min-height: 120px; margin: 0 8px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); padding: 12px; overflow: auto; }
+.dev-out { flex: 1; margin: 0 8px; padding: 8px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12px/1.4 ui-monospace, Consolas, monospace; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; }
+.dev-form { display: flex; gap: 6px; align-items: center; padding: 8px; }
+.dev-form input { flex: 1; min-width: 0; font: 12px ui-monospace, Consolas, monospace; }
+#trust-chip[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+
+/* Unrestricted mode: a strip across the top while it is on, and the switch's own colour. */
+.unrestricted-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 9999; padding: 3px 12px; text-align: center; font-size: 12px; font-weight: 600; background: #b3261e; color: #fff; }
+.unrestricted-banner.hidden { display: none; }
+.unrestricted-toggle b { color: #e5534b; }
+
 /* Settings → General → System → Date and time (settings-clock.js). */
 .clock-now { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
 #clock-field .error-text { color: var(--danger, #e5534b); }

@@ -403,6 +403,76 @@ export const TOOLS = {
     },
   },
 
+  // Build: local servers, the preview and what it says. Starting a server runs a command (asks unless the folder is trusted).
+  start_server: {
+    access: 'exec',
+    describeAction: ({ command }) => `start a server: ${String(command).slice(0, 200)}`,
+    description: 'Start a long-running command in the workspace, such as a development server (npm run dev, python -m http.server 8000, npx serve). It keeps running in the background; its output is kept (see server_logs) and the address it prints opens in the preview. Give it a short name. Use this instead of run_command for anything that does not end by itself.',
+    params: { type: 'object', properties: { command: { type: 'string' }, name: { type: 'string' }, subdir: { type: 'string' } } },
+    async run({ command, name, subdir }, { workspace, allowed, services }) {
+      if (!services?.startServer) throw new Error('Servers are not available here.');
+      const cwd = resolveInside(workspace, subdir, allowed);
+      return services.startServer({ command, name, cwd });
+    },
+  },
+  stop_server: {
+    access: 'read',
+    describeAction: ({ name }) => `stop the server ${name || ''}`.trim(),
+    description: 'Stop a server started with start_server (by name; optional when only one is running).',
+    params: { type: 'object', properties: { name: { type: 'string' } } },
+    async run({ name }, { services }) { return services.stopServer({ name }); },
+  },
+  server_logs: {
+    access: 'read',
+    description: 'Show the latest output of a server started with start_server, and its address. Read this after starting one, and when the page shows an error.',
+    params: { type: 'object', properties: { name: { type: 'string' } } },
+    async run({ name }, { services }) { return services.serverLogs({ name }); },
+  },
+  open_preview: {
+    access: 'read',
+    description: 'Open a page of a server on this computer in the preview beside the chat (localhost only). With no address, the running server\'s address. Then use check_preview to see it.',
+    params: { type: 'object', properties: { url: { type: 'string', description: 'e.g. http://localhost:5173/ or just 5173' } } },
+    async run({ url }, { services }) { return services.openPreview({ url }); },
+  },
+  check_preview: {
+    access: 'read',
+    description: 'Look at the page open in the preview: its title, text, buttons and links, and the errors and warnings from the page\'s console. Use it after building or changing something to see whether it works, and fix what it reports.',
+    params: { type: 'object', properties: {} },
+    async run(_args, { services }) { return services.checkPreview(); },
+  },
+
+  // Downloads from the internet (online only). Each asks first, unless Auto-approve or Unrestricted mode is on.
+  download_file: {
+    access: 'web', changes: true, approve: () => true,
+    describeAction: ({ url }) => `download ${String(url).slice(0, 200)}`,
+    description: 'Download a file from a web address (http or https) into the workspace folder (or Downloads). Gives back where it was saved, its size and its SHA-256, so it can be checked. To run what was downloaded (an installer, a script) use run_command next.',
+    params: { type: 'object', properties: { url: { type: 'string' }, name: { type: 'string', description: 'Optional file name' } } },
+    async run({ url, name }, { services }) {
+      if (!services?.downloadFile) throw new Error('Downloads are not available here.');
+      return services.downloadFile({ url, name });
+    },
+  },
+  download_model: {
+    access: 'web', changes: true, approve: () => true,
+    describeAction: ({ source }) => `download the model ${String(source).slice(0, 200)}`,
+    description: 'Download a chat model into Scorpion\'s library: a catalog id, a Hugging Face address (hf:user/repo/file.gguf) or a link to a .gguf file. It is checked that Scorpion can load it; one that cannot is removed and the reason is given. The person then picks it in the model picker.',
+    params: { type: 'object', properties: { source: { type: 'string' } } },
+    async run({ source }, { services }) {
+      if (!services?.downloadModel) throw new Error('Model downloads are not available here.');
+      return services.downloadModel({ source });
+    },
+  },
+  add_agent: {
+    access: 'web', changes: true, approve: () => true,
+    describeAction: ({ url }) => `add an agent from ${String(url).slice(0, 200)}`,
+    description: 'Add an agent from a link to its JSON definition ({ "name", "description", "instructions", "tools": [...], "temperature" }). It then appears in the chat\'s / list.',
+    params: { type: 'object', properties: { url: { type: 'string' } } },
+    async run({ url }, { services }) {
+      if (!services?.addAgent) throw new Error('Adding agents is not available here.');
+      return services.addAgent({ url });
+    },
+  },
+
   // Face recognition (offered only once it is installed; see agent.js).
   find_faces: {
     access: 'read',
