@@ -469,7 +469,7 @@ function renderModels() {
   }).join('') || '<div class="muted">No models installed. Download one below ("Fast here" runs best on this PC) or import a .gguf file.</div>';
 
   const installed = (c) => {
-    const want = c.uri.split('/').pop().replace(/\.gguf$/i, '').toLowerCase();
+    const want = (c.file || c.uri.split('/').pop()).replace(/\.gguf$/i, '').toLowerCase();
     return S.models.find((m) => m.source === 'library' && m.name.toLowerCase() === want);
   };
   $('#catalog').innerHTML = S.catalog.map((c) => {

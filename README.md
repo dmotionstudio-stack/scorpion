@@ -570,9 +570,20 @@ Scorpion needs a model file once. You can get one in any of three ways:
 | `qwen3.5-4b` | Recommended chat + agent model; best Qwen for Haitian Creole | 2.7 GB |
 | `qwen3-1.7b` | Only for slow computers: fast, chat only | 1.1 GB |
 
-Only these two models are in the catalog (and on the Scorpion OS ISO, which bundles
-both and picks the faster-fitting one for the computer). Any other `.gguf` model
-works too: import it, scan for it, or add it from a model source in **Settings → Connections**.
+The two Qwen models are the ones that ship (the Scorpion OS ISO bundles both and picks
+the faster-fitting one for the computer). The catalog also lists models you download
+in the app, from the Ollama registry, with their size and checksum checked; Scorpion
+never picks these by itself and they are never bundled:
+
+| Catalog id | Use | Size |
+|---|---|---|
+| `gemma4-e4b` | Google Gemma 4 E4B, chat and tools | 5.1 GB |
+| `deepseek-v4.1-flash-9b` | DeepSeek V4.1 Flash 9B, reasoning | 5.2 GB |
+| `mimo-v2.6` | Xiaomi MiMo V2.6, reasoning | 5.2 GB |
+| `nemotron-3.5-lightning` | NVIDIA Nemotron 3.5 Lightning, needs a powerful computer | 23.7 GB |
+| `embeddinggemma-2` | EmbeddingGemma 2, for Chat with documents | 290 MB |
+
+Any other `.gguf` model works too: import it or scan for it.
 
 Documents (chat with your files) need an embedding model: import a `.gguf` embedding file in **Models**.
 

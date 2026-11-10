@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createModelDownloader } from 'node-llama-cpp';
 import { paths } from './store.js';
+import { downloadFile } from './fetcher.js';
 
 // `skill` is what scripts/model-check.mjs measured with Scorpion's real agent:
 //   agent  - passed both the calculator and the Build-mode file test
@@ -39,7 +40,43 @@ export const CATALOG = [
     thinks: true,
     note: 'Only for computers where the 4B models are too slow: about twice as fast, fine for conversation, but it did poorly in the agent tests, so it is unreliable with tools and long jobs. Scorpion picks it by itself only when nothing better runs comfortably. Apache-2.0.',
   },
+  // More models, downloaded from the Ollama registry (a direct link to the model file; the
+  // checksum is checked). They have not been through the agent check, so Scorpion never picks
+  // one by itself: you choose them. Too big for a release file, so they are never bundled.
+  {
+    id: 'gemma4-e4b', kind: 'chat', name: 'Gemma 4 E4B', file: 'gemma4-e4b.gguf', size: '5.1 GB', bytes: 5493439296,
+    url: 'https://registry.ollama.ai/v2/library/gemma4/blobs/sha256:370c2879f17648d337b0ab4e208fdce348e24d1060064e93d7645daafd56d39c',
+    sha256: '370c2879f17648d337b0ab4e208fdce348e24d1060064e93d7645daafd56d39c',
+    note: 'Google Gemma 4, the 4-billion "effective" size. Chats and calls tools well in Scorpion.',
+  },
+  {
+    id: 'deepseek-v4.1-flash-9b', kind: 'chat', name: 'DeepSeek V4.1 Flash 9B', file: 'deepseek-v4.1-flash-1017-9b.gguf', size: '5.2 GB', bytes: 5627045536,
+    url: 'https://registry.ollama.ai/v2/eriktonon/deepseek-v4.1-flash-1017/blobs/sha256:3fe913419f9942a4432c025df608699032912efc9a9550b9b45d6bc88c8124b1',
+    sha256: '3fe913419f9942a4432c025df608699032912efc9a9550b9b45d6bc88c8124b1',
+    note: 'A 9B DeepSeek model for reasoning (community build on the Ollama registry).',
+  },
+  {
+    id: 'mimo-v2.6', kind: 'chat', name: 'MiMo V2.6', file: 'mimo-v2.6.gguf', size: '5.2 GB', bytes: 5629105568,
+    url: 'https://registry.ollama.ai/v2/library/mimo-v2.6/blobs/sha256:8f367423ee68d5712710ceda6a21a840ee6b4ff507065aebad155ce92789ccbc',
+    sha256: '8f367423ee68d5712710ceda6a21a840ee6b4ff507065aebad155ce92789ccbc',
+    note: 'Xiaomi MiMo V2.6, a reasoning model.',
+  },
+  {
+    id: 'nemotron-3.5-lightning', kind: 'chat', name: 'Nemotron 3.5 Lightning', file: 'nemotron-3.5-lightning.gguf', size: '23.7 GB', bytes: 25430738944,
+    url: 'https://registry.ollama.ai/v2/library/nemotron-3.5-lightning/blobs/sha256:5c19f6282f4fc51cb114cb6c876d70ca2fc3b9cf0fbd0a018d9908f4fe1f63b3',
+    sha256: '5c19f6282f4fc51cb114cb6c876d70ca2fc3b9cf0fbd0a018d9908f4fe1f63b3',
+    note: 'NVIDIA Nemotron 3.5 Lightning. A very large download (23.7 GB) that needs a powerful computer.',
+  },
+  {
+    id: 'embeddinggemma-2', kind: 'embedding', name: 'EmbeddingGemma 2 (740M)', file: 'embeddinggemma-2-740m.gguf', size: '290 MB', bytes: 303957280,
+    url: 'https://registry.ollama.ai/v2/library/embeddinggemma-2/blobs/sha256:111e84992a0406bacb70d11dddd8874001c783cc56b82c462ec82a2f5b8d08b1',
+    sha256: '111e84992a0406bacb70d11dddd8874001c783cc56b82c462ec82a2f5b8d08b1',
+    note: 'For Chat with documents: turns your files into something Scorpion can search.',
+  },
 ];
+
+// The name a catalog model's file has in the library (without .gguf, lower case).
+const stemOf = (c) => (c.file || c.uri.split('/').pop()).replace(/\.gguf$/i, '').toLowerCase();
 
 const EMBED_HINTS = ['embed', 'bge-', 'e5-', 'gte-', 'minilm'];
 
@@ -86,7 +123,7 @@ function scan(dir, source) {
 
 // The catalog entry a model file is (by its file name), or null.
 export function catalogEntry(model) {
-  return CATALOG.find((c) => c.kind === 'chat' && String(model.name || '').toLowerCase() === c.uri.split('/').pop().replace(/.gguf$/i, '').toLowerCase()) || null;
+  return CATALOG.find((c) => c.kind === 'chat' && String(model.name || '').toLowerCase() === stemOf(c)) || null;
 }
 // What speed.js needs to know about a model file: its tier, whether it thinks, what it reads for each word.
 export function speedInfo(model) {
@@ -96,7 +133,7 @@ export function speedInfo(model) {
 
 // Position in the catalog (recommended first); unknown files sort last.
 export function catalogRank(model) {
-  const i = CATALOG.findIndex((c) => model.name.toLowerCase() === c.uri.split('/').pop().replace(/\.gguf$/i, '').toLowerCase());
+  const i = CATALOG.findIndex((c) => model.name.toLowerCase() === stemOf(c));
   return i === -1 ? CATALOG.length : i;
 }
 
@@ -122,6 +159,7 @@ export async function downloadModel(id, onProgress) {
   const controller = new AbortController();
   active.set(id, controller);
   try {
+    if (item.url) return await downloadDirect(item, controller.signal, onProgress);
     const downloader = await createModelDownloader({
       modelUri: item.uri,
       dirPath: paths.models,
@@ -141,6 +179,20 @@ export async function downloadModel(id, onProgress) {
   }
 }
 
+// A catalog model with a direct link: written under a temporary name, its size and SHA-256 checked, then moved into place.
+async function downloadDirect(item, signal, onProgress) {
+  fs.mkdirSync(paths.models, { recursive: true });
+  const final = path.join(paths.models, item.file);
+  if (fs.existsSync(final)) return final;
+  const r = await downloadFile(item.url, paths.models, { signal, name: `${item.file}.download`, onProgress: ({ done, total }) => onProgress?.({ id: item.id, totalSize: total || item.bytes, downloadedSize: done }) });
+  if (r.bytes !== item.bytes || r.sha256 !== item.sha256) {
+    fs.rmSync(r.path, { force: true });
+    throw new Error(`${item.name} did not download correctly (the file does not match); try again.`);
+  }
+  fs.renameSync(r.path, final);
+  return final;
+}
+
 // Download a model from a Hugging Face address (hf:user/repo/file.gguf), into the library.
 export async function downloadUri(uri, onProgress) {
   if (!/^hf:[^/\s]+\/[^/\s]+\/\S+\.gguf$/i.test(String(uri))) throw new Error('That is not a model address (hf:user/repo/file.gguf).');
@@ -157,7 +209,7 @@ function removePartial(file) {
 
 // The library file for a catalog entry, if it's installed.
 export function catalogFileName(item) {
-  return item.uri.split('/').pop().replace(/.gguf$/i, '').toLowerCase();
+  return stemOf(item);
 }
 export function findInstalled(item, list) {
   const want = catalogFileName(item);

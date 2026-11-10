@@ -293,7 +293,13 @@ test('every catalog entry is well formed and fast models carry a tested skill', 
   const ids = new Set();
   for (const c of CATALOG) {
     assert.ok(!ids.has(c.id), `duplicate id ${c.id}`); ids.add(c.id);
-    assert.match(c.uri, /^hf:[^/]+\/[^/]+\/[^/]+\.gguf$/, c.id);
+    if (c.url) { // a direct link: checked by size and SHA-256, never bundled
+      assert.match(c.url, /^https:\/\/registry\.ollama\.ai\/v2\/[^/]+\/[^/]+\/blobs\/sha256:[0-9a-f]{64}$/, c.id);
+      assert.equal(c.url.split('sha256:')[1], c.sha256, c.id);
+      assert.match(c.file, /^[\w.-]+\.gguf$/, c.id);
+      assert.ok(Number.isInteger(c.bytes) && c.bytes > 1e6, c.id);
+      assert.equal(c.uri, undefined, c.id);
+    } else assert.match(c.uri, /^hf:[^/]+\/[^/]+\/[^/]+\.gguf$/, c.id);
     assert.match(c.size, /^[\d.]+ (GB|MB)$/, c.id);
     if (c.skill) assert.ok(['agent', 'tools', 'chat'].includes(c.skill), c.id);
   }
@@ -365,4 +371,24 @@ test('allowed folders cover their subfolders and new files', () => {
   try { resolveInsideFn(ws, path.join(root, 'missing', 'deep', 'x.txt')); assert.fail('should need access'); } catch (err) {
     assert.equal(err.folder, fs.realpathSync(root)); // nearest existing folder
   }
+});
+
+test('a direct-link catalog model is downloaded, checked against its SHA-256 and put in the library', async () => {
+  const crypto = await import('node:crypto');
+  const models = await import('../src/main/models.js');
+  const good = Buffer.from('GGUF-pretend-model');
+  const stream = (buf) => ({ async *[Symbol.asyncIterator]() { yield buf; } });
+  const serve = (buf) => async () => ({ ok: true, status: 200, statusText: '', url: 'https://registry.ollama.ai/x', headers: { get: (k) => (k.toLowerCase() === 'content-length' ? String(buf.length) : null) }, body: stream(buf) });
+  const item = { id: 'test-direct', kind: 'chat', name: 'Test', file: 'test-direct.gguf', size: '1 MB', bytes: good.length, url: 'https://registry.ollama.ai/v2/library/t/blobs/sha256:x', sha256: crypto.createHash('sha256').update(good).digest('hex') };
+  models.CATALOG.push(item);
+  const realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = serve(Buffer.from('GGUF-pretend-MODEL')); // the wrong bytes: refused, nothing left behind
+    await assert.rejects(models.downloadModel('test-direct'), /did not download correctly/);
+    assert.deepEqual(fs.readdirSync(store.paths.models).filter((f) => f.startsWith('test-direct')), []);
+    globalThis.fetch = serve(good);
+    const file = await models.downloadModel('test-direct');
+    assert.equal(path.basename(file), 'test-direct.gguf');
+    assert.deepEqual(fs.readFileSync(file), good);
+  } finally { globalThis.fetch = realFetch; models.CATALOG.pop(); }
 });

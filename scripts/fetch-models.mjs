@@ -12,6 +12,7 @@ if (!dir || !ids.length) {
 for (const id of ids) {
   const item = CATALOG.find((m) => m.id === id);
   if (!item) throw new Error(`unknown model id ${id}`);
+  if (!item.uri) throw new Error(`${id} is downloaded in the app, not bundled`);
   const downloader = await createModelDownloader({ modelUri: item.uri, dirPath: path.resolve(dir), skipExisting: true });
   console.log(`${id} -> ${await downloader.download()}`);
 }
