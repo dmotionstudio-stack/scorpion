@@ -17,7 +17,7 @@ internet connection to chat.
   and all its tools as holographic tiles (each with a live status line) that fill the
   screen. The sidebar can be hidden for more room (the button in its corner, or
   Ctrl+B). Everything underneath is the same local AI.
-- **Chat** with local models (Qwen, gpt-oss, any GGUF file), with streaming and Markdown.
+- **Chat** with local models (Qwen3.5 4B and Qwen3 1.7B come from the catalog; any GGUF file works), with streaming and Markdown. A **Thinking** switch in the chat turns a model's reasoning up, down or off, and the Models page estimates how fast each model will answer on your computer. Scorpion can pick the best model for your computer's speed by itself (and Scorpion OS does so at first start).
 - **Agent**: Scorpion reads, writes and edits files and runs terminal commands. On
   Windows and macOS it can reach every file on the computer (see *Full file access*
   below); where that is off (Scorpion OS, or if you turn it off) it works inside a
@@ -162,8 +162,7 @@ internet connection to chat.
 - **Edge rail and intent wheel** (the taskbar's layout, by default): the taskbar is a
   glass rail down the right edge of the screen to glance at: the clock and date,
   battery, network, notifications, mail and chat with Scorpion, then the pinned apps and
-  open windows as icons, and volume and power. A small glowing dot in the bottom-left
-  corner (or **Win+Shift+Space**, which opens it where your pointer is) summons the
+  open windows as icons, and volume and power. **Win+Shift+Space**, which opens it where your pointer is, summons the
   **intent wheel**: Write, Browse, Talk, Create, Files and Focus around Scorpion's
   button, with the windows you used last around the outside (a live picture of each,
   what it is and how long ago). Flick from anywhere on the wheel toward an intent, or
@@ -206,6 +205,22 @@ internet connection to chat.
   (Win+Space if Windows lets go of it, otherwise Win+Alt+Space). Projects are saved on
   this computer and can be exported and imported in a shared format
   (`scorpion-constellations/1`). The classic 3D orb is still there as an option.
+- **The orb as a voice chat** (on by default once the voice is installed; Settings →
+  Voice and hands → *The orb*): the orb's screen is just the orb, the captions and
+  Talk. Say "Scorpion" and ask; the answer is spoken, as a conversation (no file or
+  command tools). There is no typing box, shortcut ring, apps or camera on it, and it
+  listens for its name whenever it is open. Turn the setting off for the full orb below.
+- **Unrestricted mode** (off by default; a switch in the sidebar under web search, or
+  Settings): per chat or for every chat, Scorpion goes online and runs without asking
+  for each step, so it can download models, agents and apps. Approvals offer *Allow for
+  this chat* or *Always*, and everything it does in this mode is written to an activity log.
+- **Build** (the Build page): trusted folders where Scorpion writes files and runs
+  commands without asking, local dev servers it starts and watches, a preview of the
+  page (localhost only) and a terminal beside the chat.
+- **Taskbar groups and drives**: taskbar icons group under dropdowns (windows of one
+  app, tray items, USB and external drives with eject, a Files and Desktop menu); right-click
+  the desktop or a folder to create a new folder or document. Settings has a date and
+  time section: automatic from the internet or set by hand.
 - **The orb as the system**: in Interact (and as the desktop) shortcuts orbit the orb:
   Apps, Files, Library, Chats, People, Settings and every open window, with its icon.
   Pick one by saying its name ("files", "switch to Outlook"), clicking it, or with
@@ -364,7 +379,7 @@ Scorpion needs one model file. You need internet once for this, or none at all
 if you copy the file from another computer.
 
 - **Download**: open **Settings → Models** and click **Download** next to
-  **Qwen3 4B** (2.5 GB, the recommended model).
+  **Qwen3.5 4B** (2.7 GB, the recommended model).
 - **Already on this computer**: **Settings → Models → Scan this computer for models…**
   finds model files you downloaded for other tools.
 - **Copy from another computer**: copy a `.gguf` file onto a USB drive, then use
@@ -433,8 +448,8 @@ Audio never leaves the computer. The page can't use the camera (except for
 Interact's hand gestures, while you have them on) or the screen.
 
 Spoken turns are answered in one to three short sentences, and Scorpion starts
-talking as soon as the first phrase is ready. For the quickest replies use Qwen3
-4B; it starts answering in about a quarter of a second on a 4 GB graphics card.
+talking as soon as the first phrase is ready. For the quickest replies use a small
+model such as Qwen3 1.7B, or turn Thinking off.
 
 If Scorpion says the microphone is muted or blocked: on Windows, check the mic
 key on your keyboard and **Settings → Privacy & security → Microphone** ("Let
@@ -555,6 +570,10 @@ Scorpion needs a model file once. You can get one in any of three ways:
 | `qwen3.5-4b` | Recommended chat + agent model; best Qwen for Haitian Creole | 2.7 GB |
 | `qwen3-1.7b` | Only for slow computers: fast, chat only | 1.1 GB |
 
+Only these two models are in the catalog (and on the Scorpion OS ISO, which bundles
+both and picks the faster-fitting one for the computer). Any other `.gguf` model
+works too: import it, scan for it, or add it from a model source in **Settings → Connections**.
+
 Documents (chat with your files) need an embedding model: import a `.gguf` embedding file in **Models**.
 
 ## Build installers
@@ -603,10 +622,10 @@ and a tag on every model: *Fast here* (fits in graphics memory), *Slower here*
 
 ### Speed tips
 
-- Pick a model tagged *Fast here*. On a 4 GB laptop GPU, Qwen3 4B Instruct writes about
-  45 tokens/second; an 8-bit 4B model that doesn't fit managed about 6.
+- Pick a model tagged *Fast here*. On a 4 GB laptop GPU, a 4B model at 4-bit writes
+  about 45 tokens/second; an 8-bit 4B model that doesn't fit managed about 6.
 - "Thinking" models write hidden reasoning before every answer, so they feel
-  much slower to start.
+  much slower to start. Use the **Thinking** switch in the chat to turn it down or off.
 - `node scripts/bench.mjs <model.gguf>` measures speed on your machine, and
   `node scripts/prompt-size.mjs <model.gguf>` shows how much every new chat
   has to read before answering.
