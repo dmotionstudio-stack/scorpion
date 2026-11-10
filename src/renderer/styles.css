@@ -990,6 +990,7 @@ html.full-wall .sidebar { background: color-mix(in srgb, var(--panel) 62%, trans
 .unrestricted-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 9999; padding: 3px 12px; text-align: center; font-size: 12px; font-weight: 600; background: #b3261e; color: #fff; }
 .unrestricted-banner.hidden { display: none; }
 .unrestricted-toggle b { color: #e5534b; }
+.approval-more { margin-top: 6px; align-items: center; flex-wrap: wrap; }
 
 /* Settings → General → System → Date and time (settings-clock.js). */
 .clock-now { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }

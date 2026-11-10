@@ -157,7 +157,8 @@ function setLoginStart(mode) {
 // --shell: Scorpion is the desktop (Windows' Winlogon shell, or Scorpion OS's session).
 const shellLaunch = process.argv.includes('--shell') && (process.platform === 'win32' || process.platform === 'linux');
 const running = new Map(); // threadId -> AbortController
-const approvals = new Map(); // approval id -> resolve(boolean)
+const approvals = new Map(); // approval id -> resolve(true, false, 'always', 'chat' or 'unrestricted')
+const approvalThreads = new Map(); // approval id -> the chat it was asked in
 
 // The on-screen display (Scorpion OS's shell host shows it): a level just changed.
 async function showOsd(kind = 'volume') {
@@ -1096,7 +1097,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
   // Full access: every drive is allowed, and relative paths start at home.
   const settings = turnSettings(base, { workspace, mode, thread });
   // Unrestricted mode (Settings → Privacy) is for chats someone started themselves; a scheduled run or a message from outside never gets it.
-  if (base.unrestricted === true && interactive) Object.assign(settings, { unrestricted: true, online: true, autoApprove: true });
+  if ((base.unrestricted === true || thread.unrestricted === true) && interactive) Object.assign(settings, { unrestricted: true, online: true, autoApprove: true });
   else settings.unrestricted = false;
   const agent = agents.getAgent(thread.agentId || 'scorpion');
   let source = activeSource();
@@ -1118,7 +1119,23 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
     applyEvent(assistant.blocks, ev);
     send('chat:event', { threadId, ...ev });
   };
-  const requestApproval = (info) => approve(info, controller.signal, threadId);
+  // "Allow for this chat" and "Always" turn Unrestricted mode on from here (the rest of this answer too), after asking once.
+  const goUnrestricted = () => Object.assign(settings, { unrestricted: true, online: true, autoApprove: true });
+  const requestApproval = async (info) => {
+    const answer = await approve(info, controller.signal, threadId);
+    if (answer === 'chat' && interactive) {
+      thread.unrestricted = true;
+      store.saveThread(thread);
+      goUnrestricted();
+      return true;
+    }
+    if (answer === 'unrestricted' && interactive) {
+      send('settings:changed', store.updateSettings({ unrestricted: true }));
+      goUnrestricted();
+      return true;
+    }
+    return answer === 'chat' || answer === 'unrestricted' ? true : answer;
+  };
   // Only a chat someone is watching can ask for folders; scheduled runs keep
   // to their workspace and the folders already allowed for good.
   const requestFolderAccess = interactive ? (req) => askFolderAccess(req, controller.signal) : null;
@@ -1206,6 +1223,7 @@ function continuationPrompt(blocks) {
 function askUser(info, signal, threadId) {
   return new Promise((resolve) => {
     approvals.set(info.id, resolve);
+    approvalThreads.set(info.id, threadId);
     signal.addEventListener('abort', () => resolve(false), { once: true });
     send('chat:event', { threadId, type: 'approval', ...info });
   });
@@ -2646,7 +2664,21 @@ function registerIpc() {
 
   h('chat:send', chatSend);
   h('chat:stop', (threadId) => running.get(threadId)?.abort());
-  h('chat:approve', ({ id, approved }) => { approvals.get(id)?.(approved === 'always' ? 'always' : Boolean(approved)); approvals.delete(id); });
+  // An answer is yes, no, 'always' (this exact command), 'chat' (everything in this chat) or 'unrestricted' (Unrestricted mode, for every chat).
+  h('chat:approve', ({ id, approved }) => {
+    const answer = ['always', 'chat', 'unrestricted'].includes(approved) ? approved : Boolean(approved);
+    approvals.get(id)?.(answer);
+    approvals.delete(id);
+    approvalThreads.delete(id);
+  });
+  // Unrestricted mode for one chat, on or off (the strip across the top, and what "Allow for this chat" sets).
+  h('thread:unrestricted', ({ threadId, on }) => {
+    const t = store.getThread(threadId);
+    if (!t) throw new Error('Chat not found');
+    t.unrestricted = Boolean(on);
+    store.saveThread(t);
+    return t.unrestricted;
+  });
 
   h('docs:add', async () => {
     const r = await dialog.showOpenDialog(win, {

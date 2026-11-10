@@ -180,8 +180,12 @@ function renderTopbar() {
 function renderModelSwitch() {
   // A strip across the top while Unrestricted mode is on, so it is never forgotten.
   let banner = document.getElementById('unrestricted-banner');
-  if (!banner) { banner = document.createElement('div'); banner.id = 'unrestricted-banner'; banner.className = 'unrestricted-banner hidden'; banner.textContent = 'Unrestricted mode is on: Scorpion downloads and runs things without asking (Settings → Privacy turns it off)'; document.body.append(banner); }
-  banner.classList.toggle('hidden', S.settings.unrestricted !== true);
+  if (!banner) { banner = document.createElement('div'); banner.id = 'unrestricted-banner'; banner.className = 'unrestricted-banner hidden'; document.body.append(banner); }
+  const chatOnly = S.settings.unrestricted !== true && S.thread?.unrestricted === true;
+  banner.classList.toggle('hidden', S.settings.unrestricted !== true && !chatOnly);
+  banner.textContent = chatOnly ? 'Unrestricted for this chat: Scorpion downloads and runs things without asking. Click here to stop.' : 'Unrestricted mode is on: Scorpion downloads and runs things without asking (Settings → Privacy turns it off)';
+  banner.style.cursor = chatOnly ? 'pointer' : '';
+  banner.onclick = chatOnly ? async () => { await api.threadUnrestricted({ threadId: S.thread.id, on: false }); S.thread.unrestricted = false; renderModelSwitch(); toast('This chat asks again.'); } : null;
   buildDock?.renderTrust();
   const st = S.modelStatus;
   const selected = S.settings.chatModel;
@@ -309,7 +313,8 @@ function approvalHtml(b) {
   return `<div class="approval"><strong>${q}</strong>
     <div class="muted small">${esc(b.name)} · ${esc(b.args.path || b.args.subdir || b.args.language || '')}</div>
     <pre>${esc(detail)}</pre>
-    <div class="row"><button class="btn primary small" data-approve="${b.id}">Allow</button>${b.name === 'run_command' ? `<button class="btn small" data-approve="${b.id}" data-always="1" title="Run this exact command from now on without asking (remove it in Settings → General)">Always allow this command</button>` : ''}<button class="btn small" data-deny="${b.id}">Deny</button></div></div>`;
+    <div class="row"><button class="btn primary small" data-approve="${b.id}">Allow</button>${b.name === 'run_command' ? `<button class="btn small" data-approve="${b.id}" data-always="1" title="Run this exact command from now on without asking (remove it in Settings → General)">Always allow this command</button>` : ''}<button class="btn small" data-deny="${b.id}">Deny</button></div>
+    <div class="row approval-more"><span class="muted small">Ask once:</span><button class="btn small" data-approve="${b.id}" data-scope="chat" title="Allow this and everything else in this chat, without asking again (downloads, commands, installs)">Allow for this chat</button><button class="btn small" data-approve="${b.id}" data-scope="unrestricted" title="Turn on Unrestricted mode for every chat (Settings, Privacy turns it off)">Always (Unrestricted mode)</button></div></div>`;
 }
 
 function toolHtml(b, live) {
@@ -2136,7 +2141,14 @@ function wire() {
     const ok = e.target.closest('[data-approve]');
     const no = e.target.closest('[data-deny]');
     const id = ok?.dataset.approve || no?.dataset.deny;
-    if (id) { api.approve({ id, approved: ok?.dataset.always ? 'always' : !!ok }); S.pending.delete(id); scheduleRender(); }
+    if (id) {
+      const scope = ok?.dataset.scope;
+      if (scope === 'unrestricted' && !confirm('Always: Unrestricted mode for every chat you start.\n\nScorpion will use the internet freely, download models, agents and apps, and run commands without asking. A web page it reads could try to trick it into running something harmful. Every action is written to an activity log, and Settings → Privacy turns it off.\n\nTurn it on?')) return;
+      api.approve({ id, approved: scope || (ok?.dataset.always ? 'always' : !!ok) });
+      if (scope === 'chat' && S.thread) { S.thread.unrestricted = true; renderModelSwitch(); }
+      if (scope === 'unrestricted') S.settings.unrestricted = true;
+      S.pending.delete(id); scheduleRender();
+    }
   };
 
   $('#workspace-chip').onclick = async () => {

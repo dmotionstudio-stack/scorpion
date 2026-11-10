@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   // The computer's clock: how it's set; follow the internet's time, sync now, or set by hand.
   sysClock: invoke('sys:clock'),
   unrestrictedLog: invoke('unrestricted:log'),
+  threadUnrestricted: invoke('thread:unrestricted'),
   // Build: servers and the terminal, and the preview pane.
   devList: invoke('dev:list'),
   devLogs: invoke('dev:logs'),
