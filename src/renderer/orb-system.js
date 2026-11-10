@@ -34,11 +34,23 @@ export function initOrbSystem(ctx) {
 
   // ---------- shortcuts ----------
   // As Settings arranges them (orb-bubbles.js): places, your own, open windows.
-  const items = () => bubbleItems(S.settings.orbBubbles, PLACES, O.windows);
+  // The orb as a voice chat (Settings → Voice and hands): the voice is installed and the setting is on.
+  const voiceOnly = () => S.settings.orbVoiceOnly !== false && Boolean(S.voice?.installed);
+  // Voice only: no shortcuts around the orb (apps, places, windows).
+  const items = () => (voiceOnly() ? [] : bubbleItems(S.settings.orbBubbles, PLACES, O.windows));
   const showShortcuts = () => {
     IX.orb?.setRingLook?.(ringLook(S.settings.orbBubbles));
     IX.orb?.setSatellites(items());
   };
+  // The orb's screen: just the orb, what is said, and how it is listening. The wake word is always on.
+  function applyVoiceOnly() {
+    const on = voiceOnly();
+    document.body.classList.toggle('ix-voice-only', on);
+    const hint = $('#ix-hint');
+    if (hint && !hint.dataset.full) hint.dataset.full = hint.innerHTML; // the usual hint, kept for when voice-only is off
+    if (hint) hint.innerHTML = on ? '<span class="key">Say</span> “Scorpion” and ask <span class="key">Space</span> talk / interrupt <span class="key">Esc</span> leave' : hint.dataset.full;
+    if (IX.open) showShortcuts();
+  }
 
   async function refreshWindows() {
     if (!IS_WINDOWS || !IX.open || O.away) return;
@@ -232,6 +244,7 @@ export function initOrbSystem(ctx) {
   // A spoken command the orb handles itself. Returns true if it did.
   function handleSpoken(text) {
     if (!IX.open) return false;
+    if (voiceOnly()) return false; // everything said is a question for Scorpion: no opening apps or running intents
     if (O.approval) { answer(parseYesNo(text)); return true; }
     const m = matchShortcut(text, items());
     if (!m) {
@@ -501,7 +514,7 @@ export function initOrbSystem(ctx) {
   // While it's on, Scorpion listens for speech; each thing said is
   // transcribed on this computer and only acted on if it starts with
   // "Scorpion". Nothing is recorded or kept.
-  const wakeOn = () => Boolean(IX.open && S.settings.wakeWord && S.voice?.installed);
+  const wakeOn = () => Boolean(IX.open && (S.settings.wakeWord || voiceOnly()) && S.voice?.installed);
   function scheduleWake(ms = 400) {
     clearTimeout(O.wakeTimer);
     if (wakeOn()) O.wakeTimer = setTimeout(wakeTick, ms);
@@ -552,6 +565,7 @@ export function initOrbSystem(ctx) {
     else stopWakeListening();
   }
   function renderWake() {
+    applyVoiceOnly();
     const b = $('#ix-wake');
     b.setAttribute('aria-pressed', String(Boolean(S.settings.wakeWord)));
     b.textContent = S.settings.wakeWord ? 'Wake word on' : 'Wake word off';
@@ -622,6 +636,8 @@ export function initOrbSystem(ctx) {
     toggleGuide, goHome, handleGlobals, togglePause,
     // Settings changed (the orb's bubbles among them): the rings follow.
     refreshShortcuts: () => { if (IX.open) showShortcuts(); },
+    applyVoiceOnly,
+    get voiceOnly() { return voiceOnly(); },
     get paused() { return Boolean(O.handsPaused); },
     get wakeListening() { return O.wakeListening; },
     get desktop() { return O.desktop; },

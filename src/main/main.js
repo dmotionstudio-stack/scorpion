@@ -1342,7 +1342,9 @@ async function askFolderAccess({ folder, name, summary }, signal) {
 async function chatSend({ threadId, text, spoken = false, speaker = null, mood = null }) {
   const thread = store.getThread(threadId);
   if (!thread) throw new Error('Chat not found');
-  const result = await runAgentTurn({ thread, text, approve: askUser, interactive: true, spoken, speaker, mood });
+  // The orb as a voice chat: a spoken question is answered as a conversation (chat mode: no file or command tools; the web only if Online is on).
+  const voiceChat = spoken && store.getSettings().orbVoiceOnly !== false;
+  const result = await runAgentTurn({ thread, text, approve: askUser, interactive: true, spoken, speaker, mood, mode: voiceChat ? 'chat' : undefined });
   return { ok: !result.error };
 }
 

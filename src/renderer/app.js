@@ -657,7 +657,7 @@ function voiceReady() {
   setView('settings');
   return false;
 }
-const speaksReplies = () => Boolean(S.voice?.installed && (S.settings.voiceSpeak || V.talk || V.wakeTurn));
+const speaksReplies = () => Boolean(S.voice?.installed && (S.settings.voiceSpeak || V.talk || V.wakeTurn || (IX.open && S.settings.orbVoiceOnly !== false)));
 
 function voiceOnChatEvent(ev) {
   if (ev.threadId !== S.thread?.id) return;
@@ -1770,6 +1770,7 @@ function renderSettings() {
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
   $('#online-mode').checked = Boolean(S.settings.online);
   $('#unrestricted-mode').checked = S.settings.unrestricted === true;
+  $('#orb-voice-only').checked = S.settings.orbVoiceOnly !== false;
   renderOnlineBadge();
   const full = S.settings.fileAccess === 'full';
   $('#file-access').value = full ? 'full' : 'ask';
@@ -2405,6 +2406,7 @@ function wire() {
   $('#unrestricted-log').onclick = () => api.unrestrictedLog().catch((err) => toast(errText(err), 'error'));
   $('#online-badge').onclick = () => setOnline(!S.settings.online);
   $('#unrestricted-badge').onclick = toggleUnrestricted;
+  $('#orb-voice-only').onchange = async (e) => { await setSetting({ orbVoiceOnly: e.target.checked }); orbSys?.applyVoiceOnly(); if (e.target.checked) orbSys?.scheduleWake(300); };
   $('#file-access').onchange = async (e) => {
     const full = e.target.value === 'full';
     if (full && !confirm('Give Scorpion access to every file on this computer?\n\nIt can then read, create, edit and move any of your files. Changes and commands still ask for your approval unless Auto-approve is on. System folders stay read-only.')) {

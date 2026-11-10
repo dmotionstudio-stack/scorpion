@@ -987,6 +987,11 @@ html.full-wall .sidebar { background: color-mix(in srgb, var(--panel) 62%, trans
 .dev-form input { flex: 1; min-width: 0; font: 12px ui-monospace, Consolas, monospace; }
 #trust-chip[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
 
+/* The orb as a voice chat (orb-system.js applyVoiceOnly): the orb, what is said and the status. Talk and the language stay. */
+body.ix-voice-only .ix-ask, body.ix-voice-only #ix-voice, body.ix-voice-only #ix-face, body.ix-voice-only #ix-gestures, body.ix-voice-only #ix-wake,
+body.ix-voice-only #ix-zoom-in, body.ix-voice-only #ix-zoom-out, body.ix-voice-only #ix-reset, body.ix-voice-only .ix-facecam, body.ix-voice-only .ix-app,
+body.ix-voice-only .ix-pointer, body.ix-voice-only .ix-min { display: none !important; }
+
 /* Unrestricted mode: a strip across the top while it is on, and the switch's own colour. */
 .unrestricted-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 9999; padding: 3px 12px; text-align: center; font-size: 12px; font-weight: 600; background: #b3261e; color: #fff; }
 .unrestricted-banner.hidden { display: none; }
