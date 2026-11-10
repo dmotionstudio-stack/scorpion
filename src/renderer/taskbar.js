@@ -3,14 +3,20 @@
 // desktop (or stands in for the Windows taskbar): Scorpion, Apps and Files,
 // the pinned apps and the open windows with their icons, then network,
 // battery, volume, the clock and the power menu. Right-click an empty part of
-// it to customize it (app names, centered, size, look, tray items).
+// it to customize it (app names, centered, size, look, tray items). Pinned
+// apps can be put in groups (right-click one → Group): a group is one icon
+// that drops down its apps; an app's open windows share one icon that drops
+// down the windows (taskbar-core.js).
+import { layoutTaskbar } from './taskbar-core.js';
+
 const api = window.scorpion;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 let windows = [];
 let pinned = []; // [{ id, name, icon }]
-let look = { labels: true, center: false, size: 'normal', style: 'holo', show: {} };
+let look = { labels: true, center: false, size: 'normal', style: 'holo', show: {}, groups: [], combine: true };
+let shown = { pins: [], wins: [] }; // what's on the bar now (layoutTaskbar)
 
 async function applySettings(settings) {
   const s = settings || (await api.state().catch(() => null))?.settings;
@@ -31,21 +37,29 @@ async function applySettings(settings) {
   render();
 }
 
-// A pinned program's windows (matched by its path); Store apps can't be matched.
-const sameFile = (a, b) => a && b && a.toLowerCase() === b.toLowerCase();
-const windowsOf = (p) => windows.filter((w) => sameFile(w.exe, p.id));
-
 function render() {
   const icon = (src, name) => (src ? `<img src="${esc(src)}" alt="">` : `<span class="tb-initial">${esc(String(name).slice(0, 1).toUpperCase())}</span>`);
-  $('#tb-pinned').innerHTML = pinned.map((p) => {
-    const open = windowsOf(p);
-    const active = open.some((w) => w.active);
-    return `<button class="tb-btn tb-win tb-pin${open.length ? ' running' : ''}${active ? ' active' : ''}" data-pin="${esc(p.id)}" title="${esc(p.name)}${open.length > 1 ? ` (${open.length} windows)` : ''}">${icon(p.icon, p.name)}<span class="tb-title">${esc(p.name)}</span></button>`;
+  const count = (n) => (n > 1 ? `<span class="tb-count" aria-hidden="true">${n}</span>` : '');
+  shown = layoutTaskbar({ pinned, windows, groups: look.groups, combine: look.combine !== false });
+  $('#tb-pinned').innerHTML = shown.pins.map((it) => {
+    const state = `${it.running ? ' running' : ''}${it.active ? ' active' : ''}`;
+    // A group: up to four of its apps' icons, small, and its name; a click drops down its apps.
+    if (it.kind === 'group') return `<button class="tb-btn tb-win tb-pin tb-group${state}" data-group="${esc(it.id)}" aria-haspopup="menu" title="${esc(it.name)}: ${esc(it.apps.map((a) => a.name).join(', '))}"><span class="tb-stack">${it.apps.slice(0, 4).map((a) => icon(a.icon, a.name)).join('')}</span><span class="tb-title">${esc(it.name)}</span></button>`;
+    const p = it.app;
+    return `<button class="tb-btn tb-win tb-pin${state}" data-pin="${esc(p.id)}" title="${esc(p.name)}${it.windows.length > 1 ? ` (${it.windows.length} windows)` : ''}">${icon(p.icon, p.name)}<span class="tb-title">${esc(p.name)}</span>${count(it.windows.length)}</button>`;
   }).join('');
-  const shown = windows.filter((w) => !pinned.some((p) => sameFile(w.exe, p.id)));
-  $('#tb-windows').innerHTML = shown.map((w) => `<button class="tb-btn tb-win running${w.active ? ' active' : ''}" data-hwnd="${esc(w.hwnd)}" title="${esc(w.title)}">${icon(w.icon, w.process || w.title)}<span class="tb-title">${esc(w.title)}</span></button>`).join('');
-  $('#tb-sep').hidden = !pinned.length || !shown.length;
+  $('#tb-windows').innerHTML = shown.wins.map((it) => {
+    // An app's windows together: a click drops down the list of them.
+    if (it.kind === 'windows') return `<button class="tb-btn tb-win running${it.active ? ' active' : ''}" data-wins="${esc(it.key)}" aria-haspopup="menu" title="${esc(it.name)} (${it.windows.length} windows)">${icon(it.icon, it.name)}<span class="tb-title">${esc(it.name)}</span>${count(it.windows.length)}</button>`;
+    const w = it.w;
+    return `<button class="tb-btn tb-win running${w.active ? ' active' : ''}" data-hwnd="${esc(w.hwnd)}" title="${esc(w.title)}">${icon(w.icon, w.process || w.title)}<span class="tb-title">${esc(w.title)}</span></button>`;
+  }).join('');
+  $('#tb-sep').hidden = !shown.pins.length || !shown.wins.length;
 }
+// The dropdowns (native menus, so they reach above the thin bar): a group's
+// apps, or an app's windows.
+const groupMenu = (id) => api.shellMenu({ kind: 'group', id });
+const windowsMenu = (list, name) => api.shellMenu({ kind: 'windows', name, hwnds: list.map((w) => w.hwnd) });
 
 async function refreshWindows() {
   try {
@@ -94,13 +108,20 @@ const toggleWindow = async (w) => {
 $('#tb-apps-area').addEventListener('click', async (e) => {
   const win = e.target.closest('[data-hwnd]');
   if (win) { const w = windows.find((x) => x.hwnd === win.dataset.hwnd); if (w) toggleWindow(w); return; }
+  const group = e.target.closest('[data-group]');
+  if (group) { groupMenu(group.dataset.group); return; }
+  const wins = e.target.closest('[data-wins]');
+  if (wins) { const it = shown.wins.find((x) => x.key === wins.dataset.wins); if (it) windowsMenu(it.windows, it.name); return; }
   const pin = e.target.closest('[data-pin]');
   if (!pin) return;
-  const p = pinned.find((x) => x.id === pin.dataset.pin);
-  const open = windowsOf(p);
-  // Not running: open it. One window: like a window button. Several: the next one.
+  const it = shown.pins.find((x) => x.app?.id === pin.dataset.pin);
+  if (!it) return;
+  const p = it.app;
+  const open = it.windows;
+  // Not running: open it. One window: like a window button. Several: the list of them (or, not combined, the next one).
   if (!open.length) { pin.classList.add('launching'); setTimeout(() => pin.classList.remove('launching'), 1200); api.shellLaunch({ id: p.id, name: p.name }).catch(() => {}); return; }
   if (open.length === 1) { toggleWindow(open[0]); return; }
+  if (look.combine !== false) { windowsMenu(open, p.name); return; }
   const i = open.findIndex((w) => w.active);
   toggleWindow({ ...open[(i + 1) % open.length], active: false });
 });
@@ -112,6 +133,10 @@ document.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   const win = e.target.closest('[data-hwnd]');
   if (win) { const w = windows.find((x) => x.hwnd === win.dataset.hwnd); api.shellMenu({ kind: 'window', hwnd: win.dataset.hwnd, title: w?.title, exe: w?.exe }); return; }
+  const group = e.target.closest('[data-group]');
+  if (group) { groupMenu(group.dataset.group); return; }
+  const wins = e.target.closest('[data-wins]');
+  if (wins) { const it = shown.wins.find((x) => x.key === wins.dataset.wins); if (it) windowsMenu(it.windows, it.name); return; }
   const pin = e.target.closest('[data-pin]');
   if (pin) { const p = pinned.find((x) => x.id === pin.dataset.pin); api.shellMenu({ kind: 'pinned', id: p.id, name: p.name }); return; }
   if (!e.target.closest('button')) api.shellMenu({ kind: 'bar' }); // an empty part: customize

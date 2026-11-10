@@ -1,7 +1,7 @@
 // Scorpion as the Windows desktop ("shell"). When Windows starts Scorpion at
 // sign-in (scorpion --shell), Scorpion shows its home screen as the desktop
 // and its taskbar: by default a glance rail along the right edge (edge.html)
-// with a summon dot that opens the intent wheel (summon.html), the classic
+// with a summon button that opens the intent wheel (summon.html), the classic
 // bar along the bottom (taskbar.html; right-click the taskbar → Layout). 'bar' (Settings: the holographic taskbar
 // whenever Scorpion runs) takes over from the Windows taskbar on the normal
 // Windows desktop: the Windows one is hidden while Scorpion's runs and comes
@@ -21,47 +21,25 @@ const BAR_SIDE = 60; // the bar down a side
 const RAIL_WIDTH = 76; // the rail down a side
 const RAIL_ACROSS = 64; // the rail along the top or bottom
 const EDGES = ['right', 'left', 'top', 'bottom'];
-const DOT = 88; // the summon dot's window on a 1080-pixel screen (dotSizeFor)
-// deps.dotAt: where the dot was dropped ({ x, y } as fractions of the screen,
-// { corner: 'tl' | 'tr' | 'bl' | 'br' }, or null for the bottom-left corner);
 // deps.autoHide: the taskbar hides until the pointer reaches its edge;
-// deps.railAway: the rail comes with the floating dot; deps.wheel: the
-// wheel's settings ({ size, button, recent, frosted }); deps.edge: the screen
+// deps.railAway: the rail floats while Scorpion's window is away; deps.wheel: the
+// wheel's settings ({ size, recent, frosted }); deps.edge: the screen
 // edge the taskbar is on (null: the rail down the right, the bar along the bottom).
-let deps = null; // { BrowserWindow, screen, preload, dataDir, getMainWindow, showView, getLayout, perf, snapScreen, dotAt, autoHide, railAway, edge }
+let deps = null; // { BrowserWindow, screen, preload, dataDir, getMainWindow, showView, getLayout, perf, snapScreen, autoHide, railAway, edge }
 let taskbar = null;
-let summon = null; // the summon dot, which opens into the intent wheel
+let summon = null; // the intent wheel's window (shown only while the wheel is open)
 let wheelOpen = false;
 let held = false; // a menu or dialog from the wheel is up: it stays open
 let layout = 'orbit'; // 'orbit' (edge rail + wheel) | 'bar'
-// On the normal Windows desktop the dot floats on its own while Scorpion's
-// window is minimized or hidden ("summon anywhere"), and Win+Shift+Space opens
-// the wheel whenever Scorpion runs.
-let floating = false;
-let railFloats = false; // the rail is up with the floating dot (Scorpion minimized)
+// On the normal Windows desktop the rail floats while Scorpion's window is
+// minimized or hidden, and Win+Shift+Space opens the wheel whenever Scorpion runs.
+let away = false;
+let railFloats = false; // the rail is up on the Windows desktop (Scorpion minimized)
 // Auto-hide: the taskbar slides away and the pointer at its edge brings it back.
 let railHidden = false;
 let railHeld = 0; // until when it stays (a menu from it is open)
-// Stage (Windows): the recent windows as a strip of live pictures that slides
-// in from the screen's left edge when the pointer touches it (stage.html).
-// A window just minimized flies into it from the middle of the screen.
-const STAGE_W = 230;
-// Stage takes only the band of the edge where its cards sit (centered, as
-// the cards are): the pointer brings it in there and nowhere else along the
-// edge, and the rest of the edge stays the apps'. The page says how tall its
-// cards are (stageSized); until it has, three cards' worth.
-const STAGE_MIN_H = 240;
-let stageSpan = 570;
-// From the right edge instead while the taskbar is on the left.
-const sideForStage = () => (railEdge() === 'left' ? 'right' : 'left');
-let stageSide = 'left';
-let stage = null;
-let stageOn = false;
-let stageShown = false;
-let stageStay = 0; // until when it stays in after a window flew in
-let arriving = false;
 let pointerWatch = 0;
-// Scorpion OS's native shell host shows the rail, the dot and the wheel as
+// Scorpion OS's native shell host shows the rail and the wheel as
 // layer-shell panels (os/.../scorpion-shell); then Scorpion makes none itself.
 let hostMode = false;
 let savedWorkArea = null;
@@ -73,7 +51,7 @@ export const shellMode = () => mode;
 // Scorpion's taskbar back on top (Scorpion itself is on top in full mode).
 export function raiseTaskbar() {
   if (taskbar && !taskbar.isDestroyed()) taskbar.moveTop();
-  if (summon && !summon.isDestroyed()) summon.moveTop();
+  if (wheelOpen && summon && !summon.isDestroyed()) summon.moveTop();
 }
 // The edge of the screen the taskbar is on (Settings, or a right-click on
 // it): by default the rail down the right, the bar along the bottom. The
@@ -126,9 +104,9 @@ export function clearShellStarts() { fs.rmSync(file('shell-starts.json'), { forc
 
 // The bar only as Scorpion's desktop; floating, it's the rail.
 const barLayout = () => Boolean(mode) && layout === 'bar';
-// What the taskbar runs along: the whole screen as the desktop; floating with
-// the dot, the area the Windows taskbar leaves (as it was before the rail
-// took its own room from it).
+// What the taskbar runs along: the whole screen as the desktop; floating, the
+// area the Windows taskbar leaves (as it was before the rail took its own
+// room from it).
 function railBase() {
   const d = deps.screen.getPrimaryDisplay();
   if (mode || !WIN) return d.bounds;
@@ -149,63 +127,10 @@ function placeTaskbar() {
 }
 // Where the wheel opens: the screen, less the rail's strip while it's up.
 const wheelArea = (r) => (railUp() ? besideEdge(r) : r);
-// The dot (in the bottom-left corner above a taskbar, or wherever it was
-// dropped), or (open) the whole screen beside the rail.
+// The wheel's window: the whole screen beside the rail, while it's open.
 function placeSummon() {
-  if (!summon || summon.isDestroyed()) return;
-  const r = deps.screen.getPrimaryDisplay().bounds;
-  const dot = dotSpot();
-  const size = dotSize();
-  summon.setBounds(wheelOpen ? wheelArea(r) : { x: Math.round(dot.x - size / 2), y: Math.round(dot.y - size / 2), width: size, height: size });
-}
-// The dot's window grows with the screen (108 pixels on a 1080-pixel one) and
-// shrinks on a small one, within reason; Settings makes it smaller or larger
-// still. An even size, so it has a middle.
-const BUTTON = { small: 0.8, normal: 1, large: 1.25 };
-export const dotSizeFor = (b, button = 'normal') => 2 * Math.round((BUTTON[button] || 1) * Math.min(136, Math.max(76, Math.min(b.width, b.height) / 10)) / 2);
-const dotSize = () => dotSizeFor(deps.screen.getPrimaryDisplay().bounds, deps.wheel?.().button);
-const CORNERS = { tl: [0, 0], tr: [1, 0], bl: [0, 1], br: [1, 1] };
-const GAP = 2; // between a dot in a corner and the edges
-// How far the dot's rings reach from its middle (summon.css draws them 30
-// pixels out in its 88-pixel window): its window's see-through margin may go
-// past the screen's edge, the rings themselves don't.
-const reach = (size) => (size * 30) / 88;
-// The dot's centre: right in a corner of the area; or where it was dropped
-// (as fractions of the screen), its rings kept whole inside that area.
-// Nowhere yet: the bottom-left corner.
-export function dotCentre(at, bounds, area, size = DOT) {
-  const r = reach(size);
-  const free = !at || !Number.isFinite(at.x) || !Number.isFinite(at.y);
-  const corner = CORNERS[at?.corner] || (free ? CORNERS.bl : null);
-  if (corner) {
-    return {
-      x: Math.round(corner[0] ? area.x + area.width - GAP - r : area.x + GAP + r),
-      y: Math.round(corner[1] ? area.y + area.height - GAP - r : area.y + GAP + r),
-    };
-  }
-  const x = bounds.x + at.x * bounds.width;
-  const y = bounds.y + at.y * bounds.height;
-  return {
-    x: Math.round(Math.min(Math.max(x, area.x + r), area.x + area.width - r)),
-    y: Math.round(Math.min(Math.max(y, area.y + r), area.y + area.height - r)),
-  };
-}
-// The corner a dot dropped this close to (about its own size) snaps into, or null.
-export function nearCorner(c, area, size = DOT) {
-  for (const [name] of Object.entries(CORNERS)) {
-    const spot = dotCentre({ corner: name }, area, area, size);
-    if (Math.abs(c.x - spot.x) <= size && Math.abs(c.y - spot.y) <= size) return name;
-  }
-  return null;
-}
-// Where the dot may go: the whole screen once it's been placed (into a
-// corner, over the Windows taskbar's, too); until then it waits above the
-// taskbar, clear of the Start button.
-const dotArea = (d, at) => (at ? d.bounds : d.workArea);
-function dotSpot() {
-  const d = deps.screen.getPrimaryDisplay();
-  const at = deps.dotAt?.();
-  return dotCentre(at, d.bounds, dotArea(d, at), dotSize());
+  if (!wheelOpen || !summon || summon.isDestroyed()) return;
+  summon.setBounds(wheelArea(deps.screen.getPrimaryDisplay().bounds));
 }
 // Scorpion OS: the screen beside the rail (the host's panels sit over it all).
 function hostArea() {
@@ -213,35 +138,8 @@ function hostArea() {
   const all = { x: 0, y: 0, width: r.width, height: r.height };
   return deps.autoHide?.() ? all : besideEdge(all);
 }
-// The dot dragged: it follows (Windows; on Scorpion OS the page moves the
-// host's panel itself), and where it's dropped is kept (as fractions of the
-// screen, so it stays put when the resolution changes; near a corner, that
-// corner). 'get': where it is, in the screen's own terms.
-export function dragDot({ phase, x, y } = {}) {
-  const r = deps.screen.getPrimaryDisplay().bounds;
-  const size = dotSize();
-  const d = deps.screen.getPrimaryDisplay();
-  const at = deps.dotAt?.();
-  // Dragged, it may go anywhere on the screen.
-  const area = hostMode ? hostArea() : dotArea(d, phase === 'get' ? at : true);
-  const bounds = hostMode ? { ...r, x: 0, y: 0 } : r;
-  if (phase === 'get') {
-    // On Windows in screen terms (what a move sends back); on Scorpion OS from the screen's corner.
-    const c = dotCentre(at, bounds, area, size);
-    return { x: c.x, y: c.y, w: r.width, h: r.height, size };
-  }
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  let c = dotCentre({ x: (x - bounds.x) / bounds.width, y: (y - bounds.y) / bounds.height }, bounds, area, size);
-  const corner = phase === 'end' ? nearCorner(c, area, size) : null;
-  if (corner) c = dotCentre({ corner }, bounds, area, size);
-  if (!hostMode && summon && !summon.isDestroyed() && !wheelOpen) {
-    summon.setBounds({ x: Math.round(c.x - size / 2), y: Math.round(c.y - size / 2), width: size, height: size });
-  }
-  return { at: corner ? { corner } : { x: (c.x - bounds.x) / bounds.width, y: (c.y - bounds.y) / bounds.height }, x: c.x, y: c.y, size };
-}
 // On Linux the window manager places a new window itself (labwc centres it);
-// a move asked for once it's on screen is honoured, so the rail and the dot
-// ask again.
+// a move asked for once it's on screen is honoured, so the rail asks again.
 function placeAgain() {
   if (WIN) return;
   for (const ms of [150, 600, 1500]) setTimeout(placeTaskbar, ms);
@@ -259,8 +157,7 @@ function createWindows() {
   taskbar?.destroy(); // a floating rail makes way for the desktop's own
   railFloats = false;
   makeTaskbar();
-  if ((layout === 'orbit' || floating) && (!summon || summon.isDestroyed())) makeSummon();
-  else if (railUp()) { placeSummon(); summon.showInactive(); } // the floating dot was already there
+  if (!summon || summon.isDestroyed()) makeSummon(); // ready (hidden) for the wheel
 }
 function makeTaskbar() {
   railHidden = false;
@@ -270,21 +167,17 @@ function makeTaskbar() {
   taskbar.once('ready-to-show', () => { placeTaskbar(); taskbar.showInactive(); placeAgain(); watchPointer(); });
   taskbar.on('closed', () => { taskbar = null; });
 }
-// The summon dot's window (the wheel opens in it). With the rail it shows at
-// once; floating, only while Scorpion's window is away.
+// The intent wheel's window: made when the wheel first opens, shown only while it's open.
 function makeSummon() {
   summon = new deps.BrowserWindow(windowOptions('Scorpion summon'));
   summon.setAlwaysOnTop(true, 'pop-up-menu');
   summon.loadURL('scorpion://app/summon.html');
   summon.loaded = new Promise((resolve) => summon.webContents.once('did-finish-load', resolve));
-  summon.once('ready-to-show', () => { placeSummon(); if (dotWanted()) summon.showInactive(); placeAgain(); });
   summon.on('blur', () => { if (wheelOpen && !held) summon.webContents.send('wheel:close'); });
   summon.on('closed', () => { summon = null; wheelOpen = false; });
 }
-// The rail is up (Scorpion as the desktop, orbit layout, or floating with the
-// dot): then so is the dot.
+// The rail is up (Scorpion as the desktop, orbit layout, or floating).
 const railUp = () => (Boolean(mode) && layout === 'orbit') || railFloats;
-const dotWanted = () => railUp() || floating;
 function destroyWindows() {
   taskbar?.destroy();
   taskbar = null;
@@ -296,10 +189,7 @@ function destroyWindows() {
 }
 
 // The intent wheel: open (centred on a point of the screen, or its middle) or
-// back to the dot.
-// On the normal Windows desktop the dot's window is made when first needed.
-// The page hears where the dot is, so the wheel can grow out of it and
-// shrink back into it.
+// closed. Its window is made when first needed.
 // Frosted glass: a small picture of the screen, taken before the wheel shows,
 // which the page blurs behind it (not in Light, nor if it's slow).
 async function snapBackdrop(r, wait) {
@@ -309,24 +199,22 @@ async function snapBackdrop(r, wait) {
 }
 export async function openWheel(at) {
   const r = deps.screen.getPrimaryDisplay().bounds;
-  // Scorpion OS: the host's summon surface grows to the whole screen (rail
+  // Scorpion OS: the host's summon surface covers the whole screen (rail
   // included) once the page asks, so the page hears the centre beside the
-  // rail and where the dot sits, both in screen terms.
+  // rail, in screen terms.
   if (hostMode) {
     const backdrop = await snapBackdrop(r, 400);
     const area = hostArea();
     const centre = at ? { x: at.x - r.x, y: at.y - r.y } : { x: area.x + area.width / 2, y: area.y + area.height / 2 };
-    const size = dotSize();
-    shellEvent('wheel:open', { ...centre, dot: { ...dotCentre(deps.dotAt?.(), { ...r, x: 0, y: 0 }, area, size), size }, backdrop });
+    shellEvent('wheel:open', { ...centre, backdrop });
     return true;
   }
   if (!summon || summon.isDestroyed()) {
-    if (!WIN) return false;
+    if (!WIN && !mode) return false;
     makeSummon();
   }
   await summon.loaded;
   if (!summon || summon.isDestroyed()) return false;
-  hideStage(true);
   const shot = WIN ? await snapBackdrop(r, 250) : null;
   wheelOpen = true;
   summon.setAlwaysOnTop(true, 'screen-saver');
@@ -334,11 +222,9 @@ export async function openWheel(at) {
   // In the open window's terms (it starts beside a rail on the left or top);
   // the screen's picture is shifted to match.
   const w = wheelArea(r);
-  const spot = dotSpot();
-  const dot = dotWanted() ? { x: spot.x - w.x, y: spot.y - w.y, size: dotSize() } : null;
   const centre = at ? { x: at.x - w.x, y: at.y - w.y } : { x: w.width / 2, y: w.height / 2 };
   const backdrop = shot && { ...shot, x: r.x - w.x, y: r.y - w.y };
-  summon.webContents.send('wheel:open', { ...centre, dot, backdrop });
+  summon.webContents.send('wheel:open', { ...centre, backdrop });
   summon.show();
   summon.focus();
   return true;
@@ -348,22 +234,17 @@ export function closeWheel() {
   if (!summon || summon.isDestroyed() || !wheelOpen) return false;
   wheelOpen = false;
   summon.setAlwaysOnTop(true, 'pop-up-menu');
-  placeSummon();
   summon.blur();
-  if (!dotWanted()) summon.hide();
+  summon.hide();
   return true;
 }
 // Scorpion's window went away (minimized, or to the tray) or came back: on
-// the normal Windows desktop the dot floats while it's away, with the rail
-// (open windows, clock, notifications) down the right edge.
-export function setFloatingDot(on) {
-  floating = WIN && Boolean(on);
-  if (hostMode || (mode && layout === 'orbit')) return; // as the desktop, they're always there
-  setFloatingRail(floating && !mode && Boolean(deps.railAway?.()));
-  if (floating) {
-    if (!summon || summon.isDestroyed()) makeSummon();
-    else if (!wheelOpen) { placeSummon(); summon.showInactive(); }
-  } else if (summon && !summon.isDestroyed() && !wheelOpen) summon.hide();
+// the normal Windows desktop the rail (open windows, clock, notifications)
+// floats down its edge while it's away.
+export function setAway(on) {
+  away = WIN && Boolean(on);
+  if (hostMode || mode) return; // as the desktop, the taskbar is always there
+  setFloatingRail(away && Boolean(deps.railAway?.()));
 }
 function setFloatingRail(on) {
   if (on === railFloats) return;
@@ -379,7 +260,7 @@ function setFloatingRail(on) {
   }
   watchPointer();
 }
-// Floating with the dot (the Windows taskbar still there), the rail keeps its
+// Floating (the Windows taskbar still there), the rail keeps its
 // room as an app bar: Windows' own way (windows-control.js setAppBar), so apps
 // maximize beside it, and if Scorpion ever stops Windows gives the room back by
 // itself. Where that can't be done, the work area is set as before (and put
@@ -415,133 +296,38 @@ async function giveBackFloatingRoom(hwnd = hwndOf(taskbar)) {
   }
   if (savedWorkArea) await restoreWorkArea();
 }
-// Settings changed (auto-hide, the rail with the dot, its edge): the rail,
-// the room it keeps and Stage's side follow.
+// Settings changed (auto-hide, the floating rail, its edge): the rail and
+// the room it keeps follow.
 export function refreshRail() {
-  if (floating && !mode && !hostMode) setFloatingRail(Boolean(deps.railAway?.()));
+  if (away && !mode && !hostMode) setFloatingRail(Boolean(deps.railAway?.()));
   if (!hostMode) placeTaskbar();
-  if (stageSide !== sideForStage()) { hideStage(true); stageSide = sideForStage(); }
   if (mode && !hostMode) win.setWorkArea(wantedArea()).catch(() => {});
   else if (railFloats && !hostMode) (deps.autoHide?.() ? giveBackFloatingRoom() : keepFloatingRoom()).catch(() => {});
   if (!deps.autoHide?.() && railHidden) showRail();
   watchPointer();
 }
 
-// ---------- Stage ----------
-// The pointer at the screen's left edge (the right, with the taskbar on the
-// left; stage.js follows the same setting), level with where the cards sit,
-// slides the strip in; moving well away from it slides it out. The pointer is only watched while Stage (or
-// the taskbar's auto-hide) is on. On Scorpion OS the shell host shows the
-// strip as a panel and watches the edge itself.
-export function setStage(on) {
-  stageOn = WIN && Boolean(on);
-  if (!stageOn) { hideStage(true); stage?.destroy(); stage = null; }
-  watchPointer();
-  return Boolean(on) && (WIN || hostMode);
-}
-function makeStage() {
-  stage = new deps.BrowserWindow({ ...windowOptions('Scorpion stage'), focusable: false });
-  stage.setAlwaysOnTop(true, 'pop-up-menu');
-  stage.loadURL('scorpion://app/stage.html');
-  stage.loaded = new Promise((resolve) => stage.webContents.once('did-finish-load', resolve));
-  stage.on('closed', () => { stage = null; stageShown = false; arriving = false; });
-}
-const stageBandHeight = (a) => Math.min(a.height, Math.max(STAGE_MIN_H, stageSpan));
-const stripBounds = () => {
-  const a = deps.screen.getPrimaryDisplay().workArea;
-  const h = stageBandHeight(a);
-  return { x: stageSide === 'right' ? a.x + a.width - STAGE_W : a.x, y: a.y + Math.round((a.height - h) / 2), width: STAGE_W, height: h };
-};
-// The page's cards are this tall now (CSS pixels, with their padding).
-export function stageSized(height) {
-  const h = Math.round(Number(height));
-  if (!Number.isFinite(h) || h <= 0) return;
-  stageSpan = h;
-  // Not mid-flight: the window covers the screen then, and is fitted after.
-  if (stageOn && stageShown && !arriving && stage && !stage.isDestroyed()) stage.setBounds(stripBounds());
-}
-async function showStage() {
-  if (!stage || stage.isDestroyed()) makeStage();
-  stageSide = sideForStage();
-  stageShown = true;
-  stage.setBounds(stripBounds());
-  await stage.loaded;
-  if (!stageShown || !stage || stage.isDestroyed()) return;
-  stage.webContents.send('stage:show');
-  stage.showInactive();
-}
-// Slides out (the page animates), then the window goes.
-export function hideStage(now = false) {
-  if (!stageShown) return;
-  stageShown = false;
-  if (!stage || stage.isDestroyed()) return;
-  stage.webContents.send('stage:hide');
-  setTimeout(() => { if (!stageShown && stage && !stage.isDestroyed()) stage.hide(); }, now ? 0 : 220);
-}
-// A window was just minimized: its card flies from the middle of the screen
-// into the strip (the strip's window covers the screen for the flight, and
-// lets clicks through), and the strip stays a moment before sliding away.
-const FLIGHT_MS = 650;
-export async function stageArrive(hwnd) {
-  if (hostMode) { shellEvent('stage:arrive', { hwnd }); return true; }
-  if (!stageOn || wheelOpen || arriving) return false;
-  if (!stage || stage.isDestroyed()) makeStage();
-  const a = deps.screen.getPrimaryDisplay().workArea;
-  arriving = true;
-  stageShown = true;
-  stage.setIgnoreMouseEvents(true);
-  stage.setBounds({ x: a.x, y: a.y, width: a.width, height: a.height });
-  await stage.loaded;
-  if (!stage || stage.isDestroyed()) { arriving = false; return false; }
-  stage.webContents.send('stage:arrive', { hwnd: String(hwnd) });
-  stage.showInactive();
-  setTimeout(() => {
-    arriving = false;
-    if (!stage || stage.isDestroyed()) return;
-    stage.setIgnoreMouseEvents(false);
-    if (stageShown) stage.setBounds(stripBounds());
-    stageStay = Date.now() + 1400;
-  }, FLIGHT_MS);
-  return true;
-}
-
-// ---------- the pointer: Stage's edge and the taskbar's auto-hide ----------
+// ---------- the pointer: the taskbar's auto-hide ----------
 const hidesNow = () => Boolean(deps.autoHide?.()) && taskbar && !taskbar.isDestroyed() && !hostMode;
 function watchPointer() {
-  const want = stageOn || hidesNow();
+  const want = hidesNow();
   if (!want) { clearInterval(pointerWatch); pointerWatch = 0; return; }
   if (pointerWatch) return;
   pointerWatch = setInterval(lookAtPointer, deps.perf?.() === 'light' ? 250 : 120);
 }
 function lookAtPointer() {
-  if (!stageOn && !hidesNow()) { watchPointer(); return; }
+  if (!hidesNow()) { watchPointer(); return; }
   if (wheelOpen) return;
   const p = deps.screen.getCursorScreenPoint();
-  const d = deps.screen.getPrimaryDisplay();
-  const a = d.workArea;
-  const r = d.bounds;
-  if (stageOn && !arriving) {
-    // Level with the band where the cards are (a little more once it's
-    // out, so the pointer drifting along the edge doesn't lose it).
-    const band = stripBounds();
-    const level = p.y >= band.y && p.y < band.y + band.height;
-    const near = p.y >= band.y - 40 && p.y < band.y + band.height + 40;
-    // How far in from Stage's edge the pointer is.
-    const inward = sideForStage() === 'right' ? a.x + a.width - 1 - p.x : p.x - a.x;
-    if (!stageShown && level && inward <= 1) showStage().catch(() => {});
-    else if (stageShown && Date.now() > stageStay && (inward > STAGE_W + 40 || !near)) hideStage();
-  }
-  if (hidesNow()) {
-    // How far in from the taskbar's outer edge the pointer is (beyond it,
-    // over the Windows taskbar for one floating along the bottom: below 0).
-    const e = railEdge();
-    const s = railRect(railBase(), e);
-    const depth = { left: p.x - s.x, right: s.x + s.width - 1 - p.x, top: p.y - s.y, bottom: s.y + s.height - 1 - p.y }[e];
-    const atEdge = depth >= 0 && depth <= 2;
-    const away = depth > railThickness(e) + 30 || depth < -2;
-    if (railHidden && atEdge) showRail();
-    else if (!railHidden && away && Date.now() > railHeld) hideRail();
-  }
+  // How far in from the taskbar's outer edge the pointer is (beyond it,
+  // over the Windows taskbar for one floating along the bottom: below 0).
+  const e = railEdge();
+  const s = railRect(railBase(), e);
+  const depth = { left: p.x - s.x, right: s.x + s.width - 1 - p.x, top: p.y - s.y, bottom: s.y + s.height - 1 - p.y }[e];
+  const atEdge = depth >= 0 && depth <= 2;
+  const gone = depth > railThickness(e) + 30 || depth < -2;
+  if (railHidden && atEdge) showRail();
+  else if (!railHidden && gone && Date.now() > railHeld) hideRail();
 }
 // Hidden, the taskbar's page slides away and its window lets clicks through
 // to the apps under it.
@@ -582,8 +368,6 @@ export function resizeRail({ phase, x, y, size } = {}) {
   return { key, size: px };
 }
 export function holdWheel(on) { held = Boolean(on); }
-// The dot back where the settings say (dropped somewhere, or its corner).
-export function placeDot() { if (!hostMode && !wheelOpen) placeSummon(); }
 // The native shell host came up (or went away): its panels, or Scorpion's own windows.
 export function useHost(on) {
   if (hostMode === Boolean(on)) return;
@@ -604,7 +388,7 @@ export async function relayout() {
 // The screen area apps maximize into stops above Scorpion's taskbar. PowerShell
 // sees the screen in the same scaled pixels as Electron (it isn't DPI-aware),
 // so the numbers go across unconverted.
-// The rail floating with the dot (the Windows taskbar still there) takes its
+// The rail floating (the Windows taskbar still there) takes its
 // room from the area as it was, not from the whole screen.
 const wantedArea = () => {
   const inset = taskbarInsets();
@@ -672,7 +456,7 @@ export async function stopShell() {
   clearInterval(keeper);
   keeper = 0;
   await restoreWorkArea();
-  setFloatingDot(floating); // the desktop's rail goes; a floating dot (and rail) stays
+  setAway(away); // the desktop's rail goes; a floating one stays
   // The Windows taskbar back in its place.
   if (was === 'bar') await showWindowsTaskbar();
   // Leaving the real shell: bring the Windows desktop back.

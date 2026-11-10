@@ -16,10 +16,26 @@ test('older settings are brought up to date, once', () => {
   assert.equal(s.taskbar.autoHide, true, 'what was set is kept');
   assert.equal(s.taskbar.show.clock, false);
   assert.equal(s.taskbar.show.mail, true, 'what was missing is filled in');
-  assert.deepEqual(s.wheel, { size: 'small', button: 'normal', recent: true, frosted: true });
+  assert.deepEqual(s.wheel, { size: 'small', recent: true, frosted: true });
   // Saved at the new version: the steps don't run again.
   const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'));
   assert.equal(onDisk.settingsVersion, store.SETTINGS_VERSION);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('hands and voice stop starting by themselves, once: switched back on, they stay on', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-settings-'));
+  store.initStore(dir);
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ settingsVersion: 3, handsAlwaysOn: true, wakeWord: true }));
+  let s = store.getSettings();
+  assert.deepEqual([s.handsAlwaysOn, s.talkAtStart, s.wakeWord], [false, false, false]);
+  // The person turns them back on in Settings: the step doesn't run again.
+  store.updateSettings({ handsAlwaysOn: true, talkAtStart: true });
+  s = store.getSettings();
+  assert.deepEqual([s.handsAlwaysOn, s.talkAtStart], [true, true]);
+  // A first start: both off.
+  fs.rmSync(path.join(dir, 'settings.json'));
+  assert.deepEqual([store.getSettings().handsAlwaysOn, store.getSettings().talkAtStart], [false, false]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

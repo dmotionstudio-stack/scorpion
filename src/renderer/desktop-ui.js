@@ -1,5 +1,7 @@
 // Apps and Files: what the Windows Start menu and File Explorer do, inside
 // Scorpion, for when Scorpion is the Windows desktop (they work any time).
+import { cleanGroups, groupOf, setGroup, freeGroupNames } from './taskbar-core.js';
+
 const svg = (paths) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`;
 const ICON = {
   folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
@@ -302,9 +304,9 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
   }
 
   // ---------- Settings → Windows and taskbar ----------
-  // How windows and the taskbar behave, your way: apps full screen, Stage,
-  // the summon dot and the rail while Scorpion is minimized, auto-hide, what
-  // the taskbar shows and which apps are pinned to it (in order).
+  // How windows and the taskbar behave, your way: apps full screen, the rail
+  // while Scorpion is minimized, auto-hide, what the taskbar shows and which
+  // apps are pinned to it (in order).
   const INTENT_NAMES = [['browse', 'Browse'], ['talk', 'Talk'], ['create', 'Create'], ['files', 'Files'], ['focus', 'Focus'], ['write', 'Write']];
   const TASKBAR_ITEMS = [['clock', 'Clock'], ['network', 'Network'], ['battery', 'Battery'], ['notifications', 'Notifications'], ['mail', 'Mail'], ['chat', 'Chat'], ['volume', 'Volume']];
   async function renderLayout() {
@@ -316,25 +318,27 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     const t = s.taskbar || {};
     const show = t.show || {};
     const pinned = t.pinned || [];
+    const groups = cleanGroups(t.groups, pinned);
+    // A pinned app's group: none, one there is, or a new one.
+    const groupPick = (p) => {
+      const mine = groupOf(groups, p.id);
+      const opt = (v, label, on) => `<option value="${esc(v)}"${on ? ' selected' : ''}>${esc(label)}</option>`;
+      return `<select class="pin-group" data-pin-group="${esc(p.id)}" aria-label="Group for ${esc(p.name)}">${opt('', 'No group', !mine)}${groups.map((g) => opt(g.name, g.name, mine?.id === g.id)).join('')}${freeGroupNames(groups).map((n) => opt(n, `New: ${n}`, false)).join('')}</select>`;
+    };
     const check = (attr, on, label) => `<label class="toggle"><input type="checkbox" ${attr}${on ? ' checked' : ''}><span>${label}</span></label>`;
     // Buttons for one of several (the one chosen is highlighted).
     const pick = (attr, now, options) => options.map(([v, label]) => `<button class="btn small${v === now ? ' primary' : ''}" type="button" ${attr}="${v}" aria-pressed="${v === now}">${label}</button>`).join('');
     const style = t.layout === 'bar' ? 'bar' : 'orbit';
     const edge = t.edge || (style === 'bar' ? 'bottom' : 'right');
-    const stageSide = edge === 'left' ? 'right' : 'left'; // shell.js and stage.js say the same
-    const corner = s.dotAt?.corner || (s.dotAt ? null : 'bl');
-    const wheel = { size: 'normal', button: 'normal', recent: true, frosted: true, ...(s.wheel || {}) };
+    const wheel = { size: 'normal', recent: true, frosted: true, ...(s.wheel || {}) };
     const intents = await api.shellIntents?.().catch(() => ({})) || {};
     box.innerHTML = `
       ${check('data-layout="appsFull"', s.appsFull !== false, 'Open apps full screen: an app\'s window fills the screen when it opens (its dialogs keep their size)')}
-      ${check('data-layout="stage"', s.stage !== false, `Stage: touch the ${stageSide} edge of the screen and all your open apps slide in as live pictures; pick one and the window in front steps aside`)}
-      ${check('data-layout="minimizeToStage"', s.minimizeToStage !== false, `Minimizing a window flies it into Stage on the ${stageSide}`)}
-      ${win ? check('data-layout="summonDot"', s.summonDot !== false, 'When Scorpion is minimized, keep its summon dot on the desktop (click it, or press Win+Shift+Space anywhere, for the intent wheel)') : ''}
-      ${win ? check('data-layout="railAway"', s.railAway !== false, 'And the rail with it: your open apps, clock and notifications along the taskbar\'s edge while Scorpion is minimized') : ''}
+      ${win ? check('data-layout="railAway"', s.railAway !== false, 'When Scorpion is minimized, keep its rail on the desktop: your open apps, clock and notifications along the taskbar\'s edge') : ''}
       ${check('data-taskbar="autoHide"', t.autoHide === true, 'Hide the taskbar until the pointer touches its edge')}
       <p class="small">The taskbar</p>
       <div class="row wrap" role="group" aria-label="The taskbar">${pick('data-style', style, [['orbit', 'Edge rail'], ['bar', 'Classic bar']])}</div>
-      <p class="muted small">${style === 'orbit' ? 'A glance rail with the clock, notifications and your apps, and the summon dot.' : 'A bar with Scorpion, Apps and Files, your apps and the tray.'}</p>
+      <p class="muted small">${style === 'orbit' ? 'A glance rail with the clock, notifications, your apps and the summon button.' : 'A bar with Scorpion, Apps and Files, your apps and the tray.'}</p>
       <p class="small">The taskbar's place on the screen</p>
       <div class="row wrap" role="group" aria-label="The taskbar's place on the screen">${pick('data-edge', edge, [['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']])}</div>
       <p class="small">Its look</p>
@@ -342,15 +346,12 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       <p class="small">Its size</p>
       <div class="row wrap" role="group" aria-label="The taskbar's size">${pick('data-size', ['small', 'normal', 'large'].includes(t.size) ? t.size : 'normal', [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']])}</div>
       <div class="row wrap">${check('data-taskbar="labels"', t.labels !== false, 'Show app names')}${check('data-taskbar="center"', t.center === true, 'Center the apps')}</div>
+      ${check('data-taskbar="combine"', t.combine !== false, 'Combine an app\'s open windows under one icon: click it for the list of its windows')}
       <p class="small">The summon wheel</p>
       <div class="row wrap" role="group" aria-label="The wheel's size"><span class="muted small">Wheel</span>${pick('data-wheel-size', wheel.size, [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']])}</div>
-      <div class="row wrap" role="group" aria-label="The summon button's size"><span class="muted small">Button</span>${pick('data-wheel-button', wheel.button, [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']])}</div>
       <div class="row wrap">${check('data-wheel="recent"', wheel.recent !== false, 'Show the windows you used last around it')}${check('data-wheel="frosted"', wheel.frosted !== false, 'Frosted glass behind it')}</div>
       <div class="row wrap" role="group" aria-label="What each intent opens">${INTENT_NAMES.map(([id, label]) => `<button class="btn small" type="button" data-intent-pick="${id}" title="Choose what ${label} opens">${label}: <span class="muted">${esc(intents[id] || 'Default')}</span></button>`).join('')}</div>
-      <p class="muted small">Click an intent to choose what it opens (on the wheel: right-click it).</p>
-      <p class="small">The summon dot</p>
-      <div class="row wrap" role="group" aria-label="The summon dot's corner">${pick('data-corner', corner, [['tl', 'Top left'], ['tr', 'Top right'], ['bl', 'Bottom left'], ['br', 'Bottom right']])}</div>
-      <p class="muted small">Or drag it anywhere on the screen: it stays where you drop it, and dropped near a corner it settles into that corner. It grows or shrinks to suit your screen.</p>
+      <p class="muted small">Click an intent to choose what it opens (on the wheel: right-click it). The wheel opens from the taskbar's summon button, or with Win+Shift+Space anywhere.</p>
       <p class="small">Desktop background</p>
       <div class="bg-grid" id="bg-grid"><span class="muted small">Loading…</span></div>
       <div class="row"><button class="btn small" type="button" id="bg-add">Add pictures…</button><span class="muted small">Click a picture to make it your desktop's background. Also from the taskbar: right-click it → Desktop background.</span></div>
@@ -358,17 +359,15 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       <div class="row wrap">${TASKBAR_ITEMS.map(([k, label]) => check(`data-show="${k}"`, show[k] !== false, label)).join('')}</div>
       <p class="small">Apps on the taskbar</p>
       <ol class="pin-list">${pinned.map((p, i) => `<li><span>${esc(p.name)}</span>
+        ${groupPick(p)}
         <button class="btn small" type="button" data-pin-move="${i}" data-by="-1"${i ? '' : ' disabled'} aria-label="Move ${esc(p.name)} up">↑</button>
         <button class="btn small" type="button" data-pin-move="${i}" data-by="1"${i < pinned.length - 1 ? '' : ' disabled'} aria-label="Move ${esc(p.name)} down">↓</button>
         <button class="btn small" type="button" data-pin-remove="${i}">Remove</button></li>`).join('') || '<li class="muted small">None yet.</li>'}</ol>
-      <div class="row"><button class="btn small" type="button" id="pin-add">Add apps…</button><span class="muted small">In Apps, right-click an app to add it; right-click an open window on the taskbar to pin it.</span></div>`;
+      <div class="row"><button class="btn small" type="button" id="pin-add">Add apps…</button><span class="muted small">In Apps, right-click an app to add it; right-click an open window on the taskbar to pin it. Apps in the same group share one icon on the taskbar: click it for a dropdown of its apps (also: right-click a pinned app → Group).</span></div>`;
     const save = async (patch) => { try { S.settings = await api.updateSettings(patch); } catch (err) { toast(errText(err), 'error'); } renderLayout(); };
     const saveTaskbar = (patch) => save({ taskbar: { ...(S.settings.taskbar || {}), ...patch } });
     for (const b of box.querySelectorAll('[data-layout]')) {
-      b.onchange = async () => {
-        if (b.dataset.layout === 'stage') { try { S.settings.stage = await api.shellStage(b.checked); } catch (err) { toast(errText(err), 'error'); } renderLayout(); return; }
-        save({ [b.dataset.layout]: b.checked });
-      };
+      b.onchange = () => save({ [b.dataset.layout]: b.checked });
     }
     for (const b of box.querySelectorAll('[data-taskbar]')) b.onchange = () => saveTaskbar({ [b.dataset.taskbar]: b.checked });
     for (const b of box.querySelectorAll('[data-show]')) b.onchange = () => saveTaskbar({ show: { ...(S.settings.taskbar?.show || {}), [b.dataset.show]: b.checked } });
@@ -381,6 +380,7 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
         saveTaskbar({ pinned: list });
       };
     }
+    for (const b of box.querySelectorAll('[data-pin-group]')) b.onchange = () => saveTaskbar({ groups: setGroup(groups, b.dataset.pinGroup, b.value || null) });
     for (const b of box.querySelectorAll('[data-pin-remove]')) b.onclick = () => saveTaskbar({ pinned: pinned.filter((_, i) => i !== Number(b.dataset.pinRemove)) });
     const add = $('#pin-add');
     if (add) add.onclick = () => showApps();
@@ -390,7 +390,6 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     // The summon wheel.
     const saveWheel = (patch) => save({ wheel: { ...wheel, ...patch } });
     for (const b of box.querySelectorAll('[data-wheel-size]')) b.onclick = () => saveWheel({ size: b.dataset.wheelSize });
-    for (const b of box.querySelectorAll('[data-wheel-button]')) b.onclick = () => saveWheel({ button: b.dataset.wheelButton });
     for (const b of box.querySelectorAll('[data-wheel]')) b.onchange = () => saveWheel({ [b.dataset.wheel]: b.checked });
     for (const b of box.querySelectorAll('[data-intent-pick]')) b.onclick = () => api.shellMenu({ kind: 'intent', id: b.dataset.intentPick });
     for (const b of box.querySelectorAll('[data-size]')) b.onclick = () => saveTaskbar({ size: b.dataset.size });
@@ -407,13 +406,6 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     api.desktopBackgrounds?.().then(showBackgrounds).catch(() => showBackgrounds([]));
     const addBg = $('#bg-add');
     if (addBg) addBg.onclick = async () => { try { showBackgrounds(await api.addBackgrounds()); } catch (err) { toast(errText(err), 'error'); } };
-    for (const b of box.querySelectorAll('[data-corner]')) {
-      b.onclick = async () => {
-        await api.shellDot?.({ phase: 'corner', corner: b.dataset.corner }).catch(() => {});
-        S.settings.dotAt = { corner: b.dataset.corner };
-        renderLayout();
-      };
-    }
   }
 
   // ---------- Settings → Windows desktop ----------

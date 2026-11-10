@@ -1,4 +1,4 @@
-# Scorpion's shell: the rail, the summon dot and wheel, notifications, the
+# Scorpion's shell: the rail, the intent wheel, notifications, the
 # on-screen display and the desktop's background as layer-shell panels; it's
 # also the notification server.
 [Unit]

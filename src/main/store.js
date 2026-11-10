@@ -46,9 +46,9 @@ const DEFAULT_SETTINGS = {
   voiceName: 'af_heart', // Kokoro voice id
   voiceSpeed: 1, // 0.5–2
   voiceLanguage: 'en', // the language you speak and Scorpion replies in (see voice.js LANGUAGES)
-  // The summon wheel (Settings → Windows and taskbar): its size and the
-  // button's, the recent windows around it, the frosted glass behind it.
-  wheel: { size: 'normal', button: 'normal', recent: true, frosted: true },
+  // The summon wheel (Settings → Windows and taskbar): its size, the recent
+  // windows around it, the frosted glass behind it.
+  wheel: { size: 'normal', recent: true, frosted: true },
   backgrounds: [], // pictures added for the desktop background (paths)
   background: null, // the one chosen, or null for the system's own
   fullWallpaper: 'system', // full mode's desktop background: 'system' (the desktop's picture), 'theme' (the theme's colours), 'none', or a picture's path
@@ -56,10 +56,12 @@ const DEFAULT_SETTINGS = {
   constellationShortcut: 'Super+Space', // summons the constellation launcher (falls back to Win+Alt+Space)
   // The constellation map: recommendations (relevance ordering and suggestions), motion, bigger items, high contrast.
   constellation: { recommend: true, motion: true, large: false, contrast: false },
-  // Scorpion's taskbar: pinned apps ({ id, name }: a Start menu app or a program path), app
+  // Scorpion's taskbar: pinned apps ({ id, name }: a Start menu app or a program path), the
+  // person's own groups of them ({ id, name, apps: [pinned ids] }: one icon that drops down
+  // its apps), an app's open windows combined under one icon, app
   // names or icons only, centered, size, look, hiding by itself until the pointer reaches
   // its edge, and which items show.
-  taskbar: { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', autoHide: false, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true } },
+  taskbar: { pinned: [], groups: [], combine: true, labels: true, center: false, size: 'normal', style: 'holo', autoHide: false, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true } },
   taskbarAlwaysOn: true, // Windows: the holographic taskbar in place of the Windows one whenever Scorpion runs
   orbDesktop: true, // as the Windows desktop, show the orb (false: the Home page)
   orbGreet: true, // at sign-in, the orb greets the person it recognizes (face recognition installed)
@@ -71,15 +73,12 @@ const DEFAULT_SETTINGS = {
   performanceOnBattery: false, // Light while running on battery
   welcomeDone: false, // the spoken first start was shown (welcome.js)
   access: { bigText: false, screenReader: false, keyboard: false }, // accessibility (main.js applyAccess)
-  summonDot: true, // Windows: the summon dot floats over the desktop while Scorpion's window is away
-  railAway: true, // Windows: and the rail (open windows, clock, notifications) with it
-  dotAt: null, // where the summon dot was dragged ({ x, y } as fractions of the screen; null: its corner)
-  stage: true, // Stage, the windows' strip from the left edge (Windows; Scorpion OS)
+  railAway: true, // Windows: Scorpion's rail (open windows, clock, notifications) floats on the desktop while its window is away
   appsFull: true, // an app's window fills the screen when it opens (Windows; Scorpion OS)
-  minimizeToStage: true, // a window minimized flies into Stage's strip
   updatesAnnounced: '', // Scorpion OS: the set of updates last announced (updates.js), so each is said once
   appUpdates: true, // Windows and macOS: look for new versions of Scorpion on GitHub by itself (app-updates.js)
-  handsAlwaysOn: true, // hand gestures on (camera; off while minimized); on Windows the hand is the mouse everywhere
+  handsAlwaysOn: false, // hand gestures turn on by themselves when Scorpion starts (camera); off: only when asked for (G in the orb, the Gestures button)
+  talkAtStart: false, // the orb starts listening (microphone) as soon as it opens; off: only when asked for (the Talk button, the wake word)
   wakeWord: false, // saying "Scorpion" starts listening while the orb is open
   settingsVersion: 0, // which of the steps below these settings have been through
 };
@@ -98,6 +97,15 @@ const MIGRATIONS = [
   (s) => {
     if (!s.taskbar || typeof s.taskbar !== 'object') return;
     s.taskbar = { ...DEFAULT_SETTINGS.taskbar, ...s.taskbar, show: { ...DEFAULT_SETTINGS.taskbar.show, ...(s.taskbar.show || {}) } };
+  },
+  // 4. Hand gestures and voice no longer start by themselves: the camera and
+  //    the microphone stay off at start until asked for (or switched back on
+  //    in Settings → General → Voice and hands).
+  //    Also: Stage and the summon dot are gone, with their settings.
+  (s) => {
+    s.handsAlwaysOn = false; s.talkAtStart = false; s.wakeWord = false;
+    for (const k of ['stage', 'minimizeToStage', 'summonDot', 'dotAt']) delete s[k];
+    if (s.wheel && typeof s.wheel === 'object') delete s.wheel.button;
   },
 ];
 export const SETTINGS_VERSION = MIGRATIONS.length;

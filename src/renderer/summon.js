@@ -1,6 +1,5 @@
-// The summon dot and the intent wheel. The dot sits in the bottom-left corner;
-// clicking it (or Win+Shift+Space, which opens the wheel where the pointer is)
-// opens the wheel: six intents around Scorpion's button (Write, Browse, Talk,
+// The intent wheel. The taskbar's summon button (or Win+Shift+Space, which
+// opens the wheel where the pointer is) opens it: six intents around Scorpion's button (Write, Browse, Talk,
 // Create, Files, Focus) and the windows you used last around the outside.
 // Flick from anywhere on the wheel toward an intent to act, or click one;
 // click a window to bring it back; right-click an intent to choose what it
@@ -146,26 +145,10 @@ function place() {
   el.style.left = `${x - EXTENT}px`;
   el.style.top = `${y - EXTENT}px`;
   el.style.setProperty('--scale', W.scale);
-  // Opened from the dot: the wheel grows out of it and shrinks back into it.
-  const dot = W.centre.dot;
-  document.body.classList.toggle('from-dot', Boolean(dot));
-  if (dot) {
-    const ox = dot.x - (x - EXTENT), oy = dot.y - (y - EXTENT);
-    el.style.transformOrigin = `${ox}px ${oy}px`;
-    // Scaled down on a small screen, it would also slide toward the dot: this
-    // keeps its centre where it was placed.
-    el.style.setProperty('--fix-x', `${(1 - W.scale) * (EXTENT - ox)}px`);
-    el.style.setProperty('--fix-y', `${(1 - W.scale) * (EXTENT - oy)}px`);
-    const d = $('#sm-dot');
-    if (dot.size) setDotScale(dot.size);
-    d.style.left = `${dot.x}px`;
-    d.style.top = `${dot.y - 32}px`; // its margin centres it sideways only
-    d.style.bottom = 'auto';
-  } else el.style.transformOrigin = '';
 }
 
 async function open(centre) {
-  W.centre = centre && Number.isFinite(centre.x) ? centre : { x: innerWidth / 2, y: innerHeight / 2, dot: centre?.dot };
+  W.centre = centre && Number.isFinite(centre.x) ? centre : { x: innerWidth / 2, y: innerHeight / 2 };
   // Frosted glass: the screen as it was, blurred behind the wheel (shell.js sends it).
   const shot = centre?.backdrop;
   const bd = $('#sm-backdrop');
@@ -205,9 +188,6 @@ function close() {
   closing = setTimeout(() => {
     if (W.open) return;
     document.body.classList.remove('open');
-    // Back to its corner in the small window (the dot was placed for the big one).
-    const d = $('#sm-dot');
-    d.style.left = d.style.top = d.style.bottom = '';
     api.host?.({ type: 'wheel', open: false });
     api.shellWheel({ open: false });
   }, 200);
@@ -271,7 +251,6 @@ wheel.addEventListener('pointerleave', () => { if (!W.press) setHover(null); });
 wheel.addEventListener('click', (e) => {
   const card = e.target.closest('[data-hwnd]');
   if (card) { bringBack(card); return; }
-  if (e.target.closest('#sm-stage')) { toggleStage(); return; }
   if (e.detail !== 0) return; // pointer clicks are handled above
   const b = e.target.closest('[data-intent]');
   if (b) act(b.dataset.intent);
@@ -284,64 +263,6 @@ wheel.addEventListener('contextmenu', (e) => {
   if (id) api.shellMenu({ kind: 'intent', id });
 });
 $('#sm-backdrop').addEventListener('pointerdown', close);
-// The dot: a click opens the wheel; dragged, it follows the pointer and stays
-// where it's dropped (main keeps the spot). On Windows the dot's window moves
-// under the pointer (screen terms); on Scorpion OS the page moves the host's
-// panel, which carries the pointer along, so each move counts from the press.
-const dotEl = $('#sm-dot');
-let dotDrag = null;
-let dragged = false;
-dotEl.addEventListener('pointerdown', (e) => {
-  if (W.open || e.button !== 0 || !api.shellDot) return;
-  dotDrag = { sx: e.screenX, sy: e.screenY, cx: e.clientX, cy: e.clientY, moved: false, at: null, frame: 0 };
-  try { dotEl.setPointerCapture(e.pointerId); } catch { /* gone */ }
-  api.shellDot({ phase: 'get' }).then((c) => { if (dotDrag) dotDrag.at = c; }).catch(() => {});
-});
-const keepOnScreen = (p, at) => {
-  const half = at.size / 2;
-  return { x: Math.min(Math.max(p.x, half), at.w - half), y: Math.min(Math.max(p.y, half), at.h - half) };
-};
-const hostDot = (p, at) => api.host?.({ type: 'dot', left: Math.round(p.x - at.size / 2), bottom: Math.round(at.h - p.y - at.size / 2), size: at.size });
-dotEl.addEventListener('pointermove', (e) => {
-  const d = dotDrag;
-  if (!d?.at) return;
-  const inHost = Boolean(window.scorpionHost);
-  const dx = inHost ? e.clientX - d.cx : e.screenX - d.sx;
-  const dy = inHost ? e.clientY - d.cy : e.screenY - d.sy;
-  if (!d.moved && Math.hypot(dx, dy) < 6) return;
-  d.moved = true;
-  dotEl.classList.add('dragging');
-  if (d.frame) return; // one move a frame (about 60 a second)
-  d.frame = setTimeout(() => {
-    d.frame = 0;
-    if (inHost) {
-      d.at = { ...d.at, ...keepOnScreen({ x: d.at.x + dx, y: d.at.y + dy }, d.at) };
-      hostDot(d.at, d.at);
-    } else {
-      d.to = { x: d.at.x + dx, y: d.at.y + dy };
-      api.shellDot({ phase: 'move', ...d.to }).catch(() => {});
-    }
-  }, 16);
-});
-const endDrag = async (e) => {
-  const d = dotDrag;
-  dotDrag = null;
-  if (!d?.moved) return;
-  dragged = true; // the click that follows isn't one
-  dotEl.classList.remove('dragging');
-  const inHost = Boolean(window.scorpionHost);
-  const to = inHost ? d.at : { x: d.at.x + (e.screenX - d.sx), y: d.at.y + (e.screenY - d.sy) };
-  const kept = await api.shellDot({ phase: 'end', x: to.x, y: to.y }).catch(() => null);
-  if (inHost && kept) hostDot(kept, d.at);
-};
-dotEl.addEventListener('pointerup', endDrag);
-dotEl.addEventListener('pointercancel', endDrag);
-dotEl.addEventListener('click', () => {
-  if (dragged) { dragged = false; return; }
-  if (W.open) close(); else api.shellWheel({ open: true });
-});
-dotEl.title = 'Summon the intent wheel (Win+Shift+Space opens it where your pointer is). Drag it to put it anywhere';
-
 document.addEventListener('keydown', (e) => {
   if (!W.open) return;
   if (e.key === 'Escape') { e.preventDefault(); close(); return; }
@@ -361,42 +282,19 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Stage (Windows): on or off from the wheel.
-function showStage(on) {
-  $('#sm-stage').setAttribute('aria-pressed', String(Boolean(on)));
-  $('#sm-stage-text').textContent = on ? 'Stage on' : 'Stage';
-}
-async function toggleStage() {
-  const on = $('#sm-stage').getAttribute('aria-pressed') !== 'true';
-  showStage(on);
-  try { showStage(await api.shellStage(on)); } catch { showStage(!on); }
-  $('#sm-hint').textContent = on ? 'Stage on: touch the left edge of the screen for your windows' : 'Stage off';
-}
-
 api.onWheelOpen?.((centre) => { clearTimeout(closing); open(centre); });
 api.onWheelClose?.(() => close());
-// Scorpion OS: the host's dot panel goes where the dot was dropped (or back to its corner).
-const placeHostDot = () => { if (window.scorpionHost && !W.open) api.shellDot?.({ phase: 'get' }).then((c) => hostDot(c, c)).catch(() => {}); };
-let lastDotAt;
 api.onSettingsChanged?.((s) => {
   if (s?.theme) document.documentElement.dataset.theme = s.theme;
-  if (s && 'stage' in s) showStage(s.stage);
   if (s?.wheel) wheelLook = { ...wheelLook, ...s.wheel };
   document.body.classList.toggle('no-recent', wheelLook.recent === false);
-  if (s && JSON.stringify(s.dotAt ?? null) !== lastDotAt) { lastDotAt = JSON.stringify(s.dotAt ?? null); placeHostDot(); }
 });
-placeHostDot();
 api.onPerfChanged?.((level) => { document.documentElement.dataset.perf = level; });
 api.state().then((st) => {
-  if (st?.platform === 'win32' && api.shellStage) { $('#sm-stage').hidden = false; showStage(st.settings?.stage); }
   if (st?.settings?.theme) document.documentElement.dataset.theme = st.settings.theme;
   if (st?.settings?.wheel) wheelLook = { ...wheelLook, ...st.settings.wheel };
   document.body.classList.toggle('no-recent', wheelLook.recent === false);
   document.documentElement.dataset.perf = st?.perf || 'full';
 }).catch(() => {});
-// The dot's look follows its window's size (bigger on a big screen: shell.js).
-const DOT_WINDOW = 88; // the window the dot's look is drawn for
-function setDotScale(size) { document.documentElement.style.setProperty('--dot-scale', String(size / DOT_WINDOW)); }
-addEventListener('resize', () => { if (W.open) place(); else setDotScale(innerWidth); });
-if (!W.open && innerWidth < 200) setDotScale(innerWidth);
+addEventListener('resize', () => { if (W.open) place(); });
 drawArt();

@@ -1,6 +1,6 @@
 // What happened to the open windows between two looks at them: which apps
 // opened a window (it then fills the screen, when Settings says so) and which
-// windows were just minimized (they fly into Stage). Plain functions, so the
+// windows were just minimized. Plain functions, so the
 // rules are tested on their own (test/window-watch.test.js).
 
 // A window's lasting identity: Windows' handle, or on Linux the compositor's

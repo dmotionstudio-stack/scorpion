@@ -161,3 +161,15 @@ body.taskbar:not(.at-left):not(.at-top):not(.at-right) .rail-grip { left: 0; rig
 body.taskbar.at-left .rail-grip { right: 0; left: auto; top: 0; bottom: 0; width: 5px; cursor: ew-resize; }
 body.taskbar.at-top .rail-grip { left: 0; right: 0; bottom: 0; top: auto; height: 5px; width: auto; cursor: ns-resize; }
 body.taskbar.at-bottom .rail-grip { left: 0; right: 0; top: 0; bottom: auto; height: 5px; width: auto; cursor: ns-resize; }
+
+/* Groups and combined windows (taskbar-core.js): a group shows up to four of
+   its apps' icons, small, in a square; an icon standing for several windows
+   carries their count. Both drop down a menu. */
+.tb-win { --ic: 18px; }
+body.tb-size-small .tb-win { --ic: 16px; }
+body.tb-size-large .tb-win { --ic: 28px; }
+.tb-stack { flex: none; width: var(--ic); height: var(--ic); display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 2px; }
+.tb-win .tb-stack img, .tb-win .tb-stack .tb-initial { width: 100% !important; height: 100% !important; min-width: 0; min-height: 0; object-fit: contain; font-size: 7px; border-radius: 2px; transform: none !important; }
+.tb-group .tb-title::after { content: " \25BE"; opacity: .7; }
+.tb-count { flex: none; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; box-sizing: border-box; font-size: 10px; line-height: 15px; text-align: center; font-weight: 600; background: color-mix(in srgb, var(--accent) 30%, transparent); color: #fff; }
+body.tb-icons-only .tb-win .tb-count { position: absolute; right: 1px; top: 1px; min-width: 13px; height: 13px; padding: 0 3px; line-height: 13px; font-size: 9px; }

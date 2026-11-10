@@ -45,7 +45,7 @@ const data = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-smoke-'));
 // Settings as an older Scorpion left them: the removed stones taskbar, no version.
 fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({
   welcomeDone: true, fullModeAtStart: false, taskbarAlwaysOn: false, summonDot: false, railAway: false,
-  handsAlwaysOn: false, stage: false, appsFull: false, taskbar: { layout: 'gravity' },
+  handsAlwaysOn: false, appsFull: false, taskbar: { layout: 'gravity' },
 }));
 const PORT = 9333;
 const proc = spawn(app, [`--remote-debugging-port=${PORT}`], { env: { ...process.env, SCORPION_DATA_DIR: data }, stdio: ['ignore', 'pipe', 'pipe'] });

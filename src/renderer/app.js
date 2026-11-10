@@ -16,6 +16,7 @@ import { initOrbBubbles } from './orb-bubbles-ui.js';
 import { initPalette } from './palette.js';
 import { initSystemSettings } from './settings-system.js';
 import { initAppUpdates } from './settings-app-updates.js';
+import { initClockSettings } from './settings-clock.js';
 import { initModelScan } from './model-scan-ui.js';
 import { commandOf, parseAgentCommand, suggestAgents } from './agent-commands.js';
 import { SETTINGS_GROUPS, GENERAL_SECTIONS, groupOf } from './settings-nav.js';
@@ -152,6 +153,7 @@ let orbBubblesUi = null; // Settings → General: the orb's bubbles (orb-bubbles
 let palette = null; // the command palette, Ctrl+K (palette.js)
 let systemSettings = null; // Settings → This computer on Scorpion OS (settings-system.js)
 let appUpdatesUi = null; // Settings → Updates on Windows and macOS (settings-app-updates.js)
+let clockUi = null; // Settings → Date and time (settings-clock.js)
 let modelScanUi = null; // Models → Scan this computer (model-scan-ui.js)
 
 // ---------- top bar ----------
@@ -1010,9 +1012,10 @@ async function openInteract(opts = {}) {
   orbSys?.onOpen({ desktop, signin: opts?.signin === true });
   // A fresh install (no chats yet): the spoken first start, once.
   if (!S.settings.welcomeDone && !S.threads?.length) welcome?.start();
-  // Hand tracking is always on in the orb (unless turned off with G).
-  if (S.settings.handsAlwaysOn !== false) startGestures();
-  if (S.voice?.installed && !desktop) startTalk();
+  // Hands and listening only when asked for (G, the Gestures and Talk
+  // buttons), or from the start when Settings says so.
+  if (G.wanted) startGestures();
+  if (S.settings.talkAtStart === true && S.voice?.installed && !desktop) startTalk();
   else $('#ix-input').focus();
 }
 
@@ -1114,7 +1117,8 @@ function renderInteract() {
 // General turns them off, remembered. Nothing of the hand is drawn on screen,
 // only a small status line. It pauses while Scorpion is minimized. The hand
 // model is a one-time ~8 MB download.
-const G = { on: false, phase: '', tracker: null, error: '', download: null, hands: 0, mode: 'idle' };
+// wanted: on for this session (asked for with G or a button, or from the start by Settings).
+const G = { on: false, wanted: false, phase: '', tracker: null, error: '', download: null, hands: 0, mode: 'idle' };
 const GESTURE_MODE = { spin: 'Pinch', zoom: 'Zoom' };
 const GESTURE_POSE = { point: 'Pointing', two: 'Scroll', open: 'Open hand', fist: 'Fist', thumbUp: 'Thumb up', thumbDown: 'Thumb down', other: 'Hand' };
 const GESTURE_MODEL_URL = '/gestures/hand_landmarker.task';
@@ -1181,12 +1185,12 @@ function stopGestures(error = '') {
   if (error) G.errorTimer = setTimeout(() => { if (!G.on && G.error === error) { G.error = ''; renderGestures(); } }, 8000);
 }
 
-// The G key, the orb's Gestures button, Off and the Settings switch: on or off,
-// remembered.
-async function toggleHands(on = !G.on) {
-  S.settings = await api.updateSettings({ handsAlwaysOn: on });
+// The G key, the orb's Gestures button and Off: on or off until Scorpion is
+// closed. The Settings switch (keep) also decides how they start next time.
+async function toggleHands(on = !G.on, { keep = false } = {}) {
+  G.wanted = on;
+  if (keep) { S.settings = await api.updateSettings({ handsAlwaysOn: on }); $('#hands-always').checked = on; }
   if (on) startGestures(); else stopGestures();
-  $('#hands-always').checked = on;
 }
 
 // Off screen (minimized, in the tray): the camera rests until Scorpion is back.
@@ -1306,7 +1310,8 @@ function wireInteract() {
   $('#ix-reset').onclick = () => IX.orb?.resetView();
   $('#ix-gestures').onclick = () => toggleHands();
   $('#hand-off').onclick = () => toggleHands(false);
-  $('#hands-always').onchange = (e) => toggleHands(e.target.checked);
+  $('#hands-always').onchange = (e) => toggleHands(e.target.checked, { keep: true });
+  $('#talk-at-start').onchange = async (e) => { S.settings = await api.updateSettings({ talkAtStart: e.target.checked }); };
   api.onGesturesDownload((p) => {
     if (G.phase !== 'download') return;
     G.download = p.done ? null : p;
@@ -1718,7 +1723,8 @@ function renderSettings() {
   $('#full-at-start').checked = S.settings.fullModeAtStart !== false;
   const wall = S.settings.fullWallpaper ?? 'system';
   $('#full-wall-pick').value = ['system', 'theme', 'none'].includes(wall) ? wall : 'custom';
-  $('#hands-always').checked = S.settings.handsAlwaysOn !== false;
+  $('#hands-always').checked = S.settings.handsAlwaysOn === true;
+  $('#talk-at-start').checked = S.settings.talkAtStart === true;
   $('#file-access-hint').textContent = full
     ? 'Scorpion can read, create, edit and move files anywhere on this computer. Changes and commands still ask first unless Auto-approve is on. System folders (Windows, Program Files) stay read-only.'
     : 'Scorpion works in the workspace folder and asks before touching files anywhere else.';
@@ -1993,6 +1999,7 @@ function wire() {
   lookSettings = initLookSettings({ $, api, S, setSetting, toast, IX, startWelcome: () => welcome.start({ force: true }) });
   systemSettings = initSystemSettings({ $, esc, api, toast, errText });
   appUpdatesUi = initAppUpdates({ $, api, S, toast, errText });
+  clockUi = initClockSettings({ $, api, toast, errText });
   modelScanUi = initModelScan({ api, $, esc, toast, errText, refresh });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
   const onNav = ({ view, dir, select, signin, search, talk, query, section }) => {
@@ -2002,6 +2009,8 @@ function wire() {
     // The taskbar's Customize…: Settings → Windows and taskbar.
     if (view === 'settings' && section === 'layout') { const go = () => { showGeneralSection('desktop'); setView('settings'); requestAnimationFrame(() => $('#layout-field')?.scrollIntoView({ block: 'start' })); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
     if (view === 'settings' && section === 'system') { const go = () => { showGeneralSection('system'); setView('settings'); systemSettings?.show(); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
+    // The taskbar clock's "Set the date and time…": Settings → General → System → Date and time.
+    if (view === 'settings' && section === 'clock') { const go = () => { showGeneralSection('system'); setView('settings'); clockUi?.show(); requestAnimationFrame(() => $('#clock-field')?.scrollIntoView({ block: 'start' })); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
     // The intent wheel's Talk: the orb, listening.
     if (view === 'orb' && talk) {
       const ready = () => { if (!S.voice?.installed) $('#ix-input').focus(); else if (!V.talk) startTalk(); };
@@ -2371,8 +2380,10 @@ await refresh();
 if (S.threads[0]) await openThread(S.threads[0].id);
 setView('home');
 if (S.settings.chatModel && !S.engine?.chatModel) api.loadModel().catch(() => {});
-// Gestures on (Windows): the hand is the mouse whenever Scorpion is open.
-if (handIsMouse() && S.settings.handsAlwaysOn !== false) startGestures();
+// Hand gestures start only if Settings says so (Windows: the hand is then
+// the mouse whenever Scorpion is open); otherwise the camera stays off.
+G.wanted = S.settings.handsAlwaysOn === true;
+if (handIsMouse() && G.wanted) startGestures();
 // Room for Scorpion's taskbar while Scorpion is full screen: at the bottom
 // for the bar, on the right for the edge rail.
 const setInset = (inset) => {

@@ -26,7 +26,7 @@ done
 # crashes. Only if they can't be started, the same by hand.
 systemctl --user start scorpion-session.target && exit 0
 
-# Scorpion's shell (the rail, the summon dot and wheel, notifications, the
+# Scorpion's shell (the rail, the intent wheel, notifications, the
 # on-screen display), started again if it crashes (up to three times). Where it
 # can't run at all (exit 1: no layer-shell), mako shows notifications and
 # Scorpion its own rail.

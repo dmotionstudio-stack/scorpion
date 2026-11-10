@@ -55,16 +55,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellIntent: invoke('shell:intent'),
   shellIntents: invoke('shell:intents'),
   shellWheel: invoke('shell:wheel'),
-  // Stage: on or off, a window picked from its strip, the strip sliding in and
-  // out, and a window just minimized flying into it.
-  shellStage: invoke('shell:stage'),
-  shellStagePick: invoke('shell:stagePick'),
-  shellStageSize: invoke('shell:stageSize'),
-  onStageShow: on('stage:show'),
-  onStageHide: on('stage:hide'),
-  onStageArrive: on('stage:arrive'),
-  // The summon dot dragged somewhere else, and the rail hiding and coming back.
-  shellDot: invoke('shell:dot'),
+  // The rail hiding and coming back.
   onRail: on('shell:rail'),
   // The taskbar's inner edge dragged to make it thicker or thinner.
   shellRailSize: invoke('shell:railSize'),
@@ -82,6 +73,8 @@ contextBridge.exposeInMainWorld('scorpion', {
   sysSnapshots: invoke('sys:snapshots'),
   sysApps: invoke('sys:apps'),
   sysAccess: invoke('sys:access'),
+  // The computer's clock: how it's set; follow the internet's time, sync now, or set by hand.
+  sysClock: invoke('sys:clock'),
   onSysUpdates: on('sys:updates'),
   shellGlance: invoke('shell:glance'),
   sysWifi: invoke('sys:wifi'),

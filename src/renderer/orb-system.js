@@ -189,9 +189,9 @@ export function initOrbSystem(ctx) {
     if (O.desktop) { leaveOrb(() => setView(S.lastMainView && S.lastMainView !== 'chat' ? S.lastMainView : 'home')); return; }
     O.minimizedAs = {};
     closeInteract();
-    // Windows: Scorpion's window steps aside and the summon dot floats on the
-    // desktop (its wheel's centre brings the orb back).
-    if (IS_WINDOWS && S.settings.summonDot !== false) { api.windowMinimize().catch(() => showMini()); return; }
+    // Windows: Scorpion's window steps aside (the taskbar, or the wheel's
+    // centre with Win+Shift+Space, brings the orb back).
+    if (IS_WINDOWS) { api.windowMinimize().catch(() => showMini()); return; }
     showMini();
   }
 

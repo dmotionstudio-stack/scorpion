@@ -1,4 +1,4 @@
-/* The summon dot and the intent wheel (summon.html): rounded steel-blue
+/* The intent wheel (summon.html): rounded steel-blue
    glass segments around Scorpion's dark, blue-rimmed button, the chosen one
    glowing coral, recent windows as rounded tiles with live pictures on a
    dark outer ring, and a soft pulsing dot in the corner. The window itself
@@ -14,24 +14,6 @@ body.summon {
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
-/* ---- The dot: bottom left, in the small window or (open) the big one ---- */
-.sm-dot { position: absolute; left: 50%; bottom: 50%; width: 64px; height: 64px; margin: 0 0 -32px -32px; border-radius: 50%; display: grid; place-items: center; z-index: 5; scale: var(--dot-scale, 1); }
-body.open .sm-dot { left: 52px; bottom: 52px; }
-.sm-dot-core { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px; border-radius: 50%;
-  background: radial-gradient(circle, #fff 0 25%, var(--accent) 60%);
-  box-shadow: 0 0 10px var(--accent), 0 0 22px color-mix(in srgb, var(--accent) 60%, transparent); transition: transform .2s; }
-.sm-ring { position: absolute; left: 50%; top: 50%; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); pointer-events: none; }
-.sm-ring.r1 { width: 26px; height: 26px; margin: -13px; }
-.sm-ring.r2 { width: 42px; height: 42px; margin: -21px; opacity: .55; }
-.sm-ring.r3 { width: 60px; height: 60px; margin: -30px; opacity: .3; animation: sm-pulse 3.2s ease-out infinite; }
-@keyframes sm-pulse { from { transform: scale(.6); opacity: .6; } to { transform: scale(1.15); opacity: 0; } }
-.sm-dot:hover .sm-dot-core { transform: scale(1.35); }
-/* Dragged somewhere else (summon.js): it lifts while it moves. */
-.sm-dot { touch-action: none; }
-.sm-dot.dragging { cursor: grabbing; }
-.sm-dot.dragging .sm-dot-core { transform: scale(1.6); }
-.sm-dot:hover .sm-ring.r1 { border-color: var(--accent); }
-
 /* ---- The wheel ---- */
 .sm-backdrop { position: absolute; inset: 0; display: none; background: radial-gradient(ellipse at center, rgba(4, 7, 12, .28), rgba(4, 7, 12, .55)); opacity: 0; transition: opacity .16s; }
 .sm-wheel { position: absolute; width: 850px; height: 850px; display: none; transform: scale(calc(var(--scale, 1) * .92)); opacity: 0; transition: transform .18s cubic-bezier(.2, .9, .3, 1.2), opacity .14s; }
@@ -42,10 +24,6 @@ body.shown .sm-backdrop { opacity: 1; }
 .sm-backdrop.frosted::before { content: ""; position: absolute; inset: -40px; background: var(--shot) calc(40px + var(--shot-x, 0px)) calc(40px + var(--shot-y, 0px)) / var(--shot-size) no-repeat; filter: blur(20px) saturate(1.25) brightness(.7); }
 .sm-backdrop.frosted::after { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(4, 7, 12, .12), rgba(4, 7, 12, .45)); }
 body.shown .sm-wheel { transform: scale(var(--scale, 1)); opacity: 1; }
-/* Opened from the dot: the wheel grows out of it (transform-origin set by summon.js) and shrinks back. */
-body.from-dot .sm-wheel { transition: transform .3s cubic-bezier(.2, .9, .25, 1.06), opacity .18s; }
-body.from-dot:not(.shown) .sm-wheel { transform: translate(0, 0) scale(calc(var(--scale, 1) * .05)); }
-body.from-dot.shown .sm-wheel { transform: translate(var(--fix-x, 0), var(--fix-y, 0)) scale(var(--scale, 1)); }
 .sm-art { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .sm-layer { position: absolute; inset: 0; pointer-events: none; }
 .sm-layer > * { pointer-events: auto; }
@@ -117,28 +95,16 @@ body.shown .sm-tile, body.shown .sm-arcs path { animation: sm-tile-in .46s cubic
 .sm-card-icon { flex: none; width: 16px; height: 16px; object-fit: contain; }
 .sm-card-sub { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Stage on or off (Windows), under the hint. */
-.sm-stage { position: absolute; left: 50%; top: calc(50% + 342px); transform: translateX(-50%); display: flex; align-items: center; gap: 9px; padding: 6px 15px 6px 11px; border-radius: 999px; font-size: 12.5px;
   background: rgba(12, 16, 24, .72); border: 1px solid var(--shell-line); transition: border-color .15s, box-shadow .15s; }
-.sm-stage[hidden] { display: none; }
-.sm-stage:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
-.sm-stage[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent); }
-.sm-stage-icon { position: relative; width: 18px; height: 16px; }
-.sm-stage-icon i { position: absolute; left: 0; width: 7px; height: 4px; border-radius: 1.5px; background: var(--dim); }
-.sm-stage-icon i:nth-child(1) { top: 0; } .sm-stage-icon i:nth-child(2) { top: 6px; } .sm-stage-icon i:nth-child(3) { top: 12px; }
-.sm-stage-icon::after { content: ""; position: absolute; right: 0; top: 1px; width: 9px; height: 14px; border-radius: 2px; border: 1.5px solid var(--ink); box-sizing: border-box; }
-.sm-stage[aria-pressed="true"] .sm-stage-icon i { background: var(--accent); }
 
 .sm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
-/* Performance → Light: the dot rests, and the wheel opens without its entrance. */
-html[data-perf="light"] .sm-ring.r3 { animation: none; }
+/* Performance → Light: the wheel opens without its entrance. */
 html[data-perf="light"] .sm-card, html[data-perf="light"] body.shown .sm-tile, html[data-perf="light"] body.shown .sm-arcs path, html[data-perf="light"] body.shown .sm-seg, html[data-perf="light"] body.shown .sm-intent { animation: none; }
 html[data-perf="light"] .sm-seg.hot, html[data-perf="light"] .sm-arcs path, html[data-perf="light"] .sm-arrow, html[data-perf="light"] .sm-core-ring { filter: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .sm-wheel, .sm-backdrop, .sm-card, .sm-seg, .sm-intent, .sm-tile, body.shown .sm-seg, body.shown .sm-intent, body.shown .sm-tile, body.shown .sm-arcs path, body.from-dot .sm-wheel { transition: none; animation: none; }
-  .sm-ring.r3 { animation: none; }
+  .sm-wheel, .sm-backdrop, .sm-card, .sm-seg, .sm-intent, .sm-tile, body.shown .sm-seg, body.shown .sm-intent, body.shown .sm-tile, body.shown .sm-arcs path { transition: none; animation: none; }
 }
 
 /* Recent windows turned off (Settings → Windows and taskbar): no outer ring. */

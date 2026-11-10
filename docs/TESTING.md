@@ -15,7 +15,7 @@ target.
 
 ## What to check by hand, by area
 
-- **Windows desktop features** (the taskbars, the dot and wheel, Stage, the
+- **Windows desktop features** (the taskbars, the wheel, the
   desktop background, the hand mouse): a test copy with its own data folder
   (`SCORPION_DATA_DIR`), driven through Chrome's debugging protocol. Test
   copies set `taskbarAlwaysOn: false` (never hide the Windows taskbar) and use

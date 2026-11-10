@@ -338,8 +338,8 @@
           </div>
           <div class="field" data-sec="voice">
             <label>Hand gestures</label>
-            <label class="toggle"><input type="checkbox" id="hands-always"><span>Hand gestures on (camera). On Windows your hand is the mouse, everywhere: your index finger moves the real pointer over the whole screen; pinch clicks, thumb + middle right-clicks, fist then open double-clicks, a held pinch drags, two fingers scroll. A held fist pauses it</span></label>
-            <p class="muted small">While gestures are on, the camera runs whenever Scorpion is open (even behind other windows) and rests while Scorpion is minimized; on a Mac, only while the orb is open. Your hand isn't shown on screen, only a small status line. The video stays on this computer and is never recorded. With no hand in view it checks less often, to save power.</p>
+            <label class="toggle"><input type="checkbox" id="hands-always"><span>Turn hand gestures on when Scorpion starts (camera). On Windows your hand is the mouse, everywhere: your index finger moves the real pointer over the whole screen; pinch clicks, thumb + middle right-clicks, fist then open double-clicks, a held pinch drags, two fingers scroll. A held fist pauses it</span></label>
+            <p class="muted small">Off, the camera stays off at start: turn gestures on when you want them with G in the orb or its Gestures button, until you close Scorpion. While gestures are on, the camera runs whenever Scorpion is open (even behind other windows) and rests while Scorpion is minimized; on a Mac, only while the orb is open. Your hand isn't shown on screen, only a small status line. The video stays on this computer and is never recorded. With no hand in view it checks less often, to save power.</p>
           </div>
           <div class="field" data-sec="system">
             <label for="perf-level">Performance</label>
@@ -420,6 +420,7 @@
             <div id="voice-setup"></div>
             <div id="voice-options" class="hidden">
               <label class="toggle"><input type="checkbox" id="voice-speak"><span>Read replies aloud</span></label>
+              <label class="toggle"><input type="checkbox" id="talk-at-start"><span>Start listening as soon as the orb opens (microphone). Off, it listens only when you press Talk or use the wake word</span></label>
               <div class="row" id="voice-name-row"><span>Voice</span><select id="voice-name"></select></div>
               <div class="row"><span>Speed</span><input type="range" id="voice-speed" min="0.7" max="1.5" step="0.05"><span id="voice-speed-val"></span></div>
               <div class="row"><span>Language</span><select id="voice-language"></select><button class="btn small" id="voice-test" type="button">Test</button></div>
@@ -433,6 +434,14 @@
               <div class="row"><button class="btn small" id="voice-uninstall" type="button">Uninstall voice</button></div>
             </div>
             <p class="muted small">Talk with the microphone button (one message) or the conversation button (hands-free). Listening and speaking run on this computer: a one-time download of about 230 MB, then no internet. Scorpion's voices speak English; it understands the language you choose.</p>
+          </div>
+          <div class="field" data-sec="system" id="clock-field">
+            <label>Date and time</label>
+            <div class="row"><b class="clock-now" id="clock-now"></b><span class="muted small" id="clock-zone"></span></div>
+            <label class="toggle"><input type="checkbox" id="clock-auto"><span>Set the time automatically from the internet</span></label>
+            <div class="row"><button class="btn small" type="button" id="clock-sync">Sync now</button><span class="muted small" id="clock-state"></span></div>
+            <div class="row wrap"><span>Set it by hand</span><input type="date" id="clock-date" aria-label="Date"><input type="time" id="clock-time" aria-label="Time"><button class="btn small" type="button" id="clock-set">Set</button></div>
+            <p class="muted small" id="clock-note">Setting it by hand turns automatic time off, so the clock keeps what you set. Syncing needs the internet.</p>
           </div>
           <div class="field" data-sec="system">
             <label for="gpu-layers">GPU offload</label>

@@ -82,7 +82,7 @@ Scorpion OS writes no drivers of its own: what Ubuntu supports, it supports.
    the idle lock, then `run-scorpion`, which starts Scorpion with `--shell`
    (and starts it again if it crashes).
 5. Scorpion is the desktop (kept under other windows), the edge rail on the
-   right (labwc keeps its 76 pixels free) and the summon dot. Keys: Super+Space
+   right (labwc keeps its 76 pixels free). Keys: Super+Space
    opens the intent wheel, Super+Alt+Space the orb, Ctrl+Esc leaves full
    screen (labwc passes them to Scorpion as `scorpion --wheel`, `--orb`,
    `--exit-full`).

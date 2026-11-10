@@ -1,4 +1,7 @@
-import { app, BrowserWindow, screen, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage, session, systemPreferences, powerMonitor, safeStorage, desktopCapturer, globalShortcut } from 'electron';
+import { app, BrowserWindow, screen, ipcMain, dialog, protocol, net, shell, Notification, Tray, Menu, nativeImage, session, systemPreferences, powerMonitor, safeStorage, desktopCapturer, globalShortcut, clipboard } from 'electron';
+import { textMenuTemplate } from './text-menu.js';
+import { cleanGroups, groupOf, setGroup, freeGroupNames } from '../renderer/taskbar-core.js';
+import { createClock } from './clock.js';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -267,6 +270,18 @@ function createWindow() {
     if (!url.startsWith('scorpion://')) e.preventDefault();
   });
   win.webContents.on('did-start-loading', () => { navReady = false; appFrame.setPanel(null).catch(() => {}); });
+  // Right-click on text (the chat box, a message, a field): copy, paste, spelling.
+  // Places with their own menu (taskbar, desktop, apps) stop the event first.
+  win.webContents.on('context-menu', (_e, params) => {
+    const wc = win.webContents;
+    const template = textMenuTemplate(params, {
+      openLink: (url) => { if (/^(https?|mailto):/i.test(url)) shell.openExternal(url); },
+      copyText: (t) => clipboard.writeText(t),
+      replaceWord: (w) => wc.replaceMisspelling(w),
+      addWord: (w) => wc.session.addWordToSpellCheckerDictionary(w),
+    });
+    if (template.length) Menu.buildFromTemplate(template).popup({ window: win });
+  });
   let lastEsc = 0;
   win.webContents.on('before-input-event', (e, input) => {
     if (input.type !== 'keyDown') return;
@@ -288,8 +303,8 @@ function createWindow() {
   // Another app in use: Scorpion stops pinning itself on top, so that app can
   // come in front (keeping it on top regardless made the two fight: flicker).
   win.on('blur', () => { if (fullMode) win.setAlwaysOnTop(false); });
-  // Minimized or in the tray: the summon dot floats on the Windows desktop.
-  const away = (on) => desktop.setFloatingDot(on && !leaving && store.getSettings().summonDot !== false);
+  // Minimized or in the tray: Scorpion's rail floats on the Windows desktop.
+  const away = (on) => desktop.setAway(on && !leaving);
   win.on('minimize', () => away(true));
   win.on('hide', () => away(true));
   win.on('restore', () => away(false));
@@ -1363,13 +1378,14 @@ function registerSummon(accel) {
 }
 
 // The taskbar's own settings, with defaults for anything missing. layout:
-// 'orbit' (the edge rail with the summon dot and intent wheel) or 'bar'.
+// 'orbit' (the edge rail with its summon button and the intent wheel) or 'bar'.
 function taskbarSettings() {
   const t = store.getSettings().taskbar || {};
-  return { pinned: [], labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(t.show || {}) } };
+  return { pinned: [], groups: [], combine: true, labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(t.show || {}) } };
 }
 function setTaskbarLook(t) {
-  const s = store.updateSettings({ taskbar: t });
+  // Groups hold only apps that are still pinned.
+  const s = store.updateSettings({ taskbar: { ...t, groups: cleanGroups(t.groups, t.pinned || []) } });
   send('settings:changed', s);
   desktop.relayout().then((changed) => { if (changed) { desktop.raiseTaskbar(); sendTaskbarInset(); } }).catch((err) => console.error(err));
   desktop.refreshRail(); // auto-hide on or off
@@ -1423,7 +1439,6 @@ async function runNamedIntent(id) {
   // Scorpion OS's updates are Scorpion's own (Settings → This computer).
   if (kind === 'settings' && it.run.arg === 'update' && process.platform === 'linux') return showView('settings', { section: 'system' });
   if (kind === 'settings') return winctl.openSettings(it.run.arg);
-  if (kind === 'stage') return setStage(!store.getSettings().stage);
   if (kind === 'control' && MAIN_CONTROLS.includes(it.run.arg)) return winctl.systemControl(it.run.arg);
   if (kind === 'wheel') return runIntent(it.run.arg);
   if (kind === 'install') return winctl.startInstaller();
@@ -1492,18 +1507,9 @@ function registerWheelKey() {
   }
   return wheelKey;
 }
-// The look at the open windows (filling the screen, flying into Stage); set
+// The look at the open windows (a new app's window fills the screen); set
 // up with the IPC handlers, which have the window list.
 let watchWindows = () => {};
-// Stage (Windows, and Scorpion OS's shell host): kept in the settings, and the pages told.
-function setStage(on) {
-  if (process.platform !== 'win32' && !desktop.hostActive()) throw new Error('Stage needs Windows or Scorpion OS.');
-  const s = store.updateSettings({ stage: Boolean(on) });
-  desktop.setStage(s.stage);
-  send('settings:changed', s);
-  watchWindows();
-  return s.stage;
-}
 // A small picture of the main screen (a quarter size: it is only shown blurred,
 // behind the intent wheel). It stays on this computer. Scorpion OS takes it
 // with grim (labwc lets it read the screen without asking).
@@ -1816,7 +1822,7 @@ function registerIpc() {
     send('settings:changed', s);
     return s;
   });
-  // The orb's Minimize on Windows: the window goes and the summon dot takes over.
+  // The orb's Minimize on Windows: the window steps aside.
   h('window:minimize', () => {
     if (!win || win.isDestroyed()) return false;
     if (fullMode) setFullMode(false);
@@ -1863,9 +1869,8 @@ function registerIpc() {
       desktop.refreshRail();
       sendTaskbarInset();
     }
-    if (['taskbar', 'dotAt', 'stage', 'minimizeToStage', 'railAway', 'appsFull', 'wheel', 'orbBubbles'].some((k) => k in patch)) send('settings:changed', next);
-    if ('dotAt' in patch || 'wheel' in patch) desktop.placeDot();
-    if ('appsFull' in patch || 'minimizeToStage' in patch) watchWindows();
+    if (['taskbar', 'railAway', 'appsFull', 'wheel', 'orbBubbles'].some((k) => k in patch)) send('settings:changed', next);
+    if ('appsFull' in patch) watchWindows();
     return next;
   });
 
@@ -2052,35 +2057,14 @@ function registerIpc() {
     return shell.openExternal(RAIL_LINKS[what]);
   });
   h('shell:window', ({ hwnd, action }) => winctl.windowByHandle(String(hwnd), action));
-  // Stage: on or off (the wheel, Settings, the palette), and a window picked
-  // from its strip comes forward while the one in front steps aside.
-  h('shell:stage', (on) => setStage(on));
-  // The strip's page says how tall its cards are: Stage takes just that band of the edge.
-  h('shell:stageSize', (height) => desktop.stageSized(height));
-  // The summon dot dragged (each move, then where it's dropped, which is
-  // kept), asked where it is, or put back in its corner.
   // The taskbar's inner edge dragged: its size, kept when let go (the room it keeps follows).
   h('shell:railSize', (arg = {}) => {
     const r = desktop.resizeRail(arg);
     if (arg.phase === 'end' && r) { const t = taskbarSettings(); setTaskbarLook({ ...t, sizes: { ...(t.sizes || {}), [r.key]: r.size } }); }
     return r;
   });
-  h('shell:dot', (arg = {}) => {
-    // Back to its corner, or into another one (Settings).
-    if (arg.phase === 'reset' || arg.phase === 'corner') {
-      const corner = ['tl', 'tr', 'bl', 'br'].includes(arg.corner) ? arg.corner : null;
-      store.updateSettings({ dotAt: corner ? { corner } : null });
-      desktop.placeDot();
-      send('settings:changed', store.getSettings());
-      return desktop.dragDot({ phase: 'get' });
-    }
-    const r = desktop.dragDot(arg);
-    if (arg.phase === 'end' && r?.at) send('settings:changed', store.updateSettings({ dotAt: r.at }));
-    return r;
-  });
-  // Apps fill the screen when they open, and a minimized one flies into
-  // Stage (Settings → Windows and taskbar): a look at the windows every
-  // moment while either is on.
+  // Apps fill the screen when they open (Settings → Windows and taskbar): a
+  // look at the windows every moment while it's on.
   let lastLook = null;
   let looking = false;
   let lookTimer = 0;
@@ -2090,27 +2074,19 @@ function registerIpc() {
     try {
       const s = store.getSettings();
       const list = await openWindows();
-      const { opened, minimized } = windowChanges(lastLook, list);
+      const { opened } = windowChanges(lastLook, list);
       lastLook = list;
       if (s.appsFull !== false) for (const w of opened) if (shouldFill(w, list)) winctl.windowByHandle(w.hwnd, 'maximize').catch(() => {});
-      if (s.minimizeToStage !== false && s.stage) { const w = minimized.find((x) => !x.self); if (w) desktop.stageArrive(w.hwnd); }
     } catch (err) { console.error('window look:', err.message); } finally { looking = false; }
   };
   watchWindows = () => {
     const s = store.getSettings();
-    const on = (s.appsFull !== false || (s.minimizeToStage !== false && s.stage)) && (process.platform === 'win32' || desktop.hostActive());
+    const on = s.appsFull !== false && (process.platform === 'win32' || desktop.hostActive());
     clearInterval(lookTimer);
     lookTimer = 0;
     lastLook = null;
     if (on) lookTimer = setInterval(lookAtWindows, { light: 2000, balanced: 1200 }[currentPerf()] || 800);
   };
-  h('shell:stagePick', async (hwnd) => {
-    desktop.hideStage();
-    const front = (await shellWindows()).find((w) => w.active && !w.self && w.hwnd !== String(hwnd));
-    await winctl.windowByHandle(String(hwnd), 'focus');
-    if (front) await winctl.windowByHandle(front.hwnd, 'minimize').catch(() => {});
-    return true;
-  });
   // live: running from the ISO or a USB stick (the rail then offers Install).
   h('shell:tray', async () => ({ ...(await desktop.trayStatus()), live: process.platform === 'linux' && winctl.isLiveSession() }));
   h('shell:install', () => winctl.startInstaller());
@@ -2178,6 +2154,17 @@ function registerIpc() {
     send('settings:changed', store.getSettings());
     return access;
   });
+  // The computer's clock (Settings → General → System → Date and time): how
+  // it's set, and, only when the person presses a button there, following the
+  // internet's time, syncing now, or a date and time set by hand. The system
+  // itself asks for permission before any change (clock.js).
+  const clock = createClock();
+  h('sys:clock', async ({ action, on, date, time } = {}) => {
+    if (action === 'auto') return clock.setAuto(Boolean(on));
+    if (action === 'sync') return clock.syncNow();
+    if (action === 'set') return clock.setManual({ date, time });
+    return clock.status();
+  });
   h('sys:snapshots', async ({ action, id } = {}) => {
     if (process.platform !== 'linux' || !winctl.snapshotsAvailable()) return { supported: false, list: [] };
     if (action === 'undo') {
@@ -2196,8 +2183,18 @@ function registerIpc() {
   });
   h('shell:power', powerAction);
   // Menus open as native menus so they can reach above the thin taskbar.
-  async function shellMenuTemplate({ kind, hwnd, title, id, name, exe } = {}, owner = null) {
+  async function shellMenuTemplate({ kind, hwnd, hwnds, title, id, name, exe } = {}, owner = null) {
     const item = (label, click) => ({ label, click: () => Promise.resolve(click()).catch((err) => console.error(err)) });
+    const sameApp = (a, b) => Boolean(a) && Boolean(b) && String(a).toLowerCase() === String(b).toLowerCase();
+    const launch = (p) => winctl.launchApp({ id: p.id, name: p.name }, { viaExplorer: desktop.shellMode() !== 'shell' });
+    // A small icon beside a menu item (a program's own; Windows and macOS menus only).
+    const menuIcon = async (file) => {
+      if (process.platform === 'linux' || !/^[a-z]:\\/i.test(String(file || ''))) return {};
+      const url = await fileIcon(file).catch(() => null);
+      if (!url) return {};
+      try { return { icon: nativeImage.createFromDataURL(url).resize({ width: 16, height: 16 }) }; } catch { return {}; }
+    };
+    const short = (s, n = 60) => (String(s).length > n ? `${String(s).slice(0, n - 1)}…` : String(s));
     let template;
     if (kind === 'window') {
       const pinnedAlready = exe && taskbarSettings().pinned.some((p) => p.id.toLowerCase() === String(exe).toLowerCase());
@@ -2211,9 +2208,42 @@ function registerIpc() {
         item('End task', () => winctl.endTask(String(hwnd), { ownPids: app.getAppMetrics().map((m) => m.pid) })
           .catch((err) => dialog.showMessageBox(owner, { type: 'info', message: 'End task', detail: err.message })))];
     } else if (kind === 'pinned') {
+      // Its group: one of those there are, a new one, or none.
+      const t = taskbarSettings();
+      const mine = groupOf(t.groups, id);
+      const move = (to) => setTaskbarLook({ ...t, groups: setGroup(t.groups, id, to) });
+      const fresh = freeGroupNames(t.groups);
       template = [{ label: name || 'App', enabled: false }, { type: 'separator' },
         item('Open', () => winctl.launchApp({ id, name }, { viaExplorer: desktop.shellMode() !== 'shell' })),
+        { label: 'Group', submenu: [
+          { label: 'No group', type: 'radio', checked: !mine, click: () => move(null) },
+          ...t.groups.map((g) => ({ label: g.name, type: 'radio', checked: mine?.id === g.id, click: () => move(g.name) })),
+          ...(fresh.length ? [{ type: 'separator' }, { label: 'New group', submenu: fresh.map((n) => item(n, () => move(n))) }] : [])] },
         item('Unpin from taskbar', () => setPinned({ id, name, on: false }))];
+    } else if (kind === 'group') {
+      // A group's dropdown: its apps (one that's open comes to the front), then the group itself.
+      const t = taskbarSettings();
+      const g = t.groups.find((x) => x.id === id);
+      const apps = g ? g.apps.map((a) => t.pinned.find((p) => sameApp(p.id, a))).filter(Boolean) : [];
+      const open = await openWindows().catch(() => []);
+      template = [{ label: g?.name || 'Group', enabled: false }, { type: 'separator' },
+        ...(await Promise.all(apps.map(async (p) => {
+          const wins = open.filter((w) => sameApp(w.exe, p.id));
+          return { label: wins.length ? `${p.name}  (open)` : p.name, ...(await menuIcon(p.id)), click: () => Promise.resolve(wins.length ? winctl.windowByHandle(wins[0].hwnd, 'focus') : launch(p)).catch((err) => console.error(err)) };
+        }))),
+        { type: 'separator' },
+        item('Open all', async () => { for (const p of apps) if (!open.some((w) => sameApp(w.exe, p.id))) await launch(p).catch(() => {}); }),
+        { label: 'Take out of the group', submenu: apps.map((p) => item(p.name, () => setTaskbarLook({ ...t, groups: setGroup(t.groups, p.id, null) }))) },
+        item('Ungroup', () => setTaskbarLook({ ...t, groups: t.groups.filter((x) => x.id !== id) }))];
+    } else if (kind === 'windows') {
+      // An app's windows: pick one to bring it to the front.
+      const want = new Set((Array.isArray(hwnds) ? hwnds : []).map(String));
+      const list = (await openWindows().catch(() => [])).filter((w) => want.has(String(w.hwnd)));
+      template = [{ label: `${name || 'Windows'} (${list.length})`, enabled: false }, { type: 'separator' },
+        ...(await Promise.all(list.map(async (w) => ({ label: `${short(w.title || name || 'Window')}${w.active ? '  (in front)' : ''}`, ...(await menuIcon(w.exe)), click: () => winctl.windowByHandle(String(w.hwnd), 'focus').catch((err) => console.error(err)) })))),
+        { type: 'separator' },
+        item('Minimize all', async () => { for (const w of list) await winctl.windowByHandle(String(w.hwnd), 'minimize').catch(() => {}); }),
+        item('Close all', async () => { for (const w of list) await winctl.windowByHandle(String(w.hwnd), 'close').catch(() => {}); })];
     } else if (kind === 'intent') {
       // An intent on the wheel: what it opens.
       const t = taskbarSettings();
@@ -2243,6 +2273,7 @@ function registerIpc() {
       template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, position, autoHide,
         { label: 'Show app names', type: 'checkbox', checked: t.labels, click: () => set({ labels: !t.labels }) },
         { label: 'Center the apps', type: 'checkbox', checked: t.center, click: () => set({ center: !t.center }) },
+        { label: "Combine an app's windows", type: 'checkbox', checked: t.combine !== false, click: () => set({ combine: t.combine === false }) },
         { label: 'Size', submenu: ['small', 'normal', 'large'].map((v) => ({ label: v[0].toUpperCase() + v.slice(1), type: 'radio', checked: t.size === v, click: () => set({ size: v }) })) },
         { label: 'Look', submenu: [['holo', 'Holographic'], ['neon', 'Neon'], ['glass', 'Glass'], ['solid', 'Solid']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.style === v, click: () => set({ style: v }) })) },
         { label: 'Show', submenu: ['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume'].map(show) },
@@ -2256,7 +2287,8 @@ function registerIpc() {
       template = [{ label: 'Desktop background', enabled: false }, { type: 'separator' }, ...backgroundMenu(item)];
     } else if (kind === 'clock') {
       template = [{ label: new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }), enabled: false }, { type: 'separator' },
-        item('Date and time settings', () => winctl.openSettings('time'))];
+        item('Set the date and time…', () => showView('settings', { section: 'clock' })),
+        item(process.platform === 'win32' ? 'Windows date and time settings' : 'Date and time settings', () => winctl.openSettings('time'))];
     } else {
       const m = desktop.shellMode();
       template = [item('Lock', () => powerAction('lock')), item('Sleep', () => powerAction('sleep')),
@@ -2476,7 +2508,7 @@ app.whenReady().then(async () => {
   // Windows: the helper (windows, the mouse, the taskbar's room) is built and kept here.
   winHelper.initHelper(path.join(app.getPath('userData'), 'bin'));
   desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf, snapScreen,
-    dotAt: () => store.getSettings().dotAt || null, autoHide: () => taskbarSettings().autoHide === true, railAway: () => store.getSettings().railAway !== false, edge: () => taskbarSettings().edge || null, railSize: (key) => taskbarSettings().sizes?.[key] ?? null, wheel: () => store.getSettings().wheel || {} });
+    autoHide: () => taskbarSettings().autoHide === true, railAway: () => store.getSettings().railAway !== false, edge: () => taskbarSettings().edge || null, railSize: (key) => taskbarSettings().sizes?.[key] ?? null, wheel: () => store.getSettings().wheel || {} });
   // Performance follows the power cable when "Light on battery" is on.
   applyPerf();
   powerMonitor.on('on-battery', applyPerf);
@@ -2495,7 +2527,6 @@ app.whenReady().then(async () => {
     dictation = createDictation({ BrowserWindow, screen, call: winHelper.call, url: 'scorpion://app/dictate.html', theme: () => store.getSettings().theme });
     registerDictationKey();
   }
-  if (process.platform === 'win32' && store.getSettings().stage) desktop.setStage(true);
   watchWindows();
   appFrame.initFrame({
     dataDir: app.getPath('userData'),
@@ -2604,8 +2635,7 @@ app.on('before-quit', (e) => {
   // when Scorpion was it) before quitting.
   if (appFrame.framed()) { e.preventDefault(); appFrame.setPanel(null).finally(() => app.quit()); return; }
   leaving = true;
-  desktop.setFloatingDot(false);
-  desktop.setStage(false);
+  desktop.setAway(false);
   if (desktop.shellMode()) { e.preventDefault(); for (const w of BrowserWindow.getAllWindows()) w.hide(); desktop.stopShell().finally(() => app.quit()); return; }
   winctl.stopPsKept();
   quitting = true; scheduler.stopScheduler(); for (const m of mcp.allStatus()) mcp.disconnect(m.id); tg?.stop(); for (const c of running.values()) c.abort(); engine.shutdown(); });
