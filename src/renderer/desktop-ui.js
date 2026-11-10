@@ -265,6 +265,22 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       else F.selected = new Set([p]);
       renderFiles();
     });
+    // Right-click: an item (its own menu) or empty space (New ▸ folder, documents). The menu is native;
+    // what it makes comes back as files:changed (below).
+    list.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (!F.dir) return; // the top of the computer: nothing to make here
+      const row = e.target.closest('.files-row');
+      if (row && !e.target.closest('.files-rename')) {
+        if (!F.selected.has(row.dataset.path)) { F.selected = new Set([row.dataset.path]); renderFiles(); }
+        api.shellMenu({ kind: 'files', dir: F.dir, path: row.dataset.path });
+      } else api.shellMenu({ kind: 'files', dir: F.dir });
+    });
+    api.onFilesChanged?.(async ({ dir, select, rename } = {}) => {
+      if (!F.dir || (dir && dir !== F.dir)) return;
+      await go(F.dir, { remember: false, select: select || null });
+      if (rename && select) { F.renaming = select; renderFiles(); }
+    });
     list.addEventListener('dblclick', (e) => {
       const row = e.target.closest('.files-row');
       const item = row && F.items.find((i) => i.path === row.dataset.path);

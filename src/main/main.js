@@ -2,6 +2,7 @@ import { app, BrowserWindow, screen, ipcMain, dialog, protocol, net, shell, Noti
 import { textMenuTemplate } from './text-menu.js';
 import { cleanGroups, groupOf, setGroup, freeGroupNames } from '../renderer/taskbar-core.js';
 import { createClock } from './clock.js';
+import { NEW_KINDS, createItem } from './new-items.js';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -2183,7 +2184,7 @@ function registerIpc() {
   });
   h('shell:power', powerAction);
   // Menus open as native menus so they can reach above the thin taskbar.
-  async function shellMenuTemplate({ kind, hwnd, hwnds, title, id, name, exe } = {}, owner = null) {
+  async function shellMenuTemplate({ kind, hwnd, hwnds, title, id, name, exe, dir: dir0, path: path0 } = {}, owner = null) {
     const item = (label, click) => ({ label, click: () => Promise.resolve(click()).catch((err) => console.error(err)) });
     const sameApp = (a, b) => Boolean(a) && Boolean(b) && String(a).toLowerCase() === String(b).toLowerCase();
     const launch = (p) => winctl.launchApp({ id: p.id, name: p.name }, { viaExplorer: desktop.shellMode() !== 'shell' });
@@ -2194,6 +2195,11 @@ function registerIpc() {
       if (!url) return {};
       try { return { icon: nativeImage.createFromDataURL(url).resize({ width: 16, height: 16 }) }; } catch { return {}; }
     };
+    // New folder / document, here: made, then named by the person (the page opens its name for typing).
+    const newMenu = (dir) => ({ label: 'New', submenu: NEW_KINDS.map((k) => item(k.label, () => {
+      const made = createItem(dir, k.id);
+      send('files:changed', { dir, select: made, rename: true });
+    })) });
     const short = (s, n = 60) => (String(s).length > n ? `${String(s).slice(0, n - 1)}…` : String(s));
     let template;
     if (kind === 'window') {
@@ -2282,9 +2288,22 @@ function registerIpc() {
         item('Add or remove apps…', () => showView('apps')),
         item('Customize…', () => showView('settings', { section: 'layout' })),
         ...(t.pinned.length ? [item('Unpin all apps', () => setTaskbarLook({ ...t, pinned: [] }))] : [])];
-    } else if (kind === 'desktop') {
-      // Right-click on the desktop (Scorpion OS: its background).
-      template = [{ label: 'Desktop background', enabled: false }, { type: 'separator' }, ...backgroundMenu(item)];
+    } else if (kind === 'desktop' || kind === 'files') {
+      // Right-click on the desktop's background (Scorpion OS), or on a folder or an item in Files or on the desktop.
+      const dir = kind === 'desktop' ? app.getPath('desktop') : String(dir0 || '');
+      const target = path0 ? String(path0) : null;
+      const refresh = item('Refresh', () => send('files:changed', { dir }));
+      if (target) {
+        template = [{ label: path.basename(target), enabled: false }, { type: 'separator' },
+          item('Open', () => winctl.openPath(target)),
+          item('Rename', () => send('files:changed', { dir, select: target, rename: true })),
+          item('Move to the Recycle Bin', async () => { await winctl.recyclePath(target); send('files:changed', { dir }); }),
+          item('Copy its path', () => clipboard.writeText(target)),
+          { type: 'separator' }, newMenu(dir), refresh];
+      } else {
+        template = [...(dir ? [newMenu(dir), refresh, { type: 'separator' }] : []),
+          ...(kind === 'desktop' ? [item('Open the Desktop folder in Files', () => showView('files', { dir })), { type: 'separator' }, { label: 'Desktop background', submenu: backgroundMenu(item) }] : [])];
+      }
     } else if (kind === 'clock') {
       template = [{ label: new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }), enabled: false }, { type: 'separator' },
         item('Set the date and time…', () => showView('settings', { section: 'clock' })),
@@ -2373,6 +2392,10 @@ function registerIpc() {
   h('shell:apps', async (fresh) => (await winctl.listApps({ fresh: Boolean(fresh) })).map((a) => ({ id: a.id, name: a.name })));
   h('shell:launch', async ({ id, name }) => winctl.launchApp({ id, name }, { viaExplorer: desktop.shellMode() !== 'shell' }));
   h('files:list', (dir) => listFolder(dir));
+  // What's on the desktop (the Desktop folder), for the desktop's icons.
+  h('desktop:items', () => listFolder(app.getPath('desktop')));
+  // A new folder or document in a folder (Files and the desktop's right-click menu).
+  h('files:new', ({ dir, kind }) => createItem(String(dir || ''), String(kind || '')));
   // macOS asks before an app reads Desktop, Documents, Downloads or other disks; Full Disk Access is how it is told
   // yes for everything. Only the system's own Privacy page is opened: the choice is the user's.
   h('files:privacy', () => (process.platform === 'darwin' ? shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles').then(() => true) : false));

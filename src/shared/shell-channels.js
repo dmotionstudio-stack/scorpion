@@ -25,6 +25,9 @@ export const SHELL_CALLS = {
   notifications: 'shell:notifications',
   notificationAct: 'shell:notificationAct',
   shellShow: 'shell:show',
+  desktopItems: 'desktop:items',
+  filesOpen: 'files:open',
+  filesRename: 'files:rename',
   desktopBackground: 'desktop:background',
   shellRailSize: 'shell:railSize',
 };
@@ -37,6 +40,7 @@ export const SHELL_EVENTS = {
   onNotificationsChanged: 'shell:notifications',
   onOsd: 'shell:osd',
   onRail: 'shell:rail',
+  onFilesChanged: 'files:changed',
 };
 // Only these may come in from outside Electron (the shell host).
 export const SHELL_CHANNELS = new Set([...Object.values(SHELL_CALLS), 'shell:menuPick', 'shell:hostReady', 'shell:notifyIn', 'shell:notifyClosed']);
