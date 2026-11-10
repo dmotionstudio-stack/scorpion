@@ -362,6 +362,7 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       <p class="small">Its size</p>
       <div class="row wrap" role="group" aria-label="The taskbar's size">${pick('data-size', ['small', 'normal', 'large'].includes(t.size) ? t.size : 'normal', [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']])}</div>
       <div class="row wrap">${check('data-taskbar="labels"', t.labels !== false, 'Show app names')}${check('data-taskbar="center"', t.center === true, 'Center the apps')}</div>
+      ${check('data-taskbar="groupTray"', t.groupTray === true, 'Group the status icons (network, battery, notifications, mail, chat, sound) in one dropdown on the taskbar')}
       ${check('data-taskbar="combine"', t.combine !== false, 'Combine an app\'s open windows under one icon: click it for the list of its windows')}
       <p class="small">The summon wheel</p>
       <div class="row wrap" role="group" aria-label="The wheel's size"><span class="muted small">Wheel</span>${pick('data-wheel-size', wheel.size, [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']])}</div>

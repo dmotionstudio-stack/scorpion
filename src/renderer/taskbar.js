@@ -28,6 +28,9 @@ async function applySettings(settings) {
   b.add(`tb-style-${look.style}`, `tb-size-${look.size}`);
   b.toggle('tb-icons-only', !look.labels);
   b.toggle('tb-centered', Boolean(look.center));
+  // The status icons in one dropdown, when asked for.
+  b.toggle('tb-tray-grouped', look.groupTray === true);
+  $('#tb-tray').hidden = look.groupTray !== true;
   const edge = ['bottom', 'top', 'left', 'right'].includes(look.edge) ? look.edge : 'bottom';
   for (const e of ['bottom', 'top', 'left', 'right']) b.toggle(`at-${e}`, e === edge);
   for (const [k, el] of [['network', '#tb-net'], ['volume', '#tb-volume'], ['clock', '#tb-clock'], ['notifications', '[data-glance="notifications"]'], ['mail', '[data-glance="mail"]'], ['chat', '[data-glance="chat"]']]) $(el).hidden = look.show[k] === false;
@@ -97,6 +100,14 @@ $('#tb-files').addEventListener('click', () => api.shellShow('files'));
 $('#tb-power').addEventListener('click', () => api.shellMenu({ kind: 'power' }));
 for (const b of document.querySelectorAll('[data-glance]')) b.addEventListener('click', () => api.shellGlance(b.dataset.glance).catch(() => {}));
 $('#tb-clock').addEventListener('click', () => api.shellMenu({ kind: 'clock' }));
+$('#tb-tray').addEventListener('click', () => api.shellMenu({ kind: 'tray' }));
+$('#tb-drives').addEventListener('click', () => api.shellMenu({ kind: 'drives' }));
+// USB sticks and external drives: the icon is there while one is plugged in (checked every so often, and when one is ejected).
+const showDrives = (list) => { const n = Array.isArray(list) ? list.length : 0; $('#tb-drives').hidden = !n; $('#tb-drives').title = n ? `${n} USB or external drive${n === 1 ? '' : 's'}: click to open or eject` : 'USB and external drives'; };
+const pollDrives = () => api.shellDrives?.().then(showDrives).catch(() => {});
+api.onDrivesChanged?.(showDrives);
+pollDrives();
+setInterval(pollDrives, 30_000);
 $('#tb-volume').addEventListener('click', () => api.shellVolume('mute'));
 $('#tb-volume').addEventListener('wheel', (e) => { e.preventDefault(); api.shellVolume(e.deltaY < 0 ? 'up' : 'down'); }, { passive: false });
 

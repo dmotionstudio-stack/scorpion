@@ -18,16 +18,6 @@ import { paths } from './store.js';
 // speed.js uses these to work out how fast it answers on a computer.
 export const CATALOG = [
   {
-    id: 'qwen3-4b',
-    kind: 'chat',
-    name: 'Qwen3 4B Instruct',
-    uri: 'hf:unsloth/Qwen3-4B-Instruct-2507-GGUF/Qwen3-4B-Instruct-2507-Q4_K_M.gguf',
-    size: '2.5 GB',
-    skill: 'agent',
-    tier: 2,
-    note: 'Recommended. Passed every agent test, and the fastest reply of the 4B models. Apache-2.0.',
-  },
-  {
     id: 'qwen3.5-4b',
     kind: 'chat',
     name: 'Qwen3.5 4B',
@@ -36,19 +26,7 @@ export const CATALOG = [
     skill: 'agent',
     tier: 2,
     thinks: true,
-    note: 'Newest Qwen (2026). Passed every agent test and writes the best Haitian Creole of the Qwen models; thinks briefly first, so about a quarter slower than Qwen3 4B. Apache-2.0.',
-  },
-  {
-    id: 'gpt-oss-20b',
-    kind: 'chat',
-    name: 'gpt-oss 20B',
-    uri: 'hf:ggml-org/gpt-oss-20b-GGUF/gpt-oss-20b-MXFP4.gguf',
-    size: '12.1 GB',
-    skill: 'agent',
-    tier: 3,
-    thinks: true,
-    activeGB: 2.6,
-    note: 'OpenAI\'s open model: the smartest here, for harder questions. Needs 16 GB RAM; on a small graphics card it runs on the processor (about 20 tokens/sec on a laptop). Apache-2.0.',
+    note: 'Recommended. Passed every agent test and writes the best Haitian Creole of the Qwen models; thinks briefly first (the Thinking switch in the chat turns that down or off). Apache-2.0.',
   },
   {
     id: 'qwen3-1.7b',
@@ -60,14 +38,6 @@ export const CATALOG = [
     tier: 1,
     thinks: true,
     note: 'Only for computers where the 4B models are too slow: about twice as fast, fine for conversation, but it did poorly in the agent tests, so it is unreliable with tools and long jobs. Scorpion picks it by itself only when nothing better runs comfortably. Apache-2.0.',
-  },
-  {
-    id: 'nomic-embed',
-    kind: 'embedding',
-    name: 'Nomic Embed v1.5',
-    uri: 'hf:nomic-ai/nomic-embed-text-v1.5-GGUF/nomic-embed-text-v1.5.Q8_0.gguf',
-    size: '140 MB',
-    note: 'Needed for "chat with documents".',
   },
 ];
 

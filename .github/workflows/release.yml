@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       bundle_model:
-        description: 'Catalog model ids to bundle (space separated, empty for none), e.g. "qwen3-4b nomic-embed"'
+        description: 'Catalog model ids to bundle (space separated, empty for none), e.g. "qwen3.5-4b"'
         required: false
         default: ''
   push:

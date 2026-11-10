@@ -2,6 +2,7 @@ import { app, BrowserWindow, screen, ipcMain, dialog, protocol, net, shell, Noti
 import { textMenuTemplate } from './text-menu.js';
 import { cleanGroups, groupOf, setGroup, freeGroupNames } from '../renderer/taskbar-core.js';
 import { createClock } from './clock.js';
+import { createDrives, driveLabel } from './drives.js';
 import { recommend } from './speed.js';
 import { NEW_KINDS, createItem } from './new-items.js';
 import path from 'node:path';
@@ -1408,7 +1409,7 @@ function registerSummon(accel) {
 // 'orbit' (the edge rail with its summon button and the intent wheel) or 'bar'.
 function taskbarSettings() {
   const t = store.getSettings().taskbar || {};
-  return { pinned: [], groups: [], combine: true, labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(t.show || {}) } };
+  return { pinned: [], groups: [], combine: true, groupTray: false, labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(t.show || {}) } };
 }
 function setTaskbarLook(t) {
   // Groups hold only apps that are still pinned.
@@ -2088,6 +2089,11 @@ function registerIpc() {
     return shell.openExternal(RAIL_LINKS[what]);
   });
   h('shell:window', ({ hwnd, action }) => winctl.windowByHandle(String(hwnd), action));
+  // USB sticks, SD cards and external drives (the taskbar's drives icon): plugged in now, and taken out safely.
+  const drives = createDrives();
+  let lastDrives = [];
+  const listDrives = async () => { lastDrives = await drives.list(); return lastDrives; };
+  h('shell:drives', () => listDrives());
   // The taskbar's inner edge dragged: its size, kept when let go (the room it keeps follows).
   h('shell:railSize', (arg = {}) => {
     const r = desktop.resizeRail(arg);
@@ -2215,6 +2221,13 @@ function registerIpc() {
   h('shell:power', powerAction);
   // Menus open as native menus so they can reach above the thin taskbar.
   async function shellMenuTemplate({ kind, hwnd, hwnds, title, id, name, exe, dir: dir0, path: path0 } = {}, owner = null) {
+    // One drive: open it, or take it out safely (the list is sent again so the icon follows).
+    const driveItems = (list) => list.map((d) => ({ label: driveLabel(d), submenu: [
+      { label: 'Open', click: () => Promise.resolve(winctl.openPath(d.mount)).catch((err) => console.error(err)) },
+      { label: 'Eject safely', click: async () => {
+        try { await drives.eject(d.id); new Notification({ title: 'Safe to remove', body: `${d.name} can be unplugged now.` }).show(); } catch (err) { dialog.showMessageBox(owner, { type: 'info', message: 'Eject', detail: err.message }); }
+        send('shell:drives', await listDrives().catch(() => []));
+      } }] }));
     const item = (label, click) => ({ label, click: () => Promise.resolve(click()).catch((err) => console.error(err)) });
     const sameApp = (a, b) => Boolean(a) && Boolean(b) && String(a).toLowerCase() === String(b).toLowerCase();
     const launch = (p) => winctl.launchApp({ id: p.id, name: p.name }, { viaExplorer: desktop.shellMode() !== 'shell' });
@@ -2256,6 +2269,27 @@ function registerIpc() {
           ...t.groups.map((g) => ({ label: g.name, type: 'radio', checked: mine?.id === g.id, click: () => move(g.name) })),
           ...(fresh.length ? [{ type: 'separator' }, { label: 'New group', submenu: fresh.map((n) => item(n, () => move(n))) }] : [])] },
         item('Unpin from taskbar', () => setPinned({ id, name, on: false }))];
+    } else if (kind === 'drives') {
+      // The drives icon: every USB stick and external drive, each with Open and Eject.
+      const list = await listDrives().catch(() => []);
+      template = [{ label: 'USB and external drives', enabled: false }, { type: 'separator' },
+        ...(list.length ? driveItems(list) : [{ label: 'None connected', enabled: false }])];
+    } else if (kind === 'tray') {
+      // The status icons together (network, battery, notifications, mail, chat, sound) and the drives.
+      const t = taskbarSettings();
+      const shown = (k) => t.show[k] !== false;
+      const status = await winctl.trayStatus().catch(() => ({}));
+      const unread = notificationSummary().unread || 0;
+      const glance = (what) => () => handlers['shell:glance'](what);
+      const list = await listDrives().catch(() => []);
+      template = [
+        ...(shown('network') ? [item(status.network ? `Network: ${status.network}` : 'Network: not connected', glance('network'))] : []),
+        ...(shown('battery') && typeof status.battery === 'number' ? [item(`Battery ${status.battery}%${status.charging ? ', charging' : ''}`, glance('battery'))] : []),
+        ...(shown('notifications') ? [item(unread ? `Notifications (${unread} new)` : 'Notifications', glance('notifications'))] : []),
+        ...(shown('mail') ? [item('Mail', glance('mail'))] : []),
+        ...(shown('chat') ? [item('Chat with Scorpion', glance('chat'))] : []),
+        ...(shown('volume') ? [item('Sound: mute or unmute', () => handlers['shell:volume']('mute'))] : []),
+        ...(list.length ? [{ type: 'separator' }, { label: 'USB and external drives', enabled: false }, ...driveItems(list)] : [])];
     } else if (kind === 'group') {
       // A group's dropdown: its apps (one that's open comes to the front), then the group itself.
       const t = taskbarSettings();
@@ -2309,6 +2343,7 @@ function registerIpc() {
       template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, position, autoHide,
         { label: 'Show app names', type: 'checkbox', checked: t.labels, click: () => set({ labels: !t.labels }) },
         { label: 'Center the apps', type: 'checkbox', checked: t.center, click: () => set({ center: !t.center }) },
+        { label: 'Group the status icons in one dropdown', type: 'checkbox', checked: t.groupTray === true, click: () => set({ groupTray: t.groupTray !== true }) },
         { label: "Combine an app's windows", type: 'checkbox', checked: t.combine !== false, click: () => set({ combine: t.combine === false }) },
         { label: 'Size', submenu: ['small', 'normal', 'large'].map((v) => ({ label: v[0].toUpperCase() + v.slice(1), type: 'radio', checked: t.size === v, click: () => set({ size: v }) })) },
         { label: 'Look', submenu: [['holo', 'Holographic'], ['neon', 'Neon'], ['glass', 'Glass'], ['solid', 'Solid']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.style === v, click: () => set({ style: v }) })) },

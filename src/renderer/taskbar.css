@@ -162,6 +162,9 @@ body.taskbar.at-left .rail-grip { right: 0; left: auto; top: 0; bottom: 0; width
 body.taskbar.at-top .rail-grip { left: 0; right: 0; bottom: 0; top: auto; height: 5px; width: auto; cursor: ns-resize; }
 body.taskbar.at-bottom .rail-grip { left: 0; right: 0; top: 0; bottom: auto; height: 5px; width: auto; cursor: ns-resize; }
 
+/* The status icons grouped in one dropdown (right-click the taskbar), and the drives icon. */
+body.tb-tray-grouped [data-glance], body.tb-tray-grouped #tb-net, body.tb-tray-grouped #tb-battery, body.tb-tray-grouped #tb-volume { display: none !important; }
+
 /* Groups and combined windows (taskbar-core.js): a group shows up to four of
    its apps' icons, small, in a square; an icon standing for several windows
    carries their count. Both drop down a menu. */

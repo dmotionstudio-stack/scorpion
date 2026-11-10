@@ -29,6 +29,9 @@ async function applySettings(settings) {
   // The same choices as the classic bar: names, centred, size, look.
   const t = { labels: true, center: false, size: 'normal', style: 'holo', ...(s.taskbar || {}) };
   look = { groups: t.groups || [], combine: t.combine !== false };
+  // The status icons in one dropdown, when asked for.
+  document.body.classList.toggle('eg-tray-grouped', t.groupTray === true);
+  $('#eg-tray').hidden = t.groupTray !== true;
   const b = document.body.classList;
   for (const c of [...b]) if (/^eg-(style|size)-/.test(c)) b.remove(c);
   b.add(`eg-style-${t.style}`, `eg-size-${t.size}`);
@@ -113,6 +116,14 @@ for (const b of document.querySelectorAll('[data-glance]')) b.addEventListener('
 const setBadge = (s) => { const n = s?.unread || 0; $('#eg-badge').hidden = !n; $('#eg-badge').textContent = n > 9 ? '9+' : String(n); };
 if (api.notifications) { api.notifications().then(setBadge).catch(() => {}); api.onNotificationsChanged?.(setBadge); }
 $('#eg-clock').addEventListener('click', () => api.shellMenu({ kind: 'clock' }));
+$('#eg-tray').addEventListener('click', () => api.shellMenu({ kind: 'tray' }));
+$('#eg-drives').addEventListener('click', () => api.shellMenu({ kind: 'drives' }));
+// USB sticks and external drives: the icon is there while one is plugged in (checked every so often, and when one is ejected).
+const showDrives = (list) => { const n = Array.isArray(list) ? list.length : 0; $('#eg-drives').hidden = !n; $('#eg-drives').title = n ? `${n} USB or external drive${n === 1 ? '' : 's'}: click to open or eject` : 'USB and external drives'; };
+const pollDrives = () => api.shellDrives?.().then(showDrives).catch(() => {});
+api.onDrivesChanged?.(showDrives);
+pollDrives();
+setInterval(pollDrives, 30_000);
 $('#eg-summon').addEventListener('click', () => api.shellWheel({ open: true, centre: true }));
 for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => api.shellShow?.(b.dataset.view));
 $('#eg-power').addEventListener('click', () => api.shellMenu({ kind: 'power' }));

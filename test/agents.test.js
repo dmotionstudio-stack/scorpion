@@ -150,12 +150,12 @@ test('models can be uninstalled and partial downloads are cleaned up', async () 
   const models = await import('../src/main/models.js');
   const lib = store.paths.models;
   fs.mkdirSync(lib, { recursive: true });
-  const file = path.join(lib, 'hf_unsloth_Qwen3-4B-Instruct-2507-Q4_K_M.gguf');
+  const file = path.join(lib, 'hf_unsloth_Qwen3.5-4B-Q4_K_M.gguf');
   fs.writeFileSync(file, 'GGUF');
   fs.writeFileSync(`${file}.ipull`, 'partial');
   fs.writeFileSync(path.join(lib, 'other.gguf.ipull'), 'partial');
   const list = models.listLocalModels({ resourcesPath: '', appRoot: fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-noapp-')) });
-  const item = models.CATALOG.find((c) => c.id === 'qwen3-4b');
+  const item = models.CATALOG.find((c) => c.id === 'qwen3.5-4b');
   assert.equal(models.findInstalled(item, list)?.path, file);
   assert.equal(models.cleanPartialDownloads(), 2);
   assert.ok(fs.existsSync(file)); // complete models are never touched by cleanup
@@ -273,8 +273,8 @@ test('first start picks the best model that fits this PC, not the first file fou
   ];
   assert.equal(pickDefaultChatModel(installed, fit).name, 'qwen3.5:4b');
   // A recommended catalog model wins among those that fit.
-  const withCatalog = [...installed, { name: 'Qwen3-4B-Instruct-2507-Q4_K_M', kind: 'chat', bytes: 2.3 * GB }];
-  assert.equal(pickDefaultChatModel(withCatalog, fit).name, 'Qwen3-4B-Instruct-2507-Q4_K_M');
+  const withCatalog = [...installed, { name: 'Qwen3.5-4B-Q4_K_M', kind: 'chat', bytes: 2.3 * GB }];
+  assert.equal(pickDefaultChatModel(withCatalog, fit).name, 'Qwen3.5-4B-Q4_K_M');
   // Nothing fits the GPU (CPU-only PC): smallest usable model.
   const cpu = (b) => modelFit(b, { dedicatedVram: 0, sharedVram: 0, ram: 16 * GB });
   assert.equal(pickDefaultChatModel(installed, cpu).name, 'qwen3.5:4b');
@@ -298,13 +298,14 @@ test('every catalog entry is well formed and fast models carry a tested skill', 
     if (c.skill) assert.ok(['agent', 'tools', 'chat'].includes(c.skill), c.id);
   }
   assert.equal(CATALOG[0].skill, 'agent'); // the default pick must handle Build mode
-  for (const id of ['qwen3-4b', 'qwen3.5-4b', 'gpt-oss-20b', 'nomic-embed']) assert.ok(ids.has(id), id);
+  for (const id of ['qwen3.5-4b', 'qwen3-1.7b']) assert.ok(ids.has(id), id);
+  for (const id of ['qwen3-4b', 'gpt-oss-20b', 'nomic-embed']) assert.ok(!ids.has(id), `${id} was removed`);
   for (const id of ['gemma3-4b', 'gemma3-1b', 'llama3.2-3b', 'llama3.2-1b']) assert.ok(!ids.has(id), `${id} was removed`);
   // Qwen models that did poorly with the agent (see the Qwen comparison) stay out.
   for (const id of ['qwen2.5-0.5b', 'qwen2.5-1.5b', 'qwen2.5-coder-1.5b', 'qwen2.5-7b']) assert.ok(!ids.has(id), id);
   // Qwen3 1.7B is there only as the fallback for computers too slow for the 4B models, and says what it can't do.
   assert.equal(CATALOG.find((c) => c.id === 'qwen3-1.7b').skill, 'chat');
-  assert.ok(CATALOG.findIndex((c) => c.id === 'qwen3-1.7b') > CATALOG.findIndex((c) => c.id === 'qwen3-4b'), 'never ahead of the recommended model');
+  assert.ok(CATALOG.findIndex((c) => c.id === 'qwen3-1.7b') > CATALOG.findIndex((c) => c.id === 'qwen3.5-4b'), 'never ahead of the recommended model');
 });
 
 test('tool calls written as text are recognised so the task does not stall', async () => {

@@ -180,7 +180,7 @@ internet connection to chat.
   detail at 24 frames a second, no frosted-glass blur, the taskbar's windows every
   4 s, hand tracking on every other frame, background media work (Library, faces) on
   fewer cores, and chats with the fastest model installed here when your chosen one
-  is slow on this computer (gpt-oss-20b on a 4 GB graphics card, say). No model is
+  is slow on this computer (a 9B model on a 4 GB graphics card, say). No model is
   removed: back on Full or Balanced, your chosen model loads again. **Light while
   running on battery** switches to Light when you unplug and back when you plug in.
 - **Mini orb**: the orb's **Minimize** button (or opening a place over the orb) shrinks
@@ -547,15 +547,15 @@ Scorpion needs a model file once. You can get one in any of three ways:
    build. The installer then ships with the model, and Scorpion picks it automatically
    the first time it starts.
    ```bash
-   node scripts/fetch-models.mjs resources/models qwen3-4b nomic-embed
+   node scripts/fetch-models.mjs resources/models qwen3.5-4b
    ```
 
 | Catalog id | Use | Size |
 |---|---|---|
-| `qwen3-4b` | Recommended chat + agent model | 2.5 GB |
-| `qwen3.5-4b` | Newest Qwen; best Qwen for Haitian Creole | 2.7 GB |
-| `gpt-oss-20b` | The smartest; needs 16 GB of memory | 12.1 GB |
-| `nomic-embed` | Required for documents | 140 MB |
+| `qwen3.5-4b` | Recommended chat + agent model; best Qwen for Haitian Creole | 2.7 GB |
+| `qwen3-1.7b` | Only for slow computers: fast, chat only | 1.1 GB |
+
+Documents (chat with your files) need an embedding model: import a `.gguf` embedding file in **Models**.
 
 ## Build installers
 

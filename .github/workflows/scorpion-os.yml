@@ -12,8 +12,8 @@ on:
         description: Scorpion OS version
         default: "0.1"
       model:
-        description: Built-in models, comma separated catalog ids (qwen3-4b,qwen3-1.7b: Scorpion picks the one that suits the computer; or none)
-        default: qwen3-4b,qwen3-1.7b
+        description: Built-in models, comma separated catalog ids (qwen3.5-4b,qwen3-1.7b: Scorpion picks the one that suits the computer; or none)
+        default: qwen3.5-4b,qwen3-1.7b
       publish:
         description: Publish this Scorpion build to the update repository
         type: boolean
@@ -23,7 +23,7 @@ on:
 
 env:
   SCORPION_OS_VERSION: ${{ inputs.version || '0.1' }}
-  SCORPION_MODEL: ${{ inputs.model || 'qwen3-4b,qwen3-1.7b' }}
+  SCORPION_MODEL: ${{ inputs.model || 'qwen3.5-4b,qwen3-1.7b' }}
 
 jobs:
   linux-app:

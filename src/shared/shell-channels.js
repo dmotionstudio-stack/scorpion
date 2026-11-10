@@ -10,6 +10,7 @@ export const SHELL_CALLS = {
   shellWindows: 'shell:windows',
   shellWindow: 'shell:window',
   shellTray: 'shell:tray',
+  shellDrives: 'shell:drives',
   shellLaunch: 'shell:launch',
   shellVolume: 'shell:volume',
   shellMenu: 'shell:menu',
@@ -41,6 +42,7 @@ export const SHELL_EVENTS = {
   onOsd: 'shell:osd',
   onRail: 'shell:rail',
   onFilesChanged: 'files:changed',
+  onDrivesChanged: 'shell:drives',
 };
 // Only these may come in from outside Electron (the shell host).
 export const SHELL_CHANNELS = new Set([...Object.values(SHELL_CALLS), 'shell:menuPick', 'shell:hostReady', 'shell:notifyIn', 'shell:notifyClosed']);

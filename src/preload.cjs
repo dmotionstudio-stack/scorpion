@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellWindows: invoke('shell:windows'),
   shellWindow: invoke('shell:window'),
   shellTray: invoke('shell:tray'),
+  shellDrives: invoke('shell:drives'),
+  onDrivesChanged: on('shell:drives'),
   shellShow: invoke('shell:show'),
   shellVolume: invoke('shell:volume'),
   shellPower: invoke('shell:power'),

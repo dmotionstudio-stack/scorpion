@@ -175,11 +175,11 @@ export function initWelcome(ctx) {
           await choose({ yes: 'next' });
           return 'ok';
         }
-        card({ title: 'I need a model to think with', body: 'The recommended one is <b>Qwen3 4B</b>: a 2.5 GB download, once. After that I work without the internet.', choices: [['Download it', 'yes'], ['Later', 'skip']] });
-        await say('I need a model to think with. The recommended one is a two and a half gigabyte download, once. Shall I download it?');
+        card({ title: 'I need a model to think with', body: 'The recommended one is <b>Qwen3.5 4B</b>: a 2.7 GB download, once. After that I work without the internet.', choices: [['Download it', 'yes'], ['Later', 'skip']] });
+        await say('I need a model to think with. The recommended one is a two point seven gigabyte download, once. Shall I download it?');
         if ((await choose()) === 'yes') {
-          api.downloadModel('qwen3-4b').catch((err) => ctx.toast(`Model download failed: ${ctx.errText(err)}`, 8000));
-          ctx.toast('Downloading Qwen3 4B in the background (Settings → Models shows progress).', 6000);
+          api.downloadModel('qwen3.5-4b').catch((err) => ctx.toast(`Model download failed: ${ctx.errText(err)}`, 8000));
+          ctx.toast('Downloading Qwen3.5 4B in the background (Settings → Models shows progress).', 6000);
         }
         return 'ok';
       },

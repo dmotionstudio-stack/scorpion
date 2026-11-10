@@ -1,5 +1,5 @@
 // Pre-download catalog models, e.g. into resources/models to bundle them into an
-// offline installer:  node scripts/fetch-models.mjs resources/models qwen3-4b nomic-embed
+// offline installer:  node scripts/fetch-models.mjs resources/models qwen3.5-4b
 import path from 'node:path';
 import { createModelDownloader } from 'node-llama-cpp';
 import { CATALOG } from '../src/main/models.js';
