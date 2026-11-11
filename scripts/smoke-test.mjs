@@ -116,7 +116,8 @@ try {
 } finally {
   proc.kill();
   await sleep(1500);
-  fs.rmSync(data, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  // A leftover temp folder is not a failed check (the app can still be writing to it for a moment).
+  try { fs.rmSync(data, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }); } catch {}
 }
 if (problems.length) {
   console.error(`\nThe packaged app failed ${problems.length} check(s). Its output:\n${log.split('\n').slice(-40).join('\n')}`);
