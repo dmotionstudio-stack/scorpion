@@ -16,7 +16,8 @@ internet connection to chat.
 - **Home screen** (the Scorpion shell): Scorpion opens on a home screen with an ask box
   and all its tools as holographic tiles (each with a live status line) that fill the
   screen. The sidebar can be hidden for more room (the button in its corner, or
-  Ctrl+B). Everything underneath is the same local AI.
+  Ctrl+B). The header above the tools can be dragged smaller (the bar under it) to show more tools;
+  double-click the bar to hide it or bring it back. Everything underneath is the same local AI.
 - **Chat** with local models (Qwen3.5 4B and Qwen3 1.7B come from the catalog; any GGUF file works), with streaming and Markdown. A **Thinking** switch in the chat turns a model's reasoning up, down or off, and the Models page estimates how fast each model will answer on your computer. Scorpion can pick the best model for your computer's speed by itself (and Scorpion OS does so at first start).
 - **Agent**: Scorpion reads, writes and edits files and runs terminal commands. On
   Windows and macOS it can reach every file on the computer (see *Full file access*
@@ -257,7 +258,13 @@ internet connection to chat.
   a tile on the orb's screen, up to six at once, side by side like Windows Snap. Each window is
   placed inside its tile with nothing cut off: Scorpion asks it for the smallest size it allows and
   makes its tile at least that big, and the title bar and buttons some apps draw themselves (Calculator
-  and other Store apps) are hidden, so the only title bar and buttons are Scorpion's. The orb
+  and other Store apps) are hidden, so the only title bar and buttons are Scorpion's. Apps that draw their own
+  title bar (ChatGPT, Claude and other Chromium apps, which often also stay on top of other windows) open inside
+  the orb too: only the corner with their own minimize, maximize and close buttons is hidden, and the ▔ button in
+  the tile's title bar changes that (nothing, the buttons, or the whole strip of 32, 40 or 48 points); it is remembered
+  per app. An app that cannot be placed says why ("That app opened as a normal window, not inside the orb: ..."). An
+  app whose smallest size is bigger than its tile is cut off at the tile edge instead of spilling over the orb or the
+  taskbar. The orb
   always keeps a tile of its own and moves to the room the apps leave: an app that opened on
   the left of the screen goes left, one that opened on the right goes right, so the orb ends
   up between them (or beside them, on the other side). **Resize** by dragging the bar between

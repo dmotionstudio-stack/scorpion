@@ -55,12 +55,37 @@ export function initHome({ api, $, esc, toast, errText, S, setView, newThread, s
     ];
   }
 
+  // The header (the greeting and the ask box) can be made smaller by dragging the bar under it, to give the tools more room;
+  // a double-click hides it or brings it back. Kept on this computer.
+  const savedHero = () => { try { const v = localStorage.getItem('homeHeroH'); return v == null ? null : Math.max(0, Number(v) || 0); } catch { return null; } };
+  const saveHero = (v) => { try { if (v == null) localStorage.removeItem('homeHeroH'); else localStorage.setItem('homeHeroH', String(Math.round(v))); } catch { /* not kept */ } };
+  function wireGrip() {
+    const grip = $('#home-grip');
+    const hero = $('#home-page .home-hero');
+    if (!grip || !hero) return;
+    let drag = null;
+    grip.onpointerdown = (e) => { if (e.button !== 0) return; drag = { y: e.clientY, h: hero.getBoundingClientRect().height }; grip.setPointerCapture(e.pointerId); grip.classList.add('on'); e.preventDefault(); };
+    grip.onpointermove = (e) => {
+      if (!drag) return;
+      const room = $('#home-page').getBoundingClientRect().height;
+      const h = Math.max(0, Math.min(room * 0.7, drag.h + e.clientY - drag.y));
+      hero.style.height = `${h}px`;
+      hero.classList.toggle('collapsed', h < 4);
+    };
+    grip.onpointerup = grip.onpointercancel = () => { if (!drag) return; drag = null; grip.classList.remove('on'); saveHero(hero.getBoundingClientRect().height); };
+    grip.ondblclick = () => {
+      if (hero.getBoundingClientRect().height > 4) { hero.style.height = '0px'; hero.classList.add('collapsed'); saveHero(0); }
+      else { hero.style.height = ''; hero.classList.remove('collapsed'); saveHero(null); }
+    };
+  }
+
   function render() {
     const st = S;
+    const heroH = savedHero();
     const ws = H.workspaces;
     const model = (st.settings.providers || []).find((p) => p.id === st.settings.chatSource)?.model || (st.models || []).find((m) => m.path === st.settings.chatModel)?.name;
     $('#home-page').innerHTML = `
-      <section class="home-hero">
+      <section class="home-hero${heroH != null && heroH < 4 ? ' collapsed' : ''}"${heroH != null ? ` style="height:${heroH}px"` : ''}>
         <h1>${greeting()}</h1>
         <p class="muted">${model ? `Running ${esc(model)}` : 'No model selected'} · ${st.settings.online ? 'online' : 'offline and private'}${st.settings.workspace ? ` · working in ${esc(ws.find((w) => w.active)?.name || st.settings.workspace)}` : ''}</p>
         <form class="home-ask" id="home-ask" autocomplete="off">
@@ -68,10 +93,12 @@ export function initHome({ api, $, esc, toast, errText, S, setView, newThread, s
           <button class="btn primary" type="submit">Ask</button>
         </form>
       </section>
+      <div class="home-grip" id="home-grip" role="separator" aria-orientation="horizontal" title="Drag to make the header smaller or bigger, for more room for the tools. Double-click hides it or brings it back."></div>
       <section class="home-tools-wrap">
         <h2>Tools</h2>
         <div class="home-tools">${tools().map((t) => `<button type="button" class="home-tool" data-tool="${t.key}">${ICONS[t.key] || ''}<span class="name">${esc(t.name)}</span><span class="note">${esc(t.note)}</span></button>`).join('')}</div>
       </section>`;
+    wireGrip();
   }
 
   async function load() {

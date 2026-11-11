@@ -2127,15 +2127,15 @@ function registerIpc() {
     return appFrame.mouse(cmd, { area: { x: p.x, y: p.y, w: p.width, h: p.height } });
   });
   // The orb's app panel: where it is (or null), a place covering the orb, an app to show, or a strip button.
-  h('orb:frame', async ({ panel, away, frame, action, layout, hwnd } = {}) => {
+  h('orb:frame', async ({ panel, away, frame, action, layout, hwnd, dip } = {}) => {
     if (process.platform !== 'win32') return null;
     if (panel !== undefined) await appFrame.setPanel(panel);
     if (panel && pendingFrame) { const h = pendingFrame; pendingFrame = null; await appFrame.frameWindow(h); }
     if (away !== undefined) await appFrame.setAway(Boolean(away));
     if (Array.isArray(layout)) return appFrame.setLayout(layout);
-    if (frame) return appFrame.frameWindow(frame);
+    if (frame) { const ok = await appFrame.frameWindow(frame); return { ok, why: ok ? '' : appFrame.lastReason() }; }
     if (action === 'popout' && fullMode) setFullMode(false);
-    if (action) return appFrame.action(action, { hwnd });
+    if (action) return appFrame.action(action, { hwnd, dip });
     return appFrame.framed();
   });
   h('shell:taskbar', (on) => (process.platform === 'win32' ? setTaskbarAlwaysOn(on) : desktopStatus()));
@@ -2764,6 +2764,8 @@ app.whenReady().then(async () => {
       return { x: p.x, y: p.y, w: p.width, h: p.height };
     },
     notify: (v) => send('frame:changed', v),
+    clips: () => store.getSettings().orbTileClip || {},
+    setClip: (exe, dip) => store.updateSettings({ orbTileClip: { ...(store.getSettings().orbTileClip || {}), [exe]: dip } }),
   });
   if (process.platform === 'win32') appFrame.recover().catch(() => {});
   // Three starts as the desktop within three minutes means Scorpion keeps

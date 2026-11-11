@@ -82,6 +82,7 @@ const DEFAULT_SETTINGS = {
   appUpdates: true, // Windows and macOS: look for new versions of Scorpion on GitHub by itself (app-updates.js)
   handsAlwaysOn: false, // hand gestures turn on by themselves when Scorpion starts (camera); off: only when asked for (G in the orb, the Gestures button)
   talkAtStart: false, // the orb starts listening (microphone) as soon as it opens; off: only when asked for (the Talk button, the wake word)
+  orbTileClip: {}, // per app (its program path): how much of the app's own title bar is cut off inside the orb, in points
   orbCaptions: 'below', // the orb's screen: what is said shows 'below' the orb, 'above' it or is 'hidden'
   orbTitle: 'left', // the title and status line: 'left', 'center', 'right' or 'hidden'
   orbTiles: 'auto', // how the tiles are laid out: 'auto', 'columns', 'rows' or 'grid' (shared/tiles.js)

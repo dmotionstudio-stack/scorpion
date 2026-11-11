@@ -634,12 +634,33 @@ test('apps inside the orb: which windows are framed', async () => {
   assert.equal(frameable(parseInfo(line({ owned: '1' })), { selfPid: 1 }), false, 'dialogs stay with their app');
   assert.equal(frameable(parseInfo(line({ style: String(0x94000000) })), { selfPid: 1 }), false, 'no title bar: popups, full-screen games');
   assert.equal(frameable(parseInfo(line({ ex: String(0x80) })), { selfPid: 1 }), false, 'tool windows');
-  assert.equal(frameable(parseInfo(line({ ex: String(0x8) })), { selfPid: 1 }), false, 'always-on-top windows');
+  assert.equal(frameable(parseInfo(line({ ex: String(0x8) })), { selfPid: 1 }), true, 'an always-on-top flag is no reason: many apps (Claude, ChatGPT) carry it');
   assert.equal(frameable(parseInfo(line({ cls: 'Shell_TrayWnd' })), { selfPid: 1 }), false, "Windows' own shell");
   assert.equal(frameable(parseInfo(line({ pid: '1' })), { selfPid: 1 }), false, "Scorpion's own windows");
   assert.equal(frameable(parseInfo(line({ cloaked: '1' })), { selfPid: 1 }), false, 'hidden Store apps');
   assert.equal(frameable(parseInfo(line({ title: '' })), { selfPid: 1 }), false);
   assert.equal(frameable(info, { selfPid: 1, skip: new Set(['132456']) }), false, 'refused before');
+});
+
+test('apps that draw their own title bar are framed too, and a refusal says why', async () => {
+  const { parseInfo, frameable, whyNotFramed, drawsOwnTitleBar } = await import('../src/main/orb-frame.js');
+  const line = (o = {}) => ['777', o.pid ?? '4321', o.cls ?? 'Chrome_WidgetWin_1', o.style ?? String(0x14030000), o.ex ?? '256', o.owned ?? '0', o.cloaked ?? '0', o.visible ?? '1', o.iconic ?? '0', '0', o.rect ?? '10 20 1210 920', o.title ?? 'ChatGPT'].join('\t');
+  const own = parseInfo(line()); // no Windows title bar, minimize and maximize boxes: ChatGPT, Claude, VS Code
+  assert.equal(frameable(own, { selfPid: 1 }), true);
+  assert.equal(drawsOwnTitleBar(own), true);
+  assert.equal(drawsOwnTitleBar(parseInfo(line({ style: String(0x14CF0000) }))), false, 'a normal window has its own title bar to take over');
+  assert.equal(whyNotFramed(own, { selfPid: 1 }), null);
+  assert.equal(frameable(parseInfo(line({ style: String(0x94000000) })), { selfPid: 1 }), false, 'a pop-up with no minimize or maximize box is not an app window');
+  assert.equal(frameable(parseInfo(line({ rect: '10 20 90 60' })), { selfPid: 1 }), false, 'a tiny window of its own is not');
+  assert.equal(frameable(parseInfo(line({ rect: '-32000 -32000 -31840 -31972', iconic: '1' })), { selfPid: 1 }), true, 'but a minimized one is judged by its style');
+  const why = (o) => whyNotFramed(parseInfo(line(o)), { selfPid: 1 });
+  assert.equal(why({ ex: String(0x200008) }), null, 'the always-on-top flag Electron apps carry does not stop them');
+  assert.match(why({ owned: '1' }), /dialog/);
+  assert.match(why({ cloaked: '1' }), /hidden/);
+  assert.match(why({ title: '' }), /no title/);
+  assert.match(why({ cls: 'Shell_TrayWnd' }), /Windows itself/);
+  assert.match(why({ ex: String(0x80) }), /tool window/);
+  assert.match(whyNotFramed(own, { selfPid: 1, skip: new Set(['777']) }), /administrator/);
 });
 
 test('the air mouse stays inside the framed app', async () => {

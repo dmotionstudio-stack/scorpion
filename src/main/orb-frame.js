@@ -36,6 +36,10 @@ public static class ScorpionFrame {
   [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr h);
   [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr h, IntPtr rgn, bool redraw);
+  [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr h, ref PT p);
+  [DllImport("gdi32.dll")] static extern int CombineRgn(IntPtr dst, IntPtr a, IntPtr b, int mode);
+  [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr o);
+  public struct PT { public int X, Y; }
   [DllImport("gdi32.dll")] static extern IntPtr CreateRectRgn(int l, int t, int r, int b);
   [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr c);
   // Physical pixels, whatever this PowerShell's own DPI setting is.
@@ -87,13 +91,37 @@ public static class ScorpionFrame {
     SetWindowPos(h, new IntPtr(-1), x, y - clip, w, hh + clip, 0x0010 | 0x0040);
     SetWindowRgn(h, CreateRectRgn(0, clip, w, hh + clip), true);
   }
+  public static void Unclip(IntPtr h) { SetWindowRgn(h, IntPtr.Zero, true); }
+  // How far down the window's content starts: the title bar Windows draws (about 32 at 100%), or about 0 when the app draws its own.
+  public static int NcTop(IntPtr h) { Dpi(); RECT w; GetWindowRect(h, out w); PT p; p.X = 0; p.Y = 0; ClientToScreen(h, ref p); return p.Y - w.T; }
+  // Only the top right corner, where an app's minimize, maximize and close buttons are, is cut out; the rest of its title bar stays.
+  public static void PlaceNotched(IntPtr h, int x, int y, int w, int hh, int nw, int nh) {
+    Dpi();
+    SetWindowPos(h, new IntPtr(-1), x, y, w, hh, 0x0010 | 0x0040);
+    IntPtr full = CreateRectRgn(0, 0, w, hh);
+    IntPtr cut = CreateRectRgn(Math.Max(0, w - nw), 0, w, nh);
+    CombineRgn(full, full, cut, 4);
+    DeleteObject(cut);
+    SetWindowRgn(h, full, true);
+  }
+  // An app that will not get as small as its tile (its smallest size is bigger): the window keeps that size, from the tile's top left,
+  // and only the tile's part of it shows (a region), so nothing spills over the orb, the taskbar or the next tile. clip: the title bar
+  // strip cut off at the top; nw, nh: the corner with the app's own buttons.
+  public static void PlaceFit(IntPtr h, int x, int y, int w, int hh, int ww, int wh, int clip, int nw, int nh) {
+    Dpi();
+    SetWindowPos(h, new IntPtr(-1), x, y - clip, ww, wh + clip, 0x0010 | 0x0040);
+    int vw = Math.Min(w, ww), vh = Math.Min(hh, wh);
+    IntPtr full = CreateRectRgn(0, clip, vw, clip + vh);
+    if (nh > 0) { IntPtr cut = CreateRectRgn(Math.Max(0, vw - nw), clip, vw, clip + nh); CombineRgn(full, full, cut, 4); DeleteObject(cut); }
+    SetWindowRgn(h, full, true);
+  }
   // The normal window back: its own style, size and place, not on top.
-  public static void Release(IntPtr h, int style, int x, int y, int w, int hh, bool minimize) {
+  public static void Release(IntPtr h, int style, int x, int y, int w, int hh, bool minimize, bool top = false) {
     Dpi();
     if (!IsWindow(h)) return;
     SetWindowRgn(h, IntPtr.Zero, true);
     SetWindowLong(h, -16, style);
-    SetWindowPos(h, new IntPtr(-2), x, y, w, hh, 0x0020 | 0x0010);
+    SetWindowPos(h, new IntPtr(top ? -1 : -2), x, y, w, hh, 0x0020 | 0x0010);
     if (minimize) ShowWindow(h, 6);
   }
 }
@@ -131,6 +159,8 @@ public static class ScorpionMouse {
 const WS_CAPTION = 0x00C00000;
 const WS_EX_TOOLWINDOW = 0x80;
 const WS_EX_TOPMOST = 0x8;
+const WS_MINIMIZEBOX = 0x20000;
+const WS_MAXIMIZEBOX = 0x10000;
 // The Windows shell's own windows, never framed.
 const SHELL_CLASSES = new Set(['Shell_TrayWnd', 'Shell_SecondaryTrayWnd', 'Progman', 'WorkerW', 'Windows.UI.Core.CoreWindow', 'NotifyIconOverflowWindow', 'TopLevelWindowForOverflowXamlIsland', 'XamlExplorerHostIslandWindow', 'ForegroundStaging', 'MultitaskingViewFrame', 'TaskManagerWindow', 'ConsoleWindowClass']);
 
@@ -144,13 +174,26 @@ export function parseInfo(line) {
 // An ordinary app window: visible, with a title bar, not a dialog (those stay
 // with their app, above it), not a tool or always-on-top window, not Windows'
 // own shell, not Scorpion's.
-export function frameable(info, { selfPid = process.pid, skip = new Set() } = {}) {
-  if (!info || !info.visible || info.cloaked || info.owned || !info.title) return false;
-  if ((info.style & WS_CAPTION) !== WS_CAPTION) return false;
-  if (info.ex & (WS_EX_TOOLWINDOW | WS_EX_TOPMOST)) return false;
-  if (SHELL_CLASSES.has(info.cls) || info.pid === selfPid || skip.has(info.hwnd)) return false;
-  return true;
+// Why a window cannot be framed, in words (null: it can). (An always-on-top flag is no reason: many apps carry it.) Windows with a title bar of their own, and the ones that
+// draw their own (ChatGPT, Claude, VS Code…: no Windows title bar, but minimize and maximize boxes) are framed.
+export function whyNotFramed(info, { selfPid = process.pid, skip = new Set() } = {}) {
+  if (!info) return 'it is not there any more';
+  if (!info.visible || info.cloaked) return 'it is hidden';
+  if (info.owned) return 'it is a dialog that belongs to another window';
+  if (!info.title) return 'it has no title';
+  if (SHELL_CLASSES.has(info.cls)) return 'it is part of Windows itself';
+  if (info.pid === selfPid) return 'it is Scorpion';
+  if (skip.has(info.hwnd)) return 'it would not give up its title bar (an app running as administrator cannot be framed)';
+  if (info.ex & WS_EX_TOOLWINDOW) return 'it is a tool window';
+  const style = info.style >>> 0;
+  const caption = (style & WS_CAPTION) === WS_CAPTION;
+  const own = !caption && (style & (WS_MINIMIZEBOX | WS_MAXIMIZEBOX)) !== 0 && (info.iconic || (info.rect.right - info.rect.left >= 200 && info.rect.bottom - info.rect.top >= 120));
+  if (!caption && !own) return 'it is not a normal window (a pop-up or a full-screen window)';
+  return null;
 }
+export const frameable = (info, opts) => whyNotFramed(info, opts) === null;
+// Whether a window draws its own title bar (no Windows one): its own minimize, maximize and close buttons are inside it.
+export const drawsOwnTitleBar = (info) => (((info?.style ?? 0) >>> 0) & WS_CAPTION) !== WS_CAPTION;
 
 let deps = null; // { dataDir, panelToScreen(rect) -> physical rect, notify(views|null) }
 let panel = null; // the stage, physical pixels { x, y, w, h }
@@ -160,55 +203,77 @@ let focus = null; // the tile the user used last
 let timer = 0;
 let busy = false;
 const refused = new Set(); // windows that would not lose their title bar
+let lastWhy = ''; // why the last window asked for could not be framed
+export const lastReason = () => lastWhy;
 const released = new Set(); // popped out by the user: left as normal windows
 export const MAX_FRAMED = 6; // more stay ordinary windows
 
 export function initFrame(d) { deps = d; }
 const file = () => path.join(deps.dataDir, 'frame.json');
-const save = () => { try { if (tiles.size) fs.writeFileSync(file(), JSON.stringify([...tiles.values()].map(({ hwnd, pid, style, rect }) => ({ hwnd, pid, style, rect })))); else fs.rmSync(file(), { force: true }); } catch { /* best effort */ } };
+const save = () => { try { if (tiles.size) fs.writeFileSync(file(), JSON.stringify([...tiles.values()].map(({ hwnd, pid, style, rect, top }) => ({ hwnd, pid, style, rect, top })))); else fs.rmSync(file(), { force: true }); } catch { /* best effort */ } };
 const run = (script) => win.runPsKept(`${FRAME} ${script}`);
 const ptr = (hwnd) => `([IntPtr][long]${win.psQuote(hwnd)})`;
 const near = (a, b) => Math.abs(a - b) <= 3;
 const sameRect = (info, at) => near(info.rect.left, at.x) && near(info.rect.top, at.y) && near(info.rect.right - info.rect.left, at.w) && near(info.rect.bottom - info.rect.top, at.h);
 const UWP_FRAME = 'ApplicationFrameWindow'; // Store apps keep their own title bar with its three buttons
-const placeScript = (t) => (t.clip ? `[ScorpionFrame]::PlaceClipped(${ptr(t.hwnd)}, ${t.at.x}, ${t.at.y}, ${t.at.w}, ${t.at.h}, ${t.clip})` : `[ScorpionFrame]::Place(${ptr(t.hwnd)}, ${t.at.x}, ${t.at.y}, ${t.at.w}, ${t.at.h})`);
+// The trim (clipDip): 0 none; 1 the corner with the app's own minimize, maximize and close buttons; 32, 40, 48 the top strip, in points.
+// The window's size: its tile's, or its own smallest size when that is bigger (then only the tile's part shows).
+const winSize = (t) => ({ w: Math.max(t.at.w, t.min?.w || 0), h: Math.max(t.at.h, t.min?.h || 0) });
+const placeScript = (t) => { const s = winSize(t); return s.w > t.at.w || s.h > t.at.h ? `[ScorpionFrame]::PlaceFit(${ptr(t.hwnd)}, ${t.at.x}, ${t.at.y}, ${t.at.w}, ${t.at.h}, ${s.w}, ${s.h}, ${t.clip || 0}, ${t.clipDip === 1 ? Math.round(150 * (t.scale || 1)) : 0}, ${t.clipDip === 1 ? Math.round(36 * (t.scale || 1)) : 0})` : placeOne(t); };
+const placeOne = (t) => (t.clipDip === 1 ? `[ScorpionFrame]::PlaceNotched(${ptr(t.hwnd)}, ${t.at.x}, ${t.at.y}, ${t.at.w}, ${t.at.h}, ${Math.round(150 * (t.scale || 1))}, ${Math.round(36 * (t.scale || 1))})` : t.clip ? `[ScorpionFrame]::PlaceClipped(${ptr(t.hwnd)}, ${t.at.x}, ${t.at.y}, ${t.at.w}, ${t.at.h}, ${t.clip})` : `[ScorpionFrame]::Place(${ptr(t.hwnd)}, ${t.at.x}, ${t.at.y}, ${t.at.w}, ${t.at.h})`);
 // Where the window itself is when it sits in its tile (a clipped one starts above it).
-const expected = (t) => ({ x: t.at.x, y: t.at.y - (t.clip || 0), w: t.at.w, h: t.at.h + (t.clip || 0) });
+const expected = (t) => { const s = winSize(t); return { x: t.at.x, y: t.at.y - (t.clip || 0), w: s.w, h: s.h + (t.clip || 0) }; };
 
 // min: the least room its tile needs for the app to fit (physical pixels; its title bar, if clipped, is not counted).
-const views = () => [...tiles.values()].map((t) => ({ hwnd: t.hwnd, title: t.title, orig: t.rect, focus: t.hwnd === focus, min: t.min || null }));
+const views = () => [...tiles.values()].map((t) => ({ hwnd: t.hwnd, title: t.title, orig: t.rect, focus: t.hwnd === focus, min: t.min || null, clip: t.clipDip || 0 }));
 const view = () => (tiles.size ? views() : null);
 const tell = () => deps.notify(view());
 
 // Frame an app: its title bar and border off, on top, in a tile. Until the page says where its tile is,
 // it stays where it is. False: the app refused, or it is not an app window.
 async function frame(hwnd) {
-  const why = (m) => { if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', hwnd, m); return false; };
-  if (!panel) return why('no stage yet');
+  const why = (m) => { lastWhy = m; if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', hwnd, m); return false; };
+  lastWhy = '';
+  if (!panel) return why('the orb is not open');
   if (tiles.has(hwnd)) return true;
-  if (tiles.size >= MAX_FRAMED) return why('too many');
+  if (tiles.size >= MAX_FRAMED) return why(`the orb already has ${MAX_FRAMED} apps`);
   let info = parseInfo(await run(`[ScorpionFrame]::Info(${ptr(hwnd)})`));
-  if (!info || !frameable({ ...info, visible: true }, { skip: refused })) return why(`not an app window: ${JSON.stringify(info)}`);
+  const reason = whyNotFramed(info && { ...info, visible: true }, { skip: refused });
+  if (reason) return why(reason);
   // Its normal size and place are only known once it is neither minimized nor maximized.
   if (info.iconic || info.zoomed) {
     await run(`[ScorpionFrame]::Restore(${ptr(hwnd)})`);
     info = parseInfo(await run(`[ScorpionFrame]::Info(${ptr(hwnd)})`)) || info;
   }
   const r = info.rect;
+  // Measured before its title bar goes: a window with the one Windows draws starts its content about 32 points down; one that
+  // draws its own (Chromium apps keep the flag but draw their own, as ChatGPT and Claude do) starts it at the top.
+  const capPx = Number(await run(`[ScorpionFrame]::Caption(${ptr(hwnd)})`).catch(() => 0)) || 32;
+  const scale = capPx / 32;
+  const ncTop = Number(await run(`[ScorpionFrame]::NcTop(${ptr(hwnd)})`).catch(() => 99));
   const ok = (await run(`[ScorpionFrame]::Frame(${ptr(hwnd)}, ${r.left}, ${r.top}, ${r.right - r.left}, ${r.bottom - r.top})`)) === 'True';
   if (!ok) {
     // The app refused (often one running as administrator): give it back.
     refused.add(hwnd);
-    why('refused to lose its title bar');
-    await run(`[ScorpionFrame]::Release(${ptr(hwnd)}, ${info.style}, ${r.left}, ${r.top}, ${r.right - r.left}, ${r.bottom - r.top}, $false)`).catch(() => {});
+    why('it would not give up its title bar (an app running as administrator cannot be framed)');
+    await run(`[ScorpionFrame]::Release(${ptr(hwnd)}, ${info.style}, ${r.left}, ${r.top}, ${r.right - r.left}, ${r.bottom - r.top}, $false, $${info.ex & WS_EX_TOPMOST ? 'true' : 'false'})`).catch(() => {});
     return false;
   }
   released.delete(hwnd);
   // The title bar it keeps (Store apps) is cut off; the smallest size it allows is told to the page, so its tile is never too small.
-  const clip = info.cls === UWP_FRAME ? Number(await run(`[ScorpionFrame]::Caption(${ptr(hwnd)})`).catch(() => 0)) || 0 : 0;
+  // An app that draws its own title bar (Store apps, and ChatGPT, Claude… with no Windows one) has its own minimize, maximize
+  // and close buttons inside it: the top of the window, 32 (at 100%) or more points, is cut off, so only Scorpion's show.
+  // The cut can be made taller or shorter per app (the button in its title bar), and is remembered.
+  const store = info.cls === UWP_FRAME; // Store apps: the whole strip, with the title Windows draws for them
+  const own = store || drawsOwnTitleBar(info) || ncTop < 20 * scale;
+  const exe = String(await run(`(Get-Process -Id ${info.pid} -ErrorAction SilentlyContinue).Path`).catch(() => '')).trim().toLowerCase();
+  const saved = deps.clips?.()?.[exe];
+  const clipDip = [0, 1, 32, 40, 48].includes(saved) ? saved : store ? 32 : own ? 1 : 0;
+  const clip = clipDip >= 32 ? Math.round(clipDip * scale) : 0;
+  if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', hwnd, 'own title bar:', own, '| content starts', ncTop, 'px down | program:', exe, '| saved:', saved, '| trim:', clipDip, '| style 0x' + (info.style >>> 0).toString(16));
   const [mw, mh] = String(await run(`[ScorpionFrame]::MinSize(${ptr(hwnd)})`).catch(() => '0 0')).trim().split(' ').map(Number);
   const min = { w: Math.max(0, mw || 0), h: Math.max(0, (mh || 0) - clip) };
-  tiles.set(hwnd, { hwnd, title: info.title, pid: info.pid, style: info.style, rect: r, clip, min, at: { x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top } });
+  tiles.set(hwnd, { hwnd, title: info.title, pid: info.pid, style: info.style, top: Boolean(info.ex & WS_EX_TOPMOST), rect: r, clip, clipDip, scale, exe, rawMinH: mh || 0, min, at: { x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top } });
   focus = hwnd;
   save();
   tell();
@@ -223,7 +288,7 @@ async function release(hwnd, { minimize }) {
   if (focus === hwnd) focus = tiles.keys().next().value || null;
   save();
   const { left, top, right, bottom } = t.rect;
-  await run(`[ScorpionFrame]::Release(${ptr(hwnd)}, ${t.style}, ${left}, ${top}, ${right - left}, ${bottom - top}, $${minimize ? 'true' : 'false'})`).catch(() => {});
+  await run(`[ScorpionFrame]::Release(${ptr(hwnd)}, ${t.style}, ${left}, ${top}, ${right - left}, ${bottom - top}, $${minimize ? 'true' : 'false'}, $${t.top ? 'true' : 'false'})`).catch(() => {});
   tell();
 }
 const releaseAll = async ({ minimize }) => { for (const h of [...tiles.keys()]) await release(h, { minimize }); };
@@ -248,11 +313,12 @@ async function tick() {
       if (info.title !== t.title) { t.title = info.title; changed = true; }
       const want = expected(t);
       if (!sameRect(info, want)) {
+        if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', t.hwnd, 'moved by the app: it is at', JSON.stringify(info.rect), 'want', JSON.stringify(want));
         const w = info.rect.right - info.rect.left;
         const h = info.rect.bottom - info.rect.top - (t.clip || 0);
         // The window would not get as small as its tile: that is its smallest size. Told to the page, which makes the tile big enough.
         // Only once it has stayed bigger for a few checks (it may still be getting to its tile).
-        if (w > want.w + 3 || h > t.at.h + 3) {
+        if (w > want.w + 3 || h > want.h - (t.clip || 0) + 3) {
           t.over = (t.over || 0) + 1;
           if (t.over >= 3) {
             const next = { w: Math.max(t.min?.w || 0, w > want.w + 3 ? w : 0), h: Math.max(t.min?.h || 0, h > t.at.h + 3 ? h : 0) };
@@ -313,8 +379,21 @@ export async function setAway(away) {
 
 // hwnd: the tile a button belongs to. popout: its normal window; minimize: tucked away; close: closed (it
 // can still ask to save); focus: in front; minimizeAll: every app tucked away.
-export async function action(what, { hwnd = null } = {}) {
+export async function action(what, { hwnd = null, dip = 0 } = {}) {
   const h = hwnd ? String(hwnd) : focus;
+  if (what === 'clip') { // the trim of the app's own title bar: 0 none, 1 its caption buttons, 32 / 40 / 48 the top strip (points)
+    const t = tiles.get(h);
+    if (!t) return false;
+    const v = [0, 1, 32, 40, 48].includes(Number(dip)) ? Number(dip) : 0;
+    t.clipDip = v;
+    t.clip = v >= 32 ? Math.round(v * (t.scale || 1)) : 0;
+    t.min = { w: t.min?.w || 0, h: Math.max(0, (t.rawMinH || 0) - t.clip) };
+    if (!t.clip) await run(`[ScorpionFrame]::Unclip(${ptr(h)})`).catch(() => {});
+    await run(placeScript(t)).catch(() => {});
+    if (t.exe) deps.setClip?.(t.exe, v);
+    tell();
+    return true;
+  }
   if (what === 'minimizeAll') { await releaseAll({ minimize: true }); return true; }
   if (what === 'popout') { if (h) released.add(h); return release(h, { minimize: false }); }
   if (what === 'minimize') return release(h, { minimize: true });
@@ -414,7 +493,7 @@ export async function recover() {
     // Only the same window of the same program (window numbers get reused).
     const info = parseInfo(await run(`[ScorpionFrame]::Info(${ptr(c.hwnd)})`).catch(() => ''));
     if (!info || info.pid !== c.pid) continue;
-    tiles.set(String(c.hwnd), { hwnd: String(c.hwnd), title: info.title, pid: c.pid, style: c.style, rect: c.rect, at: c.rect });
+    tiles.set(String(c.hwnd), { hwnd: String(c.hwnd), title: info.title, pid: c.pid, style: c.style, top: Boolean(c.top), rect: c.rect, at: c.rect });
     await release(String(c.hwnd), { minimize: false });
   }
 }
