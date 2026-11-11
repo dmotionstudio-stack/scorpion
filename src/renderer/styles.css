@@ -320,7 +320,8 @@ html.glass-native .thread, html.glass-css .thread { color: color-mix(in srgb, va
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 .ix-scanlines { z-index: 11; opacity: .3; background: repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(0,0,0,.15) 2px, rgba(0,0,0,.15) 4px); }
 .ix-hud { position: absolute; z-index: 20; user-select: none; text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent); }
-.ix-title { top: 24px; left: 24px; font-size: 13px; letter-spacing: .35em; opacity: .75; pointer-events: none; }
+.ix-title { top: 24px; left: 24px; font-size: 13px; letter-spacing: .35em; opacity: .75; pointer-events: auto; cursor: grab; touch-action: none; user-select: none; z-index: 21; }
+.ix-title.dragging { cursor: grabbing; opacity: 1; }
 .ix-title::after { content: ""; display: block; margin-top: 6px; width: 120px; height: 1px; background: linear-gradient(90deg, var(--accent), transparent); }
 .ix-status { top: 58px; left: 24px; display: flex; align-items: center; gap: 10px; font-size: 12px; letter-spacing: .25em; }
 .ix-dim { opacity: .5; letter-spacing: .08em; }
@@ -1023,6 +1024,18 @@ body.ix-voice-only .ix-ask, body.ix-voice-only .ix-facecam, body.ix-voice-only .
 /* The taskbar inside the orb's screen (interact-taskbar.js): on any edge, thick or thin, hiding by itself */
 .ix-bottom .ix-row .ix-ask { flex: 1; min-width: 0; }
 .interact .ix-title, .interact .ix-status { margin-left: var(--itb-l, 0px); margin-top: var(--itb-t, 0px); }
+/* The title and the status line: top left, center or right, or hidden (Settings → General → Orb, or drag the title) */
+.interact.ix-title-center .ix-title, .interact.ix-title-center .ix-status { left: 50%; margin-left: calc((var(--itb-l, 0px) - var(--itb-r, 0px)) / 2); transform: translateX(-50%); text-align: center; }
+.interact.ix-title-center .ix-title::after { margin-left: auto; margin-right: auto; }
+.interact.ix-title-center .ix-status { justify-content: center; }
+.interact.ix-title-right .ix-title, .interact.ix-title-right .ix-status { left: auto; right: 24px; margin-left: 0; margin-right: var(--itb-r, 0px); text-align: right; }
+.interact.ix-title-right .ix-title::after { margin-left: auto; background: linear-gradient(270deg, var(--accent), transparent); }
+.interact.ix-title-right .ix-status { justify-content: flex-end; }
+.interact.ix-title-hidden .ix-title, .interact.ix-title-hidden .ix-status { display: none; }
+/* What is said, docked to the orb: inside its tile, below it or above it (orb-system.js dockCaptions) */
+.ix-captions.ix-captions-off { display: none; }
+.ix-captions.ix-captions-docked { display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 6px 14px; box-sizing: border-box; border-radius: 18px; }
+.ix-captions.ix-captions-docked.ix-captions-above { justify-content: flex-start; }
 .interact .ix-bottom { bottom: calc(26px + var(--itb-b, 0px)); left: calc(50% + (var(--itb-l, 0px) - var(--itb-r, 0px)) / 2); }
 .interact .ix-captions { bottom: calc(92px + var(--itb-b, 0px)); left: calc(50% + (var(--itb-l, 0px) - var(--itb-r, 0px)) / 2); }
 .ix-taskbar { position: absolute; z-index: 30; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 12px; color: #f1ece4;
@@ -1071,8 +1084,6 @@ body.ix-voice-only .ix-ask, body.ix-voice-only .ix-facecam, body.ix-voice-only .
 .itb-logo { width: 26px; height: 26px; }
 .itb-size-small .itb-logo { width: 21px; height: 21px; }
 .itb-size-large .itb-logo { width: 32px; height: 32px; }
-.itb-sum { width: 24px; height: 24px; stroke: var(--accent); stroke-width: 1.4; }
-.itb-core { fill: var(--accent); stroke: none; }
 .itb-fill { fill: currentColor; stroke: none; }
 .itb-battery-low { color: #ff6b6b; }
 .itb-win { max-width: 180px; min-width: 40px; }

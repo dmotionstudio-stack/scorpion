@@ -1347,7 +1347,8 @@ function interactOnChatEvent(ev) {
 function wireInteract() {
   $('#open-interact').onclick = openInteract;
   $('#ix-talk').onclick = () => (V.talk ? stopTalk() : startTalk());
-  // The orb's own switches live in Settings → General → Orb.
+  // The orb's own settings live in Settings → General → Orb.
+  for (const [id, key] of [['#orb-captions', 'orbCaptions'], ['#orb-title', 'orbTitle'], ['#orb-tiles', 'orbTiles']]) $(id).onchange = async (e) => { await setSetting({ [key]: e.target.value }); orbSys?.refreshShortcuts(); };
   $('#orb-hands').onchange = (e) => toggleHands(e.target.checked);
   const viewControl = (what) => () => { if (IX.orb) IX.orb[what]?.(); else toast('Open the orb first: the view applies to the orb on its screen.'); };
   $('#orb-zoom-in').onclick = viewControl('zoomIn');
@@ -1777,6 +1778,9 @@ function renderSettings() {
   $('#online-mode').checked = Boolean(S.settings.online);
   $('#unrestricted-mode').checked = S.settings.unrestricted === true;
   $('#orb-voice-only').checked = S.settings.orbVoiceOnly !== false;
+  $('#orb-captions').value = S.settings.orbCaptions || 'below';
+  $('#orb-title').value = S.settings.orbTitle || 'left';
+  $('#orb-tiles').value = S.settings.orbTiles || 'auto';
   renderOnlineBadge();
   const full = S.settings.fileAccess === 'full';
   $('#file-access').value = full ? 'full' : 'ask';
@@ -2084,6 +2088,8 @@ function wire() {
     if (view === 'settings' && section === 'system') { const go = () => { showGeneralSection('system'); setView('settings'); systemSettings?.show(); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
     // The taskbar clock's "Set the date and time…": Settings → General → System → Date and time.
     if (view === 'settings' && section === 'clock') { const go = () => { showGeneralSection('system'); setView('settings'); clockUi?.show(); requestAnimationFrame(() => $('#clock-field')?.scrollIntoView({ block: 'start' })); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
+    // The taskbar's Orb settings.
+    if (view === 'settings' && section === 'orb') { const go = () => { showGeneralSection('orb'); setView('settings'); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
     // The intent wheel's Talk: the orb, listening.
     if (view === 'orb' && talk) {
       const ready = () => { if (!S.voice?.installed) $('#ix-input').focus(); else if (!V.talk) startTalk(); };

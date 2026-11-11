@@ -35,6 +35,7 @@ async function applySettings(settings) {
   for (const e of ['bottom', 'top', 'left', 'right']) b.toggle(`at-${e}`, e === edge);
   for (const [k, el] of [['network', '#tb-net'], ['volume', '#tb-volume'], ['clock', '#tb-clock'], ['notifications', '[data-glance="notifications"]'], ['mail', '[data-glance="mail"]'], ['chat', '[data-glance="chat"]']]) $(el).hidden = look.show[k] === false;
   $('#tb-battery').dataset.off = look.show.battery === false ? '1' : '';
+  showDrives(lastDrives);
   refreshTray();
   pinned = await api.shellPinned().catch(() => pinned);
   render();
@@ -103,7 +104,8 @@ $('#tb-clock').addEventListener('click', () => api.shellMenu({ kind: 'clock' }))
 $('#tb-tray').addEventListener('click', () => api.shellMenu({ kind: 'tray' }));
 $('#tb-drives').addEventListener('click', () => api.shellMenu({ kind: 'drives' }));
 // USB sticks and external drives: the icon is there while one is plugged in (checked every so often, and when one is ejected).
-const showDrives = (list) => { const n = Array.isArray(list) ? list.length : 0; $('#tb-drives').hidden = !n; $('#tb-drives').title = n ? `${n} USB or external drive${n === 1 ? '' : 's'}: click to open or eject` : 'USB and external drives'; };
+let lastDrives = [];
+const showDrives = (list) => { lastDrives = Array.isArray(list) ? list : []; const n = lastDrives.length; $('#tb-drives').hidden = !n || look.show.drives === false; $('#tb-drives').title = n ? `${n} USB or external drive${n === 1 ? '' : 's'}: click to open or eject` : 'USB and external drives'; };
 const pollDrives = () => api.shellDrives?.().then(showDrives).catch(() => {});
 api.onDrivesChanged?.(showDrives);
 pollDrives();

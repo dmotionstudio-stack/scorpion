@@ -14,7 +14,7 @@ import { parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from '.
 import { intentsFor, matchSpoken } from '/shared/intents.js';
 import { PLATFORM } from './palette.js';
 import { ringLook, siteUrl } from './orb-bubbles.js';
-import { arrange, ensureWeights, resizeWeights, insertApp, removeApp, moveItem, swapItems, cellAt, sideOfRect, GAP } from '/shared/tiles.js';
+import { arrange, ensureWeights, resizeWeights, insertApp, removeApp, moveItem, swapItems, cellAt, sideOfRect, modeOf, MODES, GAP } from '/shared/tiles.js';
 
 // The least a tile may be dragged down to (CSS pixels): app windows have a smallest size of their own.
 const MIN_TILE_W = 280;
@@ -114,6 +114,31 @@ export function initOrbSystem(ctx) {
     if (!ok) await api.shellWindow({ hwnd, action: 'focus' }).catch((err) => toast(errText(err)));
   }
 
+  // ---------- the title ----------
+  // S.C.O.R.P.I.O.N. and the status line sit at the top left, center or right (Settings → General → Orb), or are hidden;
+  // drag the title sideways to move it.
+  function applyOrbLook() {
+    const pos = ['left', 'center', 'right', 'hidden'].includes(S.settings.orbTitle) ? S.settings.orbTitle : 'left';
+    const el = $('#interact');
+    for (const p of ['left', 'center', 'right', 'hidden']) el.classList.toggle(`ix-title-${p}`, p === pos);
+  }
+  function wireTitle() {
+    const title = $('#interact .ix-title');
+    if (!title) return;
+    let drag = null;
+    title.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; drag = { x: e.clientX, moved: false }; title.setPointerCapture(e.pointerId); });
+    title.addEventListener('pointermove', (e) => { if (drag && Math.abs(e.clientX - drag.x) > 6) { drag.moved = true; title.classList.add('dragging'); } });
+    title.addEventListener('pointerup', (e) => {
+      const d = drag;
+      drag = null;
+      title.classList.remove('dragging');
+      if (!d?.moved) return;
+      const share = e.clientX / (window.innerWidth || 1);
+      const pos = share < 0.33 ? 'left' : share < 0.66 ? 'center' : 'right';
+      api.updateSettings({ orbTitle: pos }).then((s) => { S.settings = s; applyOrbLook(); document.dispatchEvent(new Event('settings-saved')); }).catch(() => {});
+    });
+  }
+
   // ---------- apps as tiles ----------
   // Every app that opens inside the orb gets a tile (shared/tiles.js); the orb keeps a tile of its own,
   // always there. An app that opened on the left of the screen goes left, one on the right goes right, so
@@ -145,7 +170,7 @@ export function initOrbSystem(ctx) {
     const arrows = '<button type="button" class="ix-btn" data-act="left" title="Move this tile left">◀</button><button type="button" class="ix-btn" data-act="right" title="Move this tile right">▶</button>';
     const pageTile = `<div class="ix-tile-head"><span class="ix-tile-title">Scorpion</span><span class="ix-gap"></span>${arrows}<button type="button" class="ix-btn" data-act="closepage" title="Close this page: the orb stays">✕</button></div><div class="ix-page-body" id="ix-page-body"></div>`;
     el.innerHTML = id === 'scorpion' ? pageTile : id === 'orb'
-      ? `<div class="ix-tile-head"><span class="ix-tile-title">Scorpion</span><span class="ix-gap"></span>${arrows}</div>`
+      ? `<div class="ix-tile-head"><span class="ix-tile-title">Scorpion</span><span class="ix-gap"></span><button type="button" class="ix-btn" data-act="layout" title="How the tiles are laid out: automatic, side by side, one above the other, or a grid">▦</button>${arrows}</div>`
       : `<div class="ix-tile-head"><img class="ix-tile-icon" alt="" hidden><span class="ix-tile-title"></span><span class="ix-gap"></span>${arrows}<button type="button" class="ix-btn" data-act="min" title="Tuck this app away (it stays open, minimized)">–</button><button type="button" class="ix-btn" data-act="pop" title="Give this app its normal window">⧉</button><button type="button" class="ix-btn" data-act="close" title="Close the app (it can still ask to save your work)">✕</button></div>`;
     $('#ix-tiles').appendChild(el);
     O.tiles.els.set(id, el);
@@ -165,12 +190,36 @@ export function initOrbSystem(ctx) {
   }
   const place = (el, r) => { el.style.left = `${r.x}px`; el.style.top = `${r.y}px`; el.style.width = `${r.w}px`; el.style.height = `${r.h}px`; };
 
+  // The least each tile needs: the orb and Scorpion's page a sensible size, an app what its window allows (CSS pixels).
+  function tileMins() {
+    const out = { orb: { w: 220, h: 200 }, scorpion: { w: 420, h: 300 } };
+    for (const [id, a] of O.tiles.apps) if (a.min) out[id] = a.min;
+    return out;
+  }
+  // What is said and answered shows with the orb: below it, or above it (Settings → General → Orb), or not at all. On the
+  // orb's screen alone it goes at the bottom or the top of the stage. Returns the part of the orb's tile left for the orb.
+  function dockCaptions(region, apps) {
+    const caps = $('#ix-captions');
+    const where = ['below', 'above', 'hidden'].includes(S.settings.orbCaptions) ? S.settings.orbCaptions : 'below';
+    caps.classList.toggle('ix-captions-off', where === 'hidden');
+    caps.classList.toggle('ix-captions-docked', where !== 'hidden');
+    caps.classList.toggle('ix-captions-above', where === 'above');
+    if (where === 'hidden') { caps.removeAttribute('style'); return region; }
+    const capH = Math.round(region.h < 200 ? region.h * 0.5 : Math.max(96, Math.min(220, region.h * 0.4)));
+    const w = apps ? Math.max(120, region.w - 16) : Math.min(760, region.w);
+    Object.assign(caps.style, {
+      left: `${Math.round(region.x + (region.w - w) / 2)}px`,
+      top: `${Math.round(where === 'below' ? region.y + region.h - capH : region.y)}px`,
+      width: `${w}px`, height: `${capH}px`, bottom: 'auto', transform: 'none',
+    });
+    if (!apps) return region; // the orb fills the screen; the words lie over its edge
+    return { x: region.x, w: region.w, h: region.h - capH, y: where === 'below' ? region.y : region.y + capH };
+  }
   // Work out where everything goes, draw the frames, put the windows there and the orb in its tile.
   function relayout() {
     if (!IX.open) return;
     const T = O.tiles;
-    T.weights = ensureWeights(T.weights, T.items);
-    const L = arrange(T.items, stageRect(), T.weights);
+    const L = arrange(T.items, stageRect(), T.weights, { mode: modeOf(S.settings.orbTiles), mins: tileMins() });
     T.layout = L;
     T.weights = L.weights;
     const keep = new Set();
@@ -194,7 +243,9 @@ export function initOrbSystem(ctx) {
     // The orb in its tile, or the whole view when it is alone.
     const orb = L.cells.find((c) => c.id === 'orb');
     const apps = T.items.length > 1;
-    IX.orb?.setTile(apps ? { cx: orb.body.x + orb.body.w / 2, cy: orb.body.y + orb.body.h / 2, w: orb.body.w, h: orb.body.h } : null);
+    const body = dockCaptions(apps ? orb.body : stageRect(), apps);
+    IX.orb?.setTile(apps ? { cx: body.x + body.w / 2, cy: body.y + body.h / 2, w: body.w, h: body.h } : null);
+    applyOrbLook();
     $('#ix-tiles').classList.toggle('hidden', !apps);
     $('#interact').classList.toggle('ix-framed', apps);
     // The windows go to their tiles (the newest layout wins in the main process).
@@ -215,7 +266,8 @@ export function initOrbSystem(ctx) {
     for (const a of list) {
       const id = String(a.hwnd);
       if (!items.includes(id)) items = insertApp(items, id, a.orig ? sideOfRect(a.orig, screen.width * (window.devicePixelRatio || 1)) : 'right');
-      T.apps.set(id, { title: a.title, icon: O.windows.find((w) => w.hwnd === id)?.icon || T.apps.get(id)?.icon });
+      const dpr = window.devicePixelRatio || 1;
+      T.apps.set(id, { title: a.title, icon: O.windows.find((w) => w.hwnd === id)?.icon || T.apps.get(id)?.icon, min: a.min ? { w: Math.ceil(a.min.w / dpr), h: Math.ceil(a.min.h / dpr) } : null });
       if (a.focus) { T.focus = id; O.lastFocused = id; }
     }
     for (const id of [...T.apps.keys()]) if (!now.has(id)) T.apps.delete(id);
@@ -235,6 +287,10 @@ export function initOrbSystem(ctx) {
       const T = O.tiles;
       if (b.dataset.act === 'left' || b.dataset.act === 'right') { T.items = moveItem(T.items, id, b.dataset.act === 'left' ? -1 : 1); relayout(); }
       else if (b.dataset.act === 'closepage') hidePage();
+      else if (b.dataset.act === 'layout') {
+        const next = MODES[(MODES.indexOf(modeOf(S.settings.orbTiles)) + 1) % MODES.length];
+        api.updateSettings({ orbTiles: next }).then((s) => { S.settings = s; caption(`Tiles: ${{ auto: 'automatic', columns: 'side by side', rows: 'one above the other', grid: 'a grid' }[next]}`); relayout(); }).catch(() => {});
+      }
       else appAction({ min: 'minimize', pop: 'popout', close: 'close' }[b.dataset.act], id);
     });
     let drag = null;
@@ -263,7 +319,9 @@ export function initOrbSystem(ctx) {
       const T = O.tiles;
       if (drag.kind === 'div') {
         const now = drag.axis === 'col' ? e.clientX : e.clientY;
-        T.weights = resizeWeights(drag.weights, drag.axis, drag.index, now - drag.from, drag.total, drag.axis === 'col' ? MIN_TILE_W : MIN_TILE_H);
+        const floor = drag.axis === 'col' ? MIN_TILE_W : MIN_TILE_H;
+        const mins = drag.axis === 'col' ? T.layout.colMin : T.layout.rowMin;
+        T.weights = resizeWeights(drag.weights, drag.axis, drag.index, now - drag.from, drag.total, (i) => Math.max(floor, mins[i] || 0));
         relayout();
       } else {
         const over = cellAt(T.layout.cells, e.clientX, e.clientY);
@@ -739,6 +797,7 @@ export function initOrbSystem(ctx) {
   $('#ix-guide-btn').onclick = () => toggleGuide();
   $('#ix-guide-close').onclick = () => toggleGuide(false);
   wireTiles();
+  wireTitle();
   api.onFrameChanged?.(onFrameChanged);
   window.addEventListener('resize', () => { clearTimeout(O.resizeTimer); O.resizeTimer = setTimeout(sendPanel, 200); });
   $('#ix-approval-no').onclick = () => answer(false);
@@ -759,7 +818,7 @@ export function initOrbSystem(ctx) {
     closePage: hidePage,
     get pageOpen() { return pageOpen(); },
     // Settings changed (the orb's bubbles among them): the rings follow.
-    refreshShortcuts: () => { if (IX.open) showShortcuts(); },
+    refreshShortcuts: () => { if (IX.open) { showShortcuts(); relayout(); } },
     applyVoiceOnly,
     get voiceOnly() { return voiceOnly(); },
     get paused() { return Boolean(O.handsPaused); },

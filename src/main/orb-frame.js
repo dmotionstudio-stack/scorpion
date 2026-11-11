@@ -33,6 +33,10 @@ public static class ScorpionFrame {
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out int v, int s);
+  [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr h, IntPtr rgn, bool redraw);
+  [DllImport("gdi32.dll")] static extern IntPtr CreateRectRgn(int l, int t, int r, int b);
   [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr c);
   // Physical pixels, whatever this PowerShell's own DPI setting is.
   static void Dpi() { try { SetThreadDpiAwarenessContext(new IntPtr(-4)); } catch { } }
@@ -49,6 +53,18 @@ public static class ScorpionFrame {
       + "\\t" + r.L + " " + r.T + " " + r.R + " " + r.B + "\\t" + t;
   }
   public static string Fg() { return Info(GetForegroundWindow()); }
+  // The smallest size the app lets its window be (WM_GETMINMAXINFO), in physical pixels: "w h".
+  public static string MinSize(IntPtr h) {
+    Dpi();
+    IntPtr p = Marshal.AllocHGlobal(40);
+    try {
+      for (int i = 0; i < 40; i += 4) Marshal.WriteInt32(p, i, 0);
+      SendMessage(h, 0x24, IntPtr.Zero, p);
+      return Marshal.ReadInt32(p, 24) + " " + Marshal.ReadInt32(p, 28);
+    } catch { return "0 0"; } finally { Marshal.FreeHGlobal(p); }
+  }
+  // The height of the title bar that apps like Calculator draw themselves (32 at 100%).
+  public static int Caption(IntPtr h) { Dpi(); uint d = GetDpiForWindow(h); if (d == 0) d = 96; return (int)Math.Round(32.0 * d / 96.0); }
   // Title bar and border off, on top, in the panel. False: the app refused.
   public static bool Frame(IntPtr h, int x, int y, int w, int hh) {
     Dpi();
@@ -64,10 +80,18 @@ public static class ScorpionFrame {
   }
   public static void Restore(IntPtr h) { Dpi(); ShowWindow(h, 9); }
   public static void Place(IntPtr h, int x, int y, int w, int hh) { Dpi(); SetWindowPos(h, new IntPtr(-1), x, y, w, hh, 0x0010 | 0x0040); }
+  // An app that keeps its own title bar and its own minimize, maximize and close buttons: the window goes up
+  // by that much and its top is cut off, so only what is under the title bar shows in the tile.
+  public static void PlaceClipped(IntPtr h, int x, int y, int w, int hh, int clip) {
+    Dpi();
+    SetWindowPos(h, new IntPtr(-1), x, y - clip, w, hh + clip, 0x0010 | 0x0040);
+    SetWindowRgn(h, CreateRectRgn(0, clip, w, hh + clip), true);
+  }
   // The normal window back: its own style, size and place, not on top.
   public static void Release(IntPtr h, int style, int x, int y, int w, int hh, bool minimize) {
     Dpi();
     if (!IsWindow(h)) return;
+    SetWindowRgn(h, IntPtr.Zero, true);
     SetWindowLong(h, -16, style);
     SetWindowPos(h, new IntPtr(-2), x, y, w, hh, 0x0020 | 0x0010);
     if (minimize) ShowWindow(h, 6);
@@ -146,9 +170,13 @@ const run = (script) => win.runPsKept(`${FRAME} ${script}`);
 const ptr = (hwnd) => `([IntPtr][long]${win.psQuote(hwnd)})`;
 const near = (a, b) => Math.abs(a - b) <= 3;
 const sameRect = (info, at) => near(info.rect.left, at.x) && near(info.rect.top, at.y) && near(info.rect.right - info.rect.left, at.w) && near(info.rect.bottom - info.rect.top, at.h);
-const placeScript = (t) => `[ScorpionFrame]::Place(${ptr(t.hwnd)}, ${t.at.x}, ${t.at.y}, ${t.at.w}, ${t.at.h})`;
+const UWP_FRAME = 'ApplicationFrameWindow'; // Store apps keep their own title bar with its three buttons
+const placeScript = (t) => (t.clip ? `[ScorpionFrame]::PlaceClipped(${ptr(t.hwnd)}, ${t.at.x}, ${t.at.y}, ${t.at.w}, ${t.at.h}, ${t.clip})` : `[ScorpionFrame]::Place(${ptr(t.hwnd)}, ${t.at.x}, ${t.at.y}, ${t.at.w}, ${t.at.h})`);
+// Where the window itself is when it sits in its tile (a clipped one starts above it).
+const expected = (t) => ({ x: t.at.x, y: t.at.y - (t.clip || 0), w: t.at.w, h: t.at.h + (t.clip || 0) });
 
-const views = () => [...tiles.values()].map((t) => ({ hwnd: t.hwnd, title: t.title, orig: t.rect, focus: t.hwnd === focus }));
+// min: the least room its tile needs for the app to fit (physical pixels; its title bar, if clipped, is not counted).
+const views = () => [...tiles.values()].map((t) => ({ hwnd: t.hwnd, title: t.title, orig: t.rect, focus: t.hwnd === focus, min: t.min || null }));
 const view = () => (tiles.size ? views() : null);
 const tell = () => deps.notify(view());
 
@@ -176,7 +204,11 @@ async function frame(hwnd) {
     return false;
   }
   released.delete(hwnd);
-  tiles.set(hwnd, { hwnd, title: info.title, pid: info.pid, style: info.style, rect: r, at: { x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top } });
+  // The title bar it keeps (Store apps) is cut off; the smallest size it allows is told to the page, so its tile is never too small.
+  const clip = info.cls === UWP_FRAME ? Number(await run(`[ScorpionFrame]::Caption(${ptr(hwnd)})`).catch(() => 0)) || 0 : 0;
+  const [mw, mh] = String(await run(`[ScorpionFrame]::MinSize(${ptr(hwnd)})`).catch(() => '0 0')).trim().split(' ').map(Number);
+  const min = { w: Math.max(0, mw || 0), h: Math.max(0, (mh || 0) - clip) };
+  tiles.set(hwnd, { hwnd, title: info.title, pid: info.pid, style: info.style, rect: r, clip, min, at: { x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top } });
   focus = hwnd;
   save();
   tell();
@@ -214,7 +246,21 @@ async function tick() {
       if (!info || !info.visible) { if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', t.hwnd, 'gone:', JSON.stringify(info)); tiles.delete(t.hwnd); changed = true; continue; } // closed
       if (info.iconic) { if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', t.hwnd, 'minimized'); await release(t.hwnd, { minimize: true }); continue; } // minimized from elsewhere
       if (info.title !== t.title) { t.title = info.title; changed = true; }
-      if (!sameRect(info, t.at)) await run(placeScript(t));
+      const want = expected(t);
+      if (!sameRect(info, want)) {
+        const w = info.rect.right - info.rect.left;
+        const h = info.rect.bottom - info.rect.top - (t.clip || 0);
+        // The window would not get as small as its tile: that is its smallest size. Told to the page, which makes the tile big enough.
+        // Only once it has stayed bigger for a few checks (it may still be getting to its tile).
+        if (w > want.w + 3 || h > t.at.h + 3) {
+          t.over = (t.over || 0) + 1;
+          if (t.over >= 3) {
+            const next = { w: Math.max(t.min?.w || 0, w > want.w + 3 ? w : 0), h: Math.max(t.min?.h || 0, h > t.at.h + 3 ? h : 0) };
+            if (!t.min || next.w !== t.min.w || next.h !== t.min.h) { t.min = next; changed = true; }
+          }
+        } else t.over = 0;
+        await run(placeScript(t));
+      }
     }
     if (changed) { if (!tiles.has(focus)) focus = tiles.keys().next().value || null; save(); tell(); }
   } catch { /* PowerShell busy or restarting: next tick */ } finally {

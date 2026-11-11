@@ -1516,7 +1516,7 @@ function registerSummon(accel) {
 // 'orbit' (the edge rail with its summon button and the intent wheel) or 'bar'.
 function taskbarSettings() {
   const t = store.getSettings().taskbar || {};
-  return { pinned: [], groups: [], combine: true, groupTray: false, labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(t.show || {}) } };
+  return { pinned: [], groups: [], combine: true, groupTray: false, labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(t.show || {}) } };
 }
 function setTaskbarLook(t) {
   // Groups hold only apps that are still pinned.
@@ -2008,7 +2008,7 @@ function registerIpc() {
       desktop.refreshRail();
       sendTaskbarInset();
     }
-    if (['taskbar', 'railAway', 'appsFull', 'wheel', 'orbBubbles'].some((k) => k in patch)) send('settings:changed', next);
+    if (['taskbar', 'railAway', 'appsFull', 'wheel', 'orbBubbles', 'orbTiles', 'orbCaptions', 'orbTitle'].some((k) => k in patch)) send('settings:changed', next);
     if ('appsFull' in patch) watchWindows();
     return next;
   });
@@ -2413,7 +2413,9 @@ function registerIpc() {
         ...(shown('mail') ? [item('Mail', glance('mail'))] : []),
         ...(shown('chat') ? [item('Chat with Scorpion', glance('chat'))] : []),
         ...(shown('volume') ? [item('Sound: mute or unmute', () => handlers['shell:volume']('mute'))] : []),
-        ...(list.length ? [{ type: 'separator' }, { label: 'USB and external drives', enabled: false }, ...driveItems(list)] : [])];
+        // every icon that went into the dropdown, USB drives included (even when none is plugged in)
+        ...(shown('drives') ? [{ type: 'separator' }, { label: 'USB and external drives', enabled: false }, ...(list.length ? driveItems(list) : [{ label: 'None connected', enabled: false }])] : []),
+        ...(shown('settings') ? [{ type: 'separator' }, item('Orb settings', () => showView('settings', { section: 'orb' }))] : [])];
     } else if (kind === 'group') {
       // A group's dropdown: its apps (one that's open comes to the front), then the group itself.
       const t = taskbarSettings();
@@ -2457,7 +2459,7 @@ function registerIpc() {
       // Customizing the taskbar (right-click on an empty part of it).
       const t = taskbarSettings();
       const set = (patch) => setTaskbarLook({ ...t, ...patch });
-      const show = (k) => ({ label: { network: 'Network', battery: 'Battery', volume: 'Volume', clock: 'Clock', notifications: 'Notifications', mail: 'Mail', chat: 'Chat with Scorpion' }[k], type: 'checkbox', checked: t.show[k] !== false, click: () => set({ show: { ...t.show, [k]: t.show[k] === false } }) });
+      const show = (k) => ({ label: { network: 'Network', battery: 'Battery', volume: 'Volume', clock: 'Clock', notifications: 'Notifications', mail: 'Mail', chat: 'Chat with Scorpion', drives: 'USB and external drives', settings: 'Orb settings button' }[k], type: 'checkbox', checked: t.show[k] !== false, click: () => set({ show: { ...t.show, [k]: t.show[k] === false } }) });
       const autoHide = { label: 'Hide automatically', type: 'checkbox', checked: t.autoHide === true, click: () => set({ autoHide: t.autoHide !== true }) };
       const edges = [['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']];
       const here = desktop.railEdge();
@@ -2471,7 +2473,7 @@ function registerIpc() {
         { label: "Combine an app's windows", type: 'checkbox', checked: t.combine !== false, click: () => set({ combine: t.combine === false }) },
         { label: 'Size', submenu: ['small', 'normal', 'large'].map((v) => ({ label: v[0].toUpperCase() + v.slice(1), type: 'radio', checked: t.size === v, click: () => set({ size: v }) })) },
         { label: 'Look', submenu: [['holo', 'Holographic'], ['neon', 'Neon'], ['glass', 'Glass'], ['solid', 'Solid']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.style === v, click: () => set({ style: v }) })) },
-        { label: 'Show', submenu: ['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume'].map(show) },
+        { label: 'Show', submenu: ['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume', 'drives', 'settings'].map(show) },
         { type: 'separator' },
         { label: 'Desktop background', submenu: backgroundMenu(item) },
         item('Add or remove apps…', () => showView('apps')),

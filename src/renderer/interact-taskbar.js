@@ -25,7 +25,6 @@ const ICON = {
   volume: ico('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a9 9 0 0 1 0 12"/>'),
   power: ico('<path d="M12 3v9"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/>'),
   settings: ico('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>'),
-  summon: '<svg class="itb-sum" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.2" fill="none"/><circle cx="12" cy="12" r="6.4" fill="none" opacity=".6"/><circle class="itb-core" cx="12" cy="12" r="2.8"/></svg>',
   logo: '<svg class="itb-logo" viewBox="0 0 100 100" aria-hidden="true"><g transform="rotate(-45 50 53) translate(50 53) scale(1.18) translate(-50 -53)"><polygon points="43.7,47 38.5,36.6 50,10 61.5,36.6 56.3,47" fill="var(--accent)"/><rect x="46.4" y="46" width="7.2" height="34" fill="var(--accent-2, var(--accent))"/><circle cx="50" cy="86.5" r="5.9" fill="none" stroke="var(--accent)" stroke-width="3.4"/></g></svg>',
 };
 
@@ -58,7 +57,6 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
     <div class="itb-grip" id="itb-grip" title="Drag to make the taskbar thicker or thinner" aria-hidden="true"></div>
     <div class="itb-start">
       <button class="itb-btn" id="itb-home" title="Scorpion: Home">${ICON.logo}</button>
-      <button class="itb-btn" id="itb-summon" title="The intent wheel (Win+Shift+Space)">${ICON.summon}</button>
       <button class="itb-btn" id="itb-apps" title="Apps">${ICON.apps}</button>
       <button class="itb-btn" id="itb-files" title="Files">${ICON.files}</button>
     </div>
@@ -73,7 +71,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
       <button class="itb-btn itb-item" data-glance="chat" title="Chat with Scorpion">${ICON.chat}</button>
       <button class="itb-btn itb-item" id="itb-volume" title="Volume: click to mute, scroll to change">${ICON.volume}</button>
       <button class="itb-btn itb-clock" id="itb-clock" title="Calendar"><span id="itb-time"></span><span id="itb-date"></span></button>
-      <button class="itb-btn" id="itb-settings" title="Settings (the orb's are under General → Orb)">${ICON.settings}</button>
+      <button class="itb-btn" id="itb-settings" title="Orb settings (General → Orb)">${ICON.settings}</button>
       <button class="itb-btn" id="itb-power" title="Power">${ICON.power}</button>
     </div>`;
   const snap = document.createElement('div');
@@ -105,7 +103,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
 
   function apply(settings) {
     const s = settings || S.settings || {};
-    look = { labels: true, size: 'normal', style: 'holo', layout: 'orbit', ...(s.taskbar || {}), show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(s.taskbar?.show || {}) } };
+    look = { labels: true, size: 'normal', style: 'holo', layout: 'orbit', ...(s.taskbar || {}), show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(s.taskbar?.show || {}) } };
     const edge = edgeOf(look);
     for (const c of [...root.classList]) if (/^itb-(at|style|size)-/.test(c)) root.classList.remove(c);
     root.classList.add(`itb-at-${edge}`, `itb-style-${['holo', 'neon', 'glass', 'solid'].includes(look.style) ? look.style : 'holo'}`, `itb-size-${['small', 'normal', 'large'].includes(look.size) ? look.size : 'normal'}`);
@@ -117,6 +115,8 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
     q('#itb-tray').hidden = look.groupTray !== true;
     for (const [k, el] of [['network', '#itb-net'], ['volume', '#itb-volume'], ['clock', '#itb-clock'], ['notifications', '[data-glance="notifications"]'], ['mail', '[data-glance="mail"]'], ['chat', '[data-glance="chat"]']]) q(el).hidden = look.show[k] === false;
     q('#itb-battery').dataset.off = look.show.battery === false ? '1' : '';
+    q('#itb-settings').hidden = look.show.settings === false; // the Orb settings button
+    showDrives(lastDrives);
     place();
   }
   // Its thickness and the room it keeps, as CSS the orb's screen reads (the stage, the typing row, the captions).
@@ -166,7 +166,8 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
       q('#itb-battery').classList.toggle('itb-battery-low', t.battery <= 15 && !t.charging);
     }
   }
-  const showDrives = (list) => { const n = Array.isArray(list) ? list.length : 0; q('#itb-drives').hidden = !n; q('#itb-drives').title = n ? `${n} USB or external drive${n === 1 ? '' : 's'}: click to open or eject` : 'USB and external drives'; };
+  let lastDrives = [];
+  const showDrives = (list) => { lastDrives = Array.isArray(list) ? list : []; const n = lastDrives.length; q('#itb-drives').hidden = !n || look.show.drives === false; q('#itb-drives').title = n ? `${n} USB or external drive${n === 1 ? '' : 's'}: click to open or eject` : 'USB and external drives'; };
   function clock() {
     const now = new Date();
     q('#itb-time').textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\s*[AaPp]\.?[Mm]\.?$/, '');
@@ -176,7 +177,6 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
   // The buttons. A menu from the bar keeps it showing a little while (it hides by itself otherwise).
   const hold = (ms = 5000) => { holdUntil = Date.now() + ms; };
   q('#itb-home').onclick = () => go.home();
-  q('#itb-summon').onclick = () => api.shellWheel({ open: true, centre: true });
   q('#itb-apps').onclick = () => go.apps();
   q('#itb-files').onclick = () => go.files();
   q('#itb-settings').onclick = () => go.settings();

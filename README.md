@@ -77,8 +77,10 @@ internet connection to chat.
   to face (Interact in the sidebar, or Ctrl+I). The orb shows what Scorpion is
   doing (standby, listening, thinking, speaking) and pulses with your voice and its
   own. Captions show what you said and the reply. Drag to spin, scroll to zoom,
-  Space to talk or interrupt, Esc to leave. The screen is just the orb, a typing
-  box with Talk, and Scorpion's own taskbar (see below). The orb is always on it:
+  Space to talk or interrupt, Esc to leave. The screen is just the orb, its
+  conversation text (docked to the orb's tile, below or above it, or hidden: Settings → General →
+  Orb), a typing box with Talk, and Scorpion's own taskbar (see below). The title
+  (S.C.O.R.P.I.O.N.) can be at the top left, center or right, or hidden: drag it, or choose in Settings. The orb is always on it:
   Scorpion's own pages (Home, the chat, Settings…) open as a tile beside the orb, like
   an app, so you never leave it (the tile's ✕, or Esc, closes the page and the orb has
   the whole screen again); the
@@ -231,14 +233,15 @@ internet connection to chat.
   time section: automatic from the internet or set by hand.
 - **The orb as the system**: in Interact (and as the desktop) there is nothing around the
   orb but its taskbar: Scorpion's own, with everything the Windows desktop one has. Scorpion
-  (back to Scorpion), the intent wheel, Apps and Files, your pinned apps and every open
+  (Home), Apps and Files, your pinned apps and every open
   window (an app's windows under one icon, groups, right-click menus; a click puts the
   window in a tile of the orb), then USB drives, network, battery, notifications, mail,
-  chat, volume, the clock, Settings and power. It is customized as before (right-click an
+  chat, volume, the clock, the Orb settings button and power. It is customized as before (right-click an
   empty part: layout, position, hiding, names, centered, size, look, what shows): it can be
   on any edge (the edge rail down the right by default, or a bar), **drag an empty part of
   it to another edge** to move it, **drag its inner edge** to make it thicker or thinner,
-  and it can **hide by itself** until the pointer reaches its edge. It is hidden when
+  and it can **hide by itself** until the pointer reaches its edge. Its **Show** menu can also hide
+  the USB drives icon and the Orb settings button; the grouped status dropdown lists every icon in it. It is hidden when
   Scorpion's own taskbar window is already on the screen, so there are never two. Say a place or a window ("files",
   "switch to Outlook") or use the taskbar; with Gestures on, sweep your hand sideways to
   switch windows; say "back" or push your open hand toward the screen to put the front app
@@ -251,11 +254,16 @@ internet connection to chat.
   computer; nothing is kept).
 - **Apps open inside the orb** (Windows): every app you open while the orb is open (from
   the orb, the taskbar, by voice, or a file opened from Files) loses its title bar and gets
-  a tile on the orb's screen, up to six at once, side by side like Windows Snap. The orb
+  a tile on the orb's screen, up to six at once, side by side like Windows Snap. Each window is
+  placed inside its tile with nothing cut off: Scorpion asks it for the smallest size it allows and
+  makes its tile at least that big, and the title bar and buttons some apps draw themselves (Calculator
+  and other Store apps) are hidden, so the only title bar and buttons are Scorpion's. The orb
   always keeps a tile of its own and moves to the room the apps leave: an app that opened on
   the left of the screen goes left, one that opened on the right goes right, so the orb ends
   up between them (or beside them, on the other side). **Resize** by dragging the bar between
-  two tiles. **Move** a tile with the arrows in its title bar, or drag its title bar onto
+  two tiles, sideways or, for tiles above and below each other, up and down. The orb's tile has a
+  layout button (▦) that goes through *automatic*, *side by side*, *one above the other* and *a
+  grid of two rows* (also in Settings → General → Orb). **Move** a tile with the arrows in its title bar, or drag its title bar onto
   another tile to swap them; the orb has the same arrows, so it can go anywhere. Each tile's
   title bar also tucks the app away (–), gives it its normal window back (⧉) or closes it
   (✕, it can still ask to save). Saying "back" tucks the front app away. Leaving the orb or
