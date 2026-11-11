@@ -178,9 +178,9 @@ internet connection to chat.
   **Light**, for a slower PC or a laptop on battery, goes further: the orb in lower
   detail at 24 frames a second, no frosted-glass blur, the taskbar's windows every
   4 s, hand tracking on every other frame, background media work (Library, faces) on
-  fewer cores, and chats with the fastest model installed here when your chosen one
-  is slow on this computer (a 9B model on a 4 GB graphics card, say). No model is
-  removed: back on Full or Balanced, your chosen model loads again. **Light while
+  fewer cores, and, while Scorpion picks the model itself (Auto), chats with the fastest
+  model installed here when the best one is slow on this computer. A model you choose by
+  hand always loads as chosen, in every level. **Light while
   running on battery** switches to Light when you unplug and back when you plug in.
 - **Mini orb**: the orb's **Minimize** button (or opening a place over the orb) shrinks
   it to a small living orb that floats over everything; click it to bring the orb back,
@@ -210,6 +210,14 @@ internet connection to chat.
   Talk. Say "Scorpion" and ask; the answer is spoken, as a conversation (no file or
   command tools). There is no typing box, shortcut ring, apps or camera on it, and it
   listens for its name whenever it is open. Turn the setting off for the full orb below.
+- **The floating orb** (on by default once the voice is installed; Settings → Voice and
+  hands → *The orb*): while Scorpion's window is behind other windows, minimized or in the
+  tray, a small orb (72 px) floats over everything. Say "Scorpion": it wakes, greets you
+  ("Good morning. How can I help?"), listens, and answers aloud, with what is said shown
+  beside it. Click it to talk, drag it anywhere (it remembers where), right-click for the
+  menu (Talk, Open Scorpion, Hide). It listens for its name only while it floats; speech
+  is turned into text on your computer and nothing is kept. It never opens apps or runs
+  commands by itself: spoken questions are answered as a conversation.
 - **Unrestricted mode** (off by default; a switch in the sidebar under web search, or
   Settings): per chat or for every chat, Scorpion goes online and runs without asking
   for each step, so it can download models, agents and apps. Approvals offer *Allow for
@@ -623,9 +631,9 @@ already drives NVIDIA cards, and the installer is 121 MB instead of 392 MB.
 The Linux build leaves CUDA out for the same reason. Models far bigger than the
 graphics card run on the CPU build, which measured faster than splitting them.
 Flash attention is on wherever the model supports it. **Settings → General →
-Performance → Light** chats with the fastest model installed when your chosen one
-is slow on this computer (and calms the orb and background work); no model is
-removed.
+Performance → Light** calms the orb and background work, and while Scorpion picks the
+model itself (Auto) chats with the fastest model installed when the best one is slow
+on this computer; a model you choose by hand always loads as chosen.
 
 The Models page shows the active backend, how many layers are on the GPU,
 and a tag on every model: *Fast here* (fits in graphics memory), *Slower here*

@@ -46,6 +46,7 @@ import winctl from './system.js';
 import { createUpdates } from './updates.js';
 import { createAppUpdates } from './app-updates.js';
 import { createDictation } from './dictation.js';
+import { createFloatOrb } from './float-orb.js';
 import { listFolder } from './files-list.js';
 import { scanForModels, commonFolders, wholeComputerRoots, isGguf } from './model-scan.js';
 import * as appFrame from './orb-frame.js';
@@ -266,6 +267,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false, // hidden or behind other windows it keeps listening for "Scorpion" (the floating orb)
     },
   });
   // Scorpion is offline: never navigate the app window anywhere else; open
@@ -731,10 +733,11 @@ async function fastModelFor(file) {
     .sort((a, b) => models.catalogRank(a) - models.catalogRank(b));
   return fast[0]?.path ?? null;
 }
-// The model chats use: the chosen one, or in Light the fast one.
+// The model chats use: the chosen one. Only when Scorpion picks the model itself (Auto), Light
+// uses the fast one instead of a slow one; a model chosen by hand always loads as chosen.
 async function effectiveChatModel() {
   const s = store.getSettings();
-  if (!s.chatModel || currentPerf() !== 'light') return s.chatModel;
+  if (!s.chatModel || s.modelAuto === false || currentPerf() !== 'light') return s.chatModel;
   return (await fastModelFor(s.chatModel)) || s.chatModel;
 }
 // A new level: the loaded model follows (not while Scorpion is answering;
@@ -1619,6 +1622,7 @@ function noteWindows(list) {
 // Type what I say (Windows, dictation.js): Win+Alt+T (or Ctrl+Alt+T) starts
 // or stops it; the page listens and transcribes, the helper types.
 let dictation = null;
+let floatOrb = null;
 let dictationKey = null;
 function registerDictationKey() {
   if (dictationKey) { globalShortcut.unregister(dictationKey); dictationKey = null; }
@@ -1690,6 +1694,8 @@ function registerIpc() {
   };
 
   h('app:state', state);
+  h('float:show', (on) => floatOrb?.show(on === true));
+  h('float:update', (p) => floatOrb?.update({ state: String(p?.state || 'standby'), text: String(p?.text || '') }));
   // ---- skills ----
   h('skills:list', () => skills.listSkills());
   h('skills:get', (name) => skills.getSkill(name));
@@ -2750,6 +2756,18 @@ app.whenReady().then(async () => {
   });
   registerSummon();
   registerWheelKey();
+  // The floating orb: a small orb over every window while Scorpion's window is in the background.
+  floatOrb = createFloatOrb({
+    BrowserWindow, screen, ipcMain, url: 'scorpion://app/float.html', preload: path.join(__dirname, '..', 'float-preload.cjs'), theme: () => store.getSettings().theme,
+    getPos: () => store.getSettings().orbFloatPos, setPos: (p) => store.updateSettings({ orbFloatPos: p }),
+    onCall: () => { if (win && !win.isDestroyed()) win.webContents.send('float:call'); },
+    onMenu: () => Menu.buildFromTemplate([
+      { label: 'Talk to Scorpion', click: () => { if (win && !win.isDestroyed()) win.webContents.send('float:call'); } },
+      { label: 'Open Scorpion', click: () => { if (win && !win.isDestroyed()) { win.show(); win.focus(); } } },
+      { type: 'separator' },
+      { label: 'Hide the floating orb', click: () => { const next = store.updateSettings({ orbFloat: false }); floatOrb.show(false); send('settings:changed', next); } },
+    ]).popup(),
+  });
   if (process.platform === 'win32') {
     dictation = createDictation({ BrowserWindow, screen, call: winHelper.call, url: 'scorpion://app/dictate.html', theme: () => store.getSettings().theme });
     registerDictationKey();

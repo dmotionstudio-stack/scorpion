@@ -27,7 +27,24 @@ export function parseYesNo(text) {
   return null;
 }
 
-const OPENERS = /^(?:please )?(?:open|show(?: me)?|go to|switch to|bring up|take me to|launch)(?: the| my)? /;
+// What Scorpion says when it is called by name and nothing else ("Scorpion"). Time of
+// day in English; a short "yes, I'm listening" in the languages with a line here, and a
+// plain "Yes?" for the rest. pick: a function giving 0 to 1 (for tests).
+const CALLED = {
+  fr: ['Oui ? Je vous écoute.', 'Je suis là. Que puis-je faire ?'],
+  es: ['¿Sí? Te escucho.', 'Aquí estoy. ¿En qué puedo ayudarte?'],
+  pt: ['Sim? Estou ouvindo.', 'Estou aqui. Como posso ajudar?'],
+  de: ['Ja? Ich höre zu.', 'Ich bin da. Wie kann ich helfen?'],
+};
+export function callGreeting({ hour = new Date().getHours(), lang = 'en', pick = Math.random } = {}) {
+  const l = String(lang || 'en').toLowerCase().split('-')[0];
+  const options = l === 'en'
+    ? [`${hour < 5 ? 'Good evening' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'}. How can I help?`, 'Yes? I’m listening.', 'Hi. How can I help?']
+    : CALLED[l] || ['Yes?'];
+  return options[Math.min(options.length - 1, Math.floor(pick() * options.length))];
+}
+
+const OPENERS =/^(?:please )?(?:open|show(?: me)?|go to|switch to|bring up|take me to|launch)(?: the| my)? /;
 const BACK = /^(?:(?:go )?back|close( it| that| this)?|home|desktop|show (?:the )?(?:orb|desktop)|minimi[sz]e( it| that| this)?)$/;
 
 // A short command for one of the shortcuts: "files", "open my files",

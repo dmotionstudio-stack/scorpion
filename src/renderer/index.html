@@ -375,6 +375,7 @@
           </div>
           <div class="field" data-sec="voice">
             <label>The orb</label>
+            <label class="toggle"><input type="checkbox" id="orb-float"><span>A small orb floats over every window while Scorpion is in the background. Say "Scorpion": it wakes, greets you, listens, and answers aloud. Click it to talk, drag it anywhere, right-click for more. It listens for its name only while it floats (speech is turned into text on this computer; nothing is kept). Needs the voice installed.</span></label>
             <label class="toggle"><input type="checkbox" id="orb-voice-only"><span>The orb is a voice chat only: say "Scorpion" and ask a question, and the answer is spoken. No typing box, shortcuts, apps or camera on its screen, and it listens for its name whenever the orb is open. Needs the voice installed.</span></label>
           </div>
           <div class="field" data-sec="voice">
@@ -391,7 +392,7 @@
             </select>
             <label class="toggle"><input type="checkbox" id="perf-battery"><span>Light while running on battery</span></label>
             <div class="row"><button class="btn small" type="button" id="welcome-again">Show the welcome again</button><span class="muted small">The spoken first start: internet, model, voice, face, hands.</span></div>
-            <p class="muted small"><span id="perf-now"></span> Balanced draws the orb at a calmer frame rate, checks the taskbar's windows less often and looks at fewer camera frames for hand tracking. Light goes further: the orb in lower detail, background media work (Library, faces) on fewer cores, and chats with the fastest model installed here when your chosen one is slow on this computer. No model is removed; Full brings your chosen model back.</p>
+            <p class="muted small"><span id="perf-now"></span> Balanced draws the orb at a calmer frame rate, checks the taskbar's windows less often and looks at fewer camera frames for hand tracking. Light goes further: the orb in lower detail, background media work (Library, faces) on fewer cores, and, while Scorpion picks the model itself (Auto), chats with the fastest model installed here when the best one is slow on this computer. A model you choose by hand always loads as chosen.</p>
           </div>
           <div class="field" data-sec="look">
             <label for="orb-look">Orb look</label>

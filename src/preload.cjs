@@ -11,6 +11,9 @@ const on = (channel) => (fn) => {
 
 contextBridge.exposeInMainWorld('scorpion', {
   state: invoke('app:state'),
+  floatShow: invoke('float:show'),
+  floatUpdate: invoke('float:update'),
+  onFloatCall: on('float:call'),
   updateSettings: invoke('settings:update'),
 
   loadModel: invoke('model:load'),

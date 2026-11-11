@@ -1771,6 +1771,7 @@ function renderSettings() {
   $('#online-mode').checked = Boolean(S.settings.online);
   $('#unrestricted-mode').checked = S.settings.unrestricted === true;
   $('#orb-voice-only').checked = S.settings.orbVoiceOnly !== false;
+  $('#orb-float').checked = S.settings.orbFloat !== false;
   renderOnlineBadge();
   const full = S.settings.fileAccess === 'full';
   $('#file-access').value = full ? 'full' : 'ask';
@@ -2046,7 +2047,7 @@ function wire() {
   wirePeople();
   const libraryView = initLibrary({ api, $, esc, toast, errText, gb });
   desktopUi = initDesktop({ api, $, esc, toast, errText, setView, S });
-  orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
+  orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, interactState, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice, startHands: () => toggleHands(true), setView });
@@ -2406,6 +2407,7 @@ function wire() {
   $('#unrestricted-log').onclick = () => api.unrestrictedLog().catch((err) => toast(errText(err), 'error'));
   $('#online-badge').onclick = () => setOnline(!S.settings.online);
   $('#unrestricted-badge').onclick = toggleUnrestricted;
+  $('#orb-float').onchange = async (e) => { await setSetting({ orbFloat: e.target.checked }); orbSys?.refreshFloat(); };
   $('#orb-voice-only').onchange = async (e) => { await setSetting({ orbVoiceOnly: e.target.checked }); orbSys?.applyVoiceOnly(); if (e.target.checked) orbSys?.scheduleWake(300); };
   $('#file-access').onchange = async (e) => {
     const full = e.target.value === 'full';

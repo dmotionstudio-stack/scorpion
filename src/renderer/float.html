@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>Scorpion</title>
+  <link rel="stylesheet" href="themes.css">
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; font: 13px/1.35 var(--font-ui, system-ui, sans-serif); }
+    .wrap { position: absolute; inset: 0; display: flex; align-items: center; gap: 6px; }
+    .wrap[data-side="right"] { flex-direction: row-reverse; }
+    .orb { position: relative; flex: none; width: 72px; height: 72px; cursor: grab; touch-action: none; }
+    .orb.dragging { cursor: grabbing; }
+    .orb > span { position: absolute; border-radius: 50%; pointer-events: none; }
+    .glow { inset: -6px; background: radial-gradient(circle, color-mix(in srgb, var(--accent, #f5c518) 40%, transparent) 0%, transparent 65%); animation: breathe 3.2s ease-in-out infinite; }
+    .core { inset: 26px; background: radial-gradient(circle at 40% 35%, #fff 0%, color-mix(in srgb, var(--accent, #f5c518) 70%, #fff) 30%, var(--accent, #f5c518) 65%, transparent 100%); box-shadow: 0 0 14px var(--accent, #f5c518), 0 0 28px color-mix(in srgb, var(--accent, #f5c518) 60%, transparent); animation: pulse 2.4s ease-in-out infinite; }
+    .ring { inset: 4px; border: 1.5px solid color-mix(in srgb, var(--accent, #f5c518) 75%, transparent); box-shadow: 0 0 8px color-mix(in srgb, var(--accent, #f5c518) 50%, transparent); }
+    .r1 { transform: rotateX(70deg); animation: spin1 6s linear infinite; }
+    .r2 { transform: rotateY(70deg); animation: spin2 8s linear infinite; }
+    .r3 { inset: 12px; border-style: dashed; animation: spin3 12s linear infinite; }
+    /* awake: brighter and faster */
+    .wrap[data-state="listening"] .core { animation-duration: 1s; }
+    .wrap[data-state="listening"] .glow { inset: -12px; animation-duration: 1.2s; }
+    .wrap[data-state="thinking"] .r1 { animation-duration: 1.6s; }
+    .wrap[data-state="thinking"] .r2 { animation-duration: 2s; }
+    .wrap[data-state="thinking"] .r3 { animation-duration: 3s; }
+    .wrap[data-state="speaking"] .core { animation-duration: .55s; }
+    .wrap[data-state="speaking"] .glow { inset: -10px; animation-duration: .8s; }
+    .bubble { flex: 1; min-width: 0; max-height: 68px; overflow: hidden; padding: 8px 12px; border-radius: 14px; color: var(--text, #eee);
+      background: color-mix(in srgb, var(--bg, #111) 90%, transparent); border: 1px solid color-mix(in srgb, var(--accent, #f5c518) 45%, transparent); box-shadow: 0 6px 24px rgb(0 0 0 / .35); }
+    .bubble:empty { display: none; }
+    @keyframes breathe { 50% { transform: scale(1.12); opacity: .75; } }
+    @keyframes pulse { 50% { transform: scale(.82); } }
+    @keyframes spin1 { to { transform: rotateX(70deg) rotateZ(360deg); } }
+    @keyframes spin2 { to { transform: rotateY(70deg) rotateZ(-360deg); } }
+    @keyframes spin3 { to { transform: rotateZ(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .orb > span { animation: none !important; } }
+  </style>
+  <script src="float.js"></script>
+</head>
+<body>
+  <div class="wrap" id="wrap" data-state="standby" data-side="left" role="status" aria-live="polite">
+    <div class="orb" id="orb" title="Say “Scorpion”, or click to talk (drag to move, right-click for more)"><span class="glow"></span><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><span class="core"></span></div>
+    <div class="bubble" id="bubble"></div>
+  </div>
+</body>
+</html>

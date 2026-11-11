@@ -10,7 +10,7 @@
 //   left (orb-frame.js does the window work), the orb moves to the right.
 // - At sign-in the orb greets the person it recognizes.
 // - The wake word: saying "Scorpion" starts listening.
-import { parseWake, parseYesNo, matchShortcut, nextIndex } from './orb-commands.js';
+import { parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
 import { intentsFor, matchSpoken } from '/shared/intents.js';
 import { PLATFORM } from './palette.js';
 import { bubbleItems, ringLook, siteUrl } from './orb-bubbles.js';
@@ -29,7 +29,7 @@ const GREET_BY_TIME = () => { const h = new Date().getHours(); return h < 5 ? 'G
 const lowerFirst = (s) => (s ? s[0].toLowerCase() + s.slice(1) : s);
 
 export function initOrbSystem(ctx) {
-  const { api, $, S, IX, V, speaker, toast, errText, listen, sendMessage, setView, closeInteract, startFace, stopFace, FX, desktopUi, renderInteract } = ctx;
+  const { api, $, S, IX, V, speaker, toast, errText, listen, sendMessage, setView, closeInteract, startFace, stopFace, FX, desktopUi, renderInteract, interactState } = ctx;
   const O = { desktop: false, away: false, framed: null, windows: [], winIndex: -1, lastFocused: null, approval: null, asking: false, wakeListening: false, wakeTimer: 0, pollTimer: 0, eventTimer: 0, greetTimer: 0, pointer: null };
 
   // ---------- shortcuts ----------
@@ -514,7 +514,10 @@ export function initOrbSystem(ctx) {
   // While it's on, Scorpion listens for speech; each thing said is
   // transcribed on this computer and only acted on if it starts with
   // "Scorpion". Nothing is recorded or kept.
-  const wakeOn = () => Boolean(IX.open && (S.settings.wakeWord || voiceOnly()) && S.voice?.installed);
+  // The floating orb is out while Scorpion's window is in the background (or hidden): then it
+  // listens for "Scorpion" too, so the orb can be called from anywhere.
+  const floatActive = () => S.settings.orbFloat !== false && Boolean(S.voice?.installed) && !document.hasFocus();
+  const wakeOn = () => Boolean(S.voice?.installed && ((IX.open && (S.settings.wakeWord || voiceOnly())) || floatActive()));
   function scheduleWake(ms = 400) {
     clearTimeout(O.wakeTimer);
     if (wakeOn()) O.wakeTimer = setTimeout(wakeTick, ms);
@@ -530,14 +533,7 @@ export function initOrbSystem(ctx) {
       const w = parseWake(text);
       if (!w) { scheduleWake(150); return; }
       if (w.command) { run(w.command); return; }
-      // Just the name: answer and listen for the request.
-      $('#ix-you').textContent = 'Scorpion';
-      speaker.say('Yes?');
-      const follow = () => {
-        if (speaker.busy) { setTimeout(follow, 120); return; }
-        listen((cmd) => { if (cmd) run(cmd); else scheduleWake(150); });
-      };
-      setTimeout(follow, 150);
+      called();
     });
     // The microphone could not start (the reason was shown): stop trying.
     if (O.wakeListening && !ctx.recorder.active && !V.transcribing) { O.wakeListening = false; V.onText = null; renderInteract(); }
@@ -550,7 +546,24 @@ export function initOrbSystem(ctx) {
     ctx.recorder.stop();
     renderInteract();
   }
+  // Called by name alone (or a click on the floating orb): a greeting, then it listens for the request.
+  function called() {
+    stopWakeListening();
+    if (speaker.busy) speaker.stop();
+    const hello = callGreeting({ lang: S.settings.voiceLanguage });
+    $('#ix-you').textContent = 'Scorpion';
+    caption(hello);
+    O.floatMsg = { text: hello, until: Date.now() + 9000 };
+    refreshFloat();
+    speaker.say(hello);
+    const follow = () => {
+      if (speaker.busy) { setTimeout(follow, 120); return; }
+      listen((cmd) => { if (cmd) run(cmd); else scheduleWake(150); });
+    };
+    setTimeout(follow, 150);
+  }
   function run(text) {
+    O.floatMsg = { text: `“${text}”`, until: Date.now() + 5000 };
     if (handleSpoken(text)) { scheduleWake(600); return; }
     V.wakeTurn = true; // the reply is spoken
     sendMessage(text, { spoken: true });
@@ -570,6 +583,42 @@ export function initOrbSystem(ctx) {
     b.setAttribute('aria-pressed', String(Boolean(S.settings.wakeWord)));
     b.textContent = S.settings.wakeWord ? 'Wake word on' : 'Wake word off';
   }
+
+  // ---------- the floating orb ----------
+  // While Scorpion's window is behind other windows (or hidden), a small orb floats over
+  // everything (main/float-orb.js): it wakes when called, says hello, shows what is said and
+  // answered beside it, and goes small again. This page does the listening and speaking.
+  const replyText = () => {
+    const m = S.thread?.messages?.at(-1);
+    if (m?.role !== 'assistant') return '';
+    const t = (m.blocks || []).filter((b) => b.type === 'text').map((b) => b.text).join(' ').replace(/[*_#`>]+/g, '').replace(/\s+/g, ' ').trim();
+    return t.length > 200 ? '…' + t.slice(-198) : t;
+  };
+  function refreshFloat() {
+    const on = floatActive();
+    if (on !== O.floatOn) {
+      O.floatOn = on;
+      api.floatShow(on).catch(() => {});
+      O.floatSent = '';
+      if (on) scheduleWake(300); else if (!IX.open) stopWakeListening();
+    }
+    if (!on) return;
+    const state = interactState?.() || 'standby';
+    const working = state === 'speaking' || state === 'thinking';
+    if (working) O.floatBusyAt = Date.now();
+    // What to show beside it: the answer while it is written and spoken (and a few seconds after),
+    // else the greeting or what was just said.
+    const msg = O.floatMsg && O.floatMsg.until > Date.now() ? O.floatMsg.text : '';
+    const reply = working || Date.now() - (O.floatBusyAt || 0) < 5000 ? replyText() : '';
+    const text = reply || msg;
+    const shown = O.wakeListening && !text ? 'standby' : state;
+    const key = `${shown}|${text}`;
+    if (key === O.floatSent) return;
+    O.floatSent = key;
+    api.floatUpdate({ state: shown, text }).catch(() => {});
+  }
+  O.floatTimer = setInterval(refreshFloat, 350);
+  api.onFloatCall?.(() => { if (S.voice?.installed) called(); else toast('The floating orb needs the voice download first: Settings → Voice → Install.'); });
 
   // ---------- open / close ----------
   function onOpen({ desktop = false, signin = false } = {}) {
@@ -628,15 +677,15 @@ export function initOrbSystem(ctx) {
   wireMouse();
   api.onPcEvent?.(onPcEvent);
   // The orb looks calmer while another window is in front (less graphics work).
-  window.addEventListener('blur', () => { if (O.desktop) IX.orb?.setFrameCap(ctx.orbFps?.('away') ?? 12); });
-  window.addEventListener('focus', () => IX.orb?.setFrameCap(ctx.orbFps?.('on') ?? 60));
+  window.addEventListener('blur', () => { if (O.desktop) IX.orb?.setFrameCap(ctx.orbFps?.('away') ?? 12); setTimeout(refreshFloat, 120); });
+  window.addEventListener('focus', () => { IX.orb?.setFrameCap(ctx.orbFps?.('on') ?? 60); refreshFloat(); });
 
   return {
     onOpen, onClose, state, handleSpoken, handleGesture, onApproval, clearApproval, returnToOrb, greeted, scheduleWake, stopWake: stopWakeListening, leave: leaveOrb,
     toggleGuide, goHome, handleGlobals, togglePause,
     // Settings changed (the orb's bubbles among them): the rings follow.
     refreshShortcuts: () => { if (IX.open) showShortcuts(); },
-    applyVoiceOnly,
+    applyVoiceOnly, refreshFloat, callNow: called,
     get voiceOnly() { return voiceOnly(); },
     get paused() { return Boolean(O.handsPaused); },
     get wakeListening() { return O.wakeListening; },
