@@ -1,10 +1,9 @@
 // The first start: the orb walks the person through setup out loud, one card
 // at a time: easier to see, hear or type (accessibility), the internet (Wi-Fi, on Scorpion OS), the AI model, whether
-// Scorpion talks back, face recognition, and a short hand-gesture tutorial
-// that reacts live to the camera. Every step can be answered by voice ("yes",
-// "no", "next", "skip"), by clicking, or with the hand (it moves the
-// pointer). Shown once (settings.welcomeDone); Settings can show it again.
-//   ctx: { api, $, S, speaker, listen, toast, errText, installVoice, startHands, setView }
+// Scorpion talks back, and calling it by name (the floating orb). Every step can be
+// answered by voice ("yes", "no", "next", "skip") or by clicking. Shown once
+// (settings.welcomeDone); Settings can show it again.
+//   ctx: { api, $, S, speaker, listen, toast, errText, installVoice }
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -23,21 +22,12 @@ export function spokenChoice(text) {
   return null;
 }
 
-// The hand-gesture lessons and what in a tracker frame completes each.
-export const HAND_LESSONS = [
-  { id: 'show', say: 'Hold one hand up in front of the camera.', done: (r) => r.hands > 0 },
-  { id: 'point', say: 'Now point with your index finger. The pointer follows it.', done: (r) => r.pose === 'point' },
-  { id: 'pinch', say: 'Pinch your thumb and index finger together quickly. That\'s a click.', done: (r) => Boolean(r.tap) },
-  { id: 'scroll', say: 'Hold up two fingers and move them up or down to scroll.', done: (r) => Boolean(r.scroll) || r.pose === 'two' },
-];
-
 export function initWelcome(ctx) {
   const { api, S, speaker } = ctx;
   let box = null;
   let running = false;
   let answer = null; // resolves the step waiting for a choice
   let early = null; // a click on this card while Scorpion was still talking
-  let lesson = null; // the hand lesson waiting for a gesture
 
   const talks = () => Boolean(S.voice?.installed) && S.settings.voiceSpeak !== false;
   // Say it (when the voice is there), then let the person answer.
@@ -83,7 +73,7 @@ export function initWelcome(ctx) {
     {
       id: 'hello',
       async run() {
-        card({ title: 'Hi, I\'m Scorpion.', body: 'I run entirely on this computer. Let\'s set things up together; it takes about a minute. Answer out loud, click, or use your hand.', choices: [['Let\'s start', 'yes'], ['Skip setup', 'skip']] });
+        card({ title: 'Hi, I\'m Scorpion.', body: 'I run entirely on this computer. Let\'s set things up together; it takes about a minute. Answer out loud or click.', choices: [['Let\'s start', 'yes'], ['Skip setup', 'skip']] });
         await say('Hi, I\'m Scorpion. I run entirely on this computer. Let\'s set things up together. It takes about a minute. Shall we start?');
         return (await choose({ next: 'yes' })) === 'skip' ? 'stop' : 'ok';
       },
@@ -170,7 +160,7 @@ export function initWelcome(ctx) {
           const loading = Boolean(S.modelStatus?.loading);
           card({ title: loading ? 'Your AI is getting ready' : 'Your AI is ready', body: loading
             ? `I think with <b>${esc(name)}</b>, right here on this computer. It's loading in the background (the first time takes a minute or two); we can carry on meanwhile.`
-            : `I think with <b>${esc(name)}</b>, right here on this computer. You can add others in Settings → Models.`, choices: [['Next', 'next']] });
+            : `I think with <b>${esc(name)}</b>, right here on this computer.${S.settings.modelAuto === false ? '' : ' I picked it to suit this computer\'s speed.'} You can choose another in Settings → Models.`, choices: [['Next', 'next']] });
           await say(loading ? `I think with ${name}, right here on this computer. It's getting ready in the background, so let's carry on.` : `My brain is ready: ${name}, right here on this computer.`);
           await choose({ yes: 'next' });
           return 'ok';
@@ -197,54 +187,26 @@ export function initWelcome(ctx) {
       },
     },
     {
-      id: 'face',
+      id: 'orb',
       async run() {
-        if (!S.faces?.installed) return 'ok';
-        card({ title: 'Recognize you?', body: 'With the camera, I can greet you by name and know who is talking. The pictures stay on this computer.', choices: [['Set it up after this', 'yes'], ['No thanks', 'no']] });
-        await say('I can recognize you with the camera, so I greet you by name. The pictures never leave this computer. Want to set that up?');
-        if ((await choose({ next: 'no', skip: 'no' })) === 'yes') faceAfter = true;
-        return 'ok';
-      },
-    },
-    {
-      id: 'hands',
-      async run() {
-        card({ title: 'Use your hands', body: 'Your hand can be the mouse. Want a 30-second try?', choices: [['Try it', 'yes'], ['Skip', 'skip']] });
-        await say('You can also use your hands instead of the mouse. Want a thirty second try?');
-        if ((await choose({ next: 'yes', no: 'skip' })) !== 'yes') return 'ok';
-        ctx.startHands();
-        for (const l of HAND_LESSONS) {
-          card({ title: 'Use your hands', body: esc(l.say), extra: `<div class="wl-hand" id="wl-hand"><div class="wl-pulse"></div><span id="wl-hand-state">Watching…</span></div>`, choices: [['Skip', 'skip']] });
-          say(l.say);
-          const ok = await Promise.race([
-            new Promise((resolve) => { lesson = { test: l.done, resolve }; }),
-            choose().then(() => false),
-            sleep(25000).then(() => null),
-          ]);
-          lesson = null;
-          answer = null;
-          if (ok === false) break; // skipped
-          if (ok === null) { await say('Let\'s move on; you can practise any time.'); break; } // no camera, or not seen
-          const st = box.querySelector('#wl-hand-state');
-          if (st) st.textContent = 'Got it!';
-          box.querySelector('#wl-hand')?.classList.add('ok');
-          await say('Got it.');
-          await sleep(600);
-        }
+        if (!S.voice?.installed) return 'ok';
+        card({ title: 'Call me by name', body: 'Say <b>“Scorpion”</b> any time: a small orb floats over your windows, says hello and listens. It only listens for my name while it floats, on this computer, and nothing is kept.', choices: [['Keep it on', 'yes'], ['Turn it off', 'no']] });
+        await say('You can call me by name. Say Scorpion, any time, and a small orb will float over your windows, say hello, and listen. Shall I keep that on?');
+        const c = await choose({ next: 'yes', skip: 'yes' });
+        S.settings = await api.updateSettings({ orbFloat: c !== 'no' });
         return 'ok';
       },
     },
     {
       id: 'done',
       async run() {
-        card({ title: 'All set', body: 'Press <b>Space</b> or say <b>"Hey Scorpion"</b> to talk. <b>Super+Space</b> opens the intent wheel; <b>Super+Alt+Space</b> brings me back here.', choices: [['Start using Scorpion', 'next']] });
-        await say('All set. Press space, or say hey Scorpion, to talk to me.');
+        card({ title: 'All set', body: 'Say <b>“Scorpion”</b> to talk to me from anywhere, or press <b>Space</b> in the orb. Everything is in Settings, and you can see this welcome again there.', choices: [['Start using Scorpion', 'next']] });
+        await say('All set. Say Scorpion, any time, to talk to me.');
         await choose({ yes: 'next' });
         return 'ok';
       },
     },
   ];
-  let faceAfter = false;
 
   async function start({ force = false } = {}) {
     if (running || (!force && S.settings.welcomeDone)) return;
@@ -272,23 +234,14 @@ export function initWelcome(ctx) {
     } finally {
       running = false;
       answer = null;
-      lesson = null;
       box.remove();
       box = null;
       S.settings = await api.updateSettings({ welcomeDone: true }).catch(() => S.settings);
-      if (faceAfter) ctx.setView('people');
     }
   }
 
   return {
     start,
     get running() { return running; },
-    // Each hand-tracker frame (app.js): completes the hand lesson on screen.
-    onGesture(r) {
-      if (!lesson || !box) return;
-      const st = box.querySelector('#wl-hand-state');
-      if (st && r.hands) st.textContent = r.pose ? `I see: ${r.pose === 'two' ? 'two fingers' : r.pose}` : 'I see your hand';
-      if (lesson.test(r)) { const l = lesson; lesson = null; l.resolve(true); }
-    },
   };
 }

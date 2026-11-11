@@ -178,9 +178,10 @@ internet connection to chat.
   **Light**, for a slower PC or a laptop on battery, goes further: the orb in lower
   detail at 24 frames a second, no frosted-glass blur, the taskbar's windows every
   4 s, hand tracking on every other frame, background media work (Library, faces) on
-  fewer cores, and, while Scorpion picks the model itself (Auto), chats with the fastest
-  model installed here when the best one is slow on this computer. A model you choose by
-  hand always loads as chosen, in every level. **Light while
+  fewer cores, and runs Scorpion on the smaller, faster model: while Light is on, also when
+  it is on only because you are on battery, Scorpion loads no other model, even one you
+  chose (Settings asks before turning it on, and a notice says which model is used).
+  Full or Balanced brings your chosen model back. **Light while
   running on battery** switches to Light when you unplug and back when you plug in.
 - **Mini orb**: the orb's **Minimize** button (or opening a place over the orb) shrinks
   it to a small living orb that floats over everything; click it to bring the orb back,
@@ -631,9 +632,8 @@ already drives NVIDIA cards, and the installer is 121 MB instead of 392 MB.
 The Linux build leaves CUDA out for the same reason. Models far bigger than the
 graphics card run on the CPU build, which measured faster than splitting them.
 Flash attention is on wherever the model supports it. **Settings → General →
-Performance → Light** calms the orb and background work, and while Scorpion picks the
-model itself (Auto) chats with the fastest model installed when the best one is slow
-on this computer; a model you choose by hand always loads as chosen.
+Performance → Light** calms the orb and background work and runs the smaller, faster model
+instead of the one you chose (Settings warns before you turn it on).
 
 The Models page shows the active backend, how many layers are on the GPU,
 and a tag on every model: *Fast here* (fits in graphics memory), *Slower here*

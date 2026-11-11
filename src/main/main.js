@@ -733,11 +733,12 @@ async function fastModelFor(file) {
     .sort((a, b) => models.catalogRank(a) - models.catalogRank(b));
   return fast[0]?.path ?? null;
 }
-// The model chats use: the chosen one. Only when Scorpion picks the model itself (Auto), Light
-// uses the fast one instead of a slow one; a model chosen by hand always loads as chosen.
+// The model chats use: the chosen one, or in Light (also Light on battery) the fast one: Light
+// runs the smaller model and loads no other. Settings warns before Light is turned on, and a
+// notice says when the fast one is used (lightSwap in model:status).
 async function effectiveChatModel() {
   const s = store.getSettings();
-  if (!s.chatModel || s.modelAuto === false || currentPerf() !== 'light') return s.chatModel;
+  if (!s.chatModel || currentPerf() !== 'light') return s.chatModel;
   return (await fastModelFor(s.chatModel)) || s.chatModel;
 }
 // A new level: the loaded model follows (not while Scorpion is answering;
@@ -763,7 +764,8 @@ async function loadChat() {
       name: entry?.name,
       onProgress: (p) => send('model:status', { loading: true, progress: p, name: display, bytes }),
     });
-    send('model:status', { loading: false, info });
+    const chosen = models.listLocalModels(modelEnv()).find((m) => m.path === s.chatModel);
+    send('model:status', { loading: false, info, lightSwap: file !== s.chatModel ? { chosen: chosen?.name || path.basename(s.chatModel), using: display } : null });
     // Performance changed while it loaded: the right model next.
     if (file !== (await effectiveChatModel())) { setTimeout(() => switchModelForPerf().catch(() => {}), 0); return info; }
     setTimeout(() => warmUp().catch(() => {}), 300); // read a new chat's prompt ahead of time

@@ -1259,7 +1259,6 @@ document.addEventListener('visibilitychange', () => (document.hidden ? pauseGest
 const handIsMouse = () => !IS_MAC && navigator.userAgent.includes('Windows');
 
 function onGestureFrame(r) {
-  welcome?.onGesture(r);
   if (handIsMouse()) { handAsMouse(r); return; }
   // The orb (with the apps inside it) when it is on screen, else Scorpion's
   // own screens. What the orb doesn't use turns it.
@@ -2050,7 +2049,7 @@ function wire() {
   orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, interactState, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
-  welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice, startHands: () => toggleHands(true), setView });
+  welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice });
   orbBubblesUi = initOrbBubbles({ api, $, esc, S, toast, errText });
   lookSettings = initLookSettings({ $, api, S, setSetting, toast, IX, startWelcome: () => welcome.start({ force: true }) });
   systemSettings = initSystemSettings({ $, esc, api, toast, errText });
@@ -2439,6 +2438,11 @@ function wire() {
     if (st.info) S.engine = st.info;
     if (st.error) toast(`Could not load model: ${st.error}`, 8000);
     else if (wasLoading && !st.loading && st.info?.chatModelName) toast(`${st.info.chatModelName} is ready.`, 2500);
+    // Light mode runs the smaller model instead of the one chosen: said once for each pair.
+    if (st.lightSwap && !st.loading) {
+      const key = `${st.lightSwap.chosen}|${st.lightSwap.using}`;
+      if (S.lightWarned !== key) { S.lightWarned = key; toast(`Light mode: Scorpion is using ${st.lightSwap.using} (smaller and faster) and won't load ${st.lightSwap.chosen}. Set Performance to Full or Balanced to use it.`, 12000); }
+    }
     renderWait(st);
     renderTopbar();
     if (!st.loading) renderModels();

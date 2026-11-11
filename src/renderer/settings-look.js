@@ -27,8 +27,16 @@ export function initLookSettings({ $, api, S, setSetting, toast, IX, startWelcom
     for (const box of document.querySelectorAll('[data-access]')) box.checked = Boolean(access[box.dataset.access]);
   }
 
-  $('#perf-level').onchange = (e) => setSetting({ performance: e.target.value });
-  $('#perf-battery').onchange = (e) => setSetting({ performanceOnBattery: e.target.checked });
+  // Light runs the smaller model and loads no other: said before it is turned on.
+  const LIGHT_WARNING = 'Light mode runs Scorpion on the smaller, faster model and will not load other models while it is on, even one you chose (on battery: only while unplugged). Your chosen model comes back on Full or Balanced.\n\nTurn it on?';
+  $('#perf-level').onchange = (e) => {
+    if (e.target.value === 'light' && S.settings.performance !== 'light' && !confirm(LIGHT_WARNING)) { e.target.value = S.settings.performance || 'full'; return; }
+    setSetting({ performance: e.target.value });
+  };
+  $('#perf-battery').onchange = (e) => {
+    if (e.target.checked && !confirm(LIGHT_WARNING)) { e.target.checked = false; return; }
+    setSetting({ performanceOnBattery: e.target.checked });
+  };
   $('#orb-look').onchange = async (e) => {
     S.settings = await api.updateSettings({ orbLook: e.target.value });
     if (IX.open) toast('The new look shows the next time the orb opens.');
