@@ -66,9 +66,6 @@
           <button class="chip" id="workspace-chip" title="Folder the agent can work in"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>No workspace</span></button>
           <button class="chip hidden" id="trust-chip" aria-pressed="false">Trust folder</button>
           <button class="chip" id="toggle-dock" title="Preview a page from a server on this computer, and see the terminal"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 21h8"/></svg>Preview</button>
-          <label class="toggle" title="Run file edits and commands without asking">
-            <input type="checkbox" id="auto-approve"><span>Auto-approve</span>
-          </label>
           <button class="chip" id="toggle-plan" title="Show plan panel"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9"/></svg>Plan</button>
         </header>
         <div class="chat-body">
@@ -108,10 +105,15 @@
             <div class="slash-menu hidden" id="slash-menu" role="listbox" aria-label="Agents"></div>
             <textarea id="input" rows="1" placeholder="Ask anything, or type / to run an agent…  (Enter to send, Shift+Enter for a new line)"></textarea>
             <div class="composer-bar">
-              <div class="modes" id="modes" role="radiogroup" aria-label="Mode">
-                <button type="button" role="radio" data-mode="chat" title="Just talk. No file or command tools.">Chat</button>
-                <button type="button" role="radio" data-mode="plan" title="Read-only: explore and write a plan. Nothing is changed.">Plan</button>
-                <button type="button" role="radio" data-mode="build" title="Build it: create files, run and test them, fix errors until it works.">Build</button>
+              <div class="mode-menu" id="mode-menu">
+                <button type="button" class="mode-trigger" id="mode-trigger" aria-haspopup="menu" aria-expanded="false" title="Chat, Plan or Build, and whether Scorpion asks before it changes anything"><span id="mode-label">Build</span><span class="mode-auto" id="mode-auto" hidden>Auto-approve</span><svg class="ico caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+                <div class="mode-pop hidden" id="modes" role="menu" aria-label="Mode">
+                  <button type="button" role="menuitemradio" data-mode="chat" title="Just talk. No file or command tools."><b>Chat</b><small>Just talk. No file or command tools.</small></button>
+                  <button type="button" role="menuitemradio" data-mode="plan" title="Read-only: explore and write a plan. Nothing is changed."><b>Plan</b><small>Read-only: explore and write a plan. Nothing is changed.</small></button>
+                  <button type="button" role="menuitemradio" data-mode="build" title="Build it: create files, run and test them, fix errors until it works."><b>Build</b><small>Create files, run and test them, fix errors until it works.</small></button>
+                  <div class="mode-sep"></div>
+                  <label class="mode-auto-row" title="Run file edits and commands without asking"><input type="checkbox" id="auto-approve"><span><b>Auto-approve</b><small>Run file edits and commands without asking</small></span></label>
+                </div>
               </div>
               <span class="mode-hint muted small" id="mode-hint"></span>
               <div class="voice-buttons" role="group" aria-label="Voice">
@@ -373,15 +375,14 @@
             <p class="muted small" id="file-access-hint"></p>
             <div class="row hidden" id="file-privacy-row"><button class="btn small" type="button" id="file-privacy">Open macOS privacy settings…</button><span class="muted small">macOS asks before an app reads Desktop, Documents, Downloads or other disks. Under Full Disk Access, switch Scorpion on to let it reach everything.</span></div>
           </div>
-          <div class="field" data-sec="voice">
-            <label>The orb</label>
-            <label class="toggle"><input type="checkbox" id="orb-float"><span>A small orb floats over every window while Scorpion is in the background. Say "Scorpion": it wakes, greets you, listens, and answers aloud. Click it to talk, drag it anywhere, right-click for more. It listens for its name only while it floats (speech is turned into text on this computer; nothing is kept). Needs the voice installed.</span></label>
+          <div class="field" data-sec="orb">
+            <label>Voice chat</label>
             <label class="toggle"><input type="checkbox" id="orb-voice-only"><span>The orb is a voice chat only: say "Scorpion" and ask a question, and the answer is spoken. No typing box, shortcuts, apps or camera on its screen, and it listens for its name whenever the orb is open. Needs the voice installed.</span></label>
           </div>
-          <div class="field" data-sec="voice">
+          <div class="field" data-sec="orb">
             <label>Hand gestures</label>
             <label class="toggle"><input type="checkbox" id="hands-always"><span>Turn hand gestures on when Scorpion starts (camera). On Windows your hand is the mouse, everywhere: your index finger moves the real pointer over the whole screen; pinch clicks, thumb + middle right-clicks, fist then open double-clicks, a held pinch drags, two fingers scroll. A held fist pauses it</span></label>
-            <p class="muted small">Off, the camera stays off at start: turn gestures on when you want them with G in the orb or its Gestures button, until you close Scorpion. While gestures are on, the camera runs whenever Scorpion is open (even behind other windows) and rests while Scorpion is minimized; on a Mac, only while the orb is open. Your hand isn't shown on screen, only a small status line. The video stays on this computer and is never recorded. With no hand in view it checks less often, to save power.</p>
+            <p class="muted small">Off, the camera stays off at start: turn gestures on when you want them with G in the orb or the switch under "On the orb's screen" below, until you close Scorpion. While gestures are on, the camera runs whenever Scorpion is open (even behind other windows) and rests while Scorpion is minimized; on a Mac, only while the orb is open. Your hand isn't shown on screen, only a small status line. The video stays on this computer and is never recorded. With no hand in view it checks less often, to save power.</p>
           </div>
           <div class="field" data-sec="system">
             <label for="perf-level">Performance</label>
@@ -394,7 +395,15 @@
             <div class="row"><button class="btn small" type="button" id="welcome-again">Show the welcome again</button><span class="muted small">The spoken first start: internet, model, voice, calling Scorpion by name.</span></div>
             <p class="muted small"><span id="perf-now"></span> Balanced draws the orb at a calmer frame rate, checks the taskbar's windows less often and looks at fewer camera frames for hand tracking. Light goes further: the orb in lower detail, background media work (Library, faces) on fewer cores, and runs Scorpion on the smaller, faster model: while Light is on (also when it is only on because you are on battery) Scorpion won't load other models, even one you chose. Full or Balanced brings your chosen model back.</p>
           </div>
-          <div class="field" data-sec="look">
+          <div class="field" data-sec="orb">
+            <label>On the orb's screen</label>
+            <label class="toggle"><input type="checkbox" id="orb-wake"><span>Wake word: say "Scorpion" to start (listens and transcribes on this computer only; needs the voice installed). On by itself when the orb is a voice chat.</span></label>
+            <label class="toggle"><input type="checkbox" id="orb-hands"><span>Hand gestures now (uses the camera): point, pick, switch windows and spin the orb with your hands (G)</span></label>
+            <label class="toggle"><input type="checkbox" id="orb-face"><span>Face tracking now (uses the camera): know who is talking (F)</span></label>
+            <div class="row"><span>Orb view</span><button class="btn small" id="orb-zoom-in" type="button">Zoom in</button><button class="btn small" id="orb-zoom-out" type="button">Zoom out</button><button class="btn small" id="orb-reset-view" type="button">Reset view</button></div>
+            <p class="muted small">The voice download, reading replies aloud and the language you speak are under Voice and hands. Esc, or the Scorpion button on the orb's taskbar, leaves the orb. The taskbar there is Scorpion's own, with everything the Windows desktop one has.</p>
+          </div>
+          <div class="field" data-sec="orb">
             <label for="orb-look">Orb look</label>
             <select id="orb-look">
               <option value="classic">The orb sphere</option>
@@ -419,10 +428,6 @@
                 <option value="none">None</option>
               </select></div>
             <p class="muted small">To leave full screen: Ctrl+Esc, or press Esc twice quickly. F11 goes back to full screen. Apps you open from Scorpion show inside the orb, on top of it. Windows itself (Ctrl+Alt+Delete, sign-in, its own alerts) can still come in front.</p>
-          </div>
-          <div class="field" data-sec="look" id="orb-bubbles-field">
-            <label>The orb's bubbles</label>
-            <div id="orb-bubbles"></div>
           </div>
           <div class="field" data-sec="desktop">
             <label for="login-start">When I sign in</label>
@@ -531,36 +536,20 @@
     <div class="ix-vignette"></div><div class="ix-grain"></div><div class="ix-scanlines"></div>
     <div class="ix-hud ix-title">S.C.O.R.P.I.O.N.</div>
     <div class="ix-hud ix-status"><span class="ix-dot" id="ix-dot"></span><span id="ix-state">Standby</span><span class="ix-dim" id="ix-model"></span></div>
-    <button type="button" class="ix-btn ix-close" id="ix-close" title="Back to chat (Esc)">✕ Exit</button>
-    <button type="button" class="ix-btn ix-min" id="ix-min" title="Minimize the orb to a small floating orb">— Minimize</button>
     <div class="ix-captions" id="ix-captions" aria-live="polite">
       <div class="ix-you" id="ix-you"></div>
       <div class="ix-reply" id="ix-reply"></div>
     </div>
     <div class="ix-hud ix-bottom">
-      <form class="ix-ask" id="ix-ask" autocomplete="off"><input id="ix-input" placeholder="Type to Scorpion, or press Space to talk…" aria-label="Message"><button type="submit" class="ix-btn ix-send">Send</button></form>
       <div class="ix-row">
         <button type="button" class="ix-btn ix-talk" id="ix-talk" aria-pressed="false">● Talk</button>
-        <button type="button" class="ix-btn" id="ix-voice" aria-pressed="false" title="Read replies aloud">Voice off</button>
-        <select class="ix-btn ix-lang" id="ix-lang" aria-label="Language" title="The language you speak and Scorpion replies in"></select>
-        <button type="button" class="ix-btn" id="ix-face" aria-pressed="false" title="Track faces and know who is talking, using the camera (F)">Face off</button>
-        <button type="button" class="ix-btn" id="ix-gestures" aria-pressed="false" title="Point, pick, switch windows and spin the orb with your hands, using the camera (G)">Gestures off</button>
-        <button type="button" class="ix-btn" id="ix-wake" aria-pressed="false" title="Say “Scorpion” to start: listens and transcribes on this computer only">Wake word off</button>
-        <span class="ix-gap"></span>
-        <button type="button" class="ix-btn" id="ix-zoom-in" aria-label="Zoom in">+</button>
-        <button type="button" class="ix-btn" id="ix-zoom-out" aria-label="Zoom out">−</button>
-        <button type="button" class="ix-btn" id="ix-reset">Reset</button>
+        <form class="ix-ask" id="ix-ask" autocomplete="off"><input id="ix-input" placeholder="Type to Scorpion, or press Space to talk…" aria-label="Message"><button type="submit" class="ix-btn ix-send">Send</button></form>
       </div>
     </div>
+    <div class="ix-taskbar" id="ix-taskbar" aria-label="Taskbar" hidden></div>
     <div class="ix-approval hidden" id="ix-approval" role="alertdialog" aria-live="assertive"><div class="ix-approval-text" id="ix-approval-text"></div><div class="ix-row"><button type="button" class="ix-btn ix-yes" id="ix-approval-yes">Yes</button><button type="button" class="ix-btn" id="ix-approval-no">No</button></div><div class="ix-dim">Or say yes or no</div></div>
     <div class="ix-event hidden" id="ix-event" aria-live="polite"></div>
-    <div class="ix-app hidden" id="ix-app" aria-label="App inside the orb">
-      <div class="ix-app-strip"><img id="ix-app-icon" alt="" hidden><span class="ix-app-title" id="ix-app-title"></span><span class="ix-gap"></span>
-        <button type="button" class="ix-btn" id="ix-app-prev" title="Previous app">‹</button><button type="button" class="ix-btn" id="ix-app-next" title="Next app">›</button>
-        <button type="button" class="ix-btn" id="ix-app-orb" title="Back to the orb (the app waits, minimized). Or say “back”, or push your hand toward the screen">Orb</button>
-        <button type="button" class="ix-btn" id="ix-app-pop" title="Give this app its normal window">Pop out</button>
-        <button type="button" class="ix-btn" id="ix-app-close" title="Close the app (it can still ask to save your work)">✕</button></div>
-      <div class="ix-app-body">Opening…</div>
+    <div class="ix-tiles hidden" id="ix-tiles" aria-label="Apps and the orb">
     </div>
     <div class="ix-pointer hidden" id="ix-pointer"></div>
     <div class="ix-hud ix-hint" id="ix-hint"><span class="key">Click</span> a shortcut <span class="key">Space</span> talk / interrupt <span class="key">Drag</span> spin <span class="key">Scroll</span> zoom <span class="key">F</span> face <span class="key">G</span> gestures <span class="key">R</span> reset <span class="key">Esc</span> exit</div>
@@ -600,7 +589,6 @@
     <p class="ix-dim">While gestures are on, your hand is the mouse everywhere (Windows): the index finger moves the real pointer over the whole screen, and the clicks, drags and scrolling work in any app. A held fist pauses it. Press ? or H in the orb for this guide.</p>
   </div>
   <div class="hand-pointer hidden" id="hand-pointer" aria-hidden="true"></div>
-  <button type="button" class="mini-orb hidden" id="mini-orb" title="Back to the orb (drag to move it)" aria-label="Back to the orb"><span class="mo-glow"></span><span class="mo-ring mo-r1"></span><span class="mo-ring mo-r2"></span><span class="mo-ring mo-r3"></span><span class="mo-core"></span></button>
   <!-- Enrolling a person with the camera -->
   <div class="face-capture hidden" id="face-capture" role="dialog" aria-modal="true" aria-labelledby="face-capture-title">
     <div class="face-capture-card">

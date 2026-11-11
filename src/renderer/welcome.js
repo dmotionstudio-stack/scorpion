@@ -1,6 +1,6 @@
 // The first start: the orb walks the person through setup out loud, one card
 // at a time: easier to see, hear or type (accessibility), the internet (Wi-Fi, on Scorpion OS), the AI model, whether
-// Scorpion talks back, and calling it by name (the floating orb). Every step can be
+// Scorpion talks back, and calling it by name in the orb. Every step can be
 // answered by voice ("yes", "no", "next", "skip") or by clicking. Shown once
 // (settings.welcomeDone); Settings can show it again.
 //   ctx: { api, $, S, speaker, listen, toast, errText, installVoice }
@@ -189,11 +189,10 @@ export function initWelcome(ctx) {
     {
       id: 'orb',
       async run() {
-        if (!S.voice?.installed) return 'ok';
-        card({ title: 'Call me by name', body: 'Say <b>“Scorpion”</b> any time: a small orb floats over your windows, says hello and listens. It only listens for my name while it floats, on this computer, and nothing is kept.', choices: [['Keep it on', 'yes'], ['Turn it off', 'no']] });
-        await say('You can call me by name. Say Scorpion, any time, and a small orb will float over your windows, say hello, and listen. Shall I keep that on?');
-        const c = await choose({ next: 'yes', skip: 'yes' });
-        S.settings = await api.updateSettings({ orbFloat: c !== 'no' });
+        const voice = Boolean(S.voice?.installed);
+        card({ title: 'Everything opens inside the orb', body: 'Apps you open appear inside the orb, side by side like Windows Snap: drag the bar between them to resize, drag a title bar onto another tile to swap places. The orb stays with them and moves to the room they leave.' + (voice ? ' Say <b>“Scorpion”</b> and I answer.' : ''), choices: [['Next', 'next']] });
+        await say('Apps you open appear inside the orb, side by side. Drag the bar between them to resize. The orb stays with them.' + (voice ? ' Say Scorpion, and I answer.' : ''));
+        await choose({ yes: 'next' });
         return 'ok';
       },
     },

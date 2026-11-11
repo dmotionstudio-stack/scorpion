@@ -332,9 +332,12 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
   let home = HOME;
   let fly = null;
   // Compact: while an app fills the left of the screen, the orb and its rings
-  // shrink into the right-hand column (0 = full view, 1 = compact; eased).
-  let compactTarget = 0;
-  let compact = 0;
+  // shrink into the tile the orb has on the orb's stage, wherever that is (eased): cx, cy are the
+  // tile's centre as a share of the view, k how big the orb is (1 = the whole view).
+  let viewTarget = null; // null: the whole view
+  const FULL = { cx: 0.5, cy: 0.5, k: 1 };
+  const view = { ...FULL };
+  let compact = 0; // 0 = whole view, 1 = smallest
 
   // Labels are page text laid over the 3D view (sharp, unlike text drawn
   // into the glowing scene), moved to follow their sphere every frame.
@@ -601,17 +604,21 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
       const p = target === STATES.thinking ? 0.85 : 0.95;
       for (const panel of panels.children) if (Math.random() > p) panel.visible = !panel.visible;
     }
-    if (Math.abs(compactTarget - compact) > 0.001 || compact > 0.001) {
-      compact += (compactTarget - compact) * Math.min(1, dt * 4);
-      const k = 1 - 0.66 * compact;
-      orb.scale.setScalar(k);
-      rings.scale.setScalar(k);
-      rings.position.y = 0.45 * k;
+    const goal = viewTarget || FULL;
+    if (Math.abs(goal.cx - view.cx) > 0.0005 || Math.abs(goal.cy - view.cy) > 0.0005 || Math.abs(goal.k - view.k) > 0.0005) {
+      const ease = Math.min(1, dt * 6);
+      view.cx += (goal.cx - view.cx) * ease;
+      view.cy += (goal.cy - view.cy) * ease;
+      view.k += (goal.k - view.k) * ease;
+      compact = Math.max(0, Math.min(1, (1 - view.k) / 0.78));
+      orb.scale.setScalar(view.k);
+      rings.scale.setScalar(view.k);
+      rings.position.y = 0.45 * view.k;
       const w = container.clientWidth;
       const h = container.clientHeight;
-      // Shift the picture so the orb sits in the middle of the right column.
-      if (compact > 0.001) camera.setViewOffset(w, h, -0.32 * w * compact, 0.04 * h * compact, w, h);
-      else { camera.clearViewOffset(); compact = 0; }
+      // Shift the picture so the orb sits in the middle of its tile.
+      if (viewTarget || compact > 0.001) camera.setViewOffset(w, h, (0.5 - view.cx) * w, (0.5 - view.cy) * h, w, h);
+      else { camera.clearViewOffset(); Object.assign(view, FULL); compact = 0; }
     }
     placeSatellites(dt, t);
     if (fly) {
@@ -674,7 +681,13 @@ export function createOrb(container, { accent, quality = 'high' } = {}) {
     // Highlights the shortcut under the pointer (null: none). Returns its id.
     pointAt(x, y) { hovered = x == null ? null : satAt(x, y); return hovered; },
     // 'info' | 'ok' | 'alert': a ring spreads out from the orb (three for alerts).
-    setCompact(on) { compactTarget = on ? 1 : 0; },
+    // The orb in a tile of the stage (cx, cy, w, h: pixels of the orb's view), or the whole view (null).
+    setTile(tile) {
+      if (!tile) { viewTarget = null; return; }
+      const w = container.clientWidth || 1;
+      const h = container.clientHeight || 1;
+      viewTarget = { cx: Math.max(0, Math.min(1, tile.cx / w)), cy: Math.max(0, Math.min(1, tile.cy / h)), k: Math.max(0.22, Math.min(1, Math.min(tile.w / w, tile.h / h) * 1.15)) };
+    },
     // Flies the camera toward a shortcut (t: 0..1 of the way; null: back home),
     // for the two-hand "zoom into" gesture.
     zoomToward(id, t = 0) {

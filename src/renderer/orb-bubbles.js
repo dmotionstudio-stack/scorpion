@@ -3,7 +3,7 @@
 // of your own (an app, a folder, a website or one of Scorpion's actions,
 // each with a label and, if you like, its own colour), and the open windows
 // on the outer ring (or not, and how many). Plain data, used by the orb
-// (orb-system.js), Settings (orb-bubbles-ui.js) and the tests.
+// (orb-system.js) and the tests. The orb no longer shows bubbles: the apps are tiles and the taskbar has the rest.
 
 export const PLACE_IDS = ['apps', 'files', 'library', 'chats', 'people', 'settings'];
 export const KINDS = ['app', 'folder', 'site', 'action'];

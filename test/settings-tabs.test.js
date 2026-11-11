@@ -23,7 +23,7 @@ test('every field of General is in one of its tabs, and every tab has fields', (
 test('the tabs are named and unique, and the other groups still list their pages', () => {
   const ids = GENERAL_SECTIONS.map(([id]) => id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.deepEqual(GENERAL_SECTIONS.map(([, label]) => label), ['Look', 'Desktop', 'Privacy', 'Chat', 'Voice and hands', 'System']);
+  assert.deepEqual(GENERAL_SECTIONS.map(([, label]) => label), ['Look', 'Desktop', 'Orb', 'Privacy', 'Chat', 'Voice and hands', 'System']);
   assert.deepEqual(SETTINGS_GROUPS.map((g) => g.label), ['General', 'Models', 'Agents', 'Knowledge']);
 });
 

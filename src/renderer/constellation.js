@@ -203,6 +203,7 @@ export function createConstellation(container, { accent, api, toast = () => {}, 
   const size = () => ({ w: view.clientWidth || innerWidth, h: view.clientHeight || innerHeight });
   function centre() {
     const { w, h } = size();
+    if (C.tile) return { x: C.tile.cx, y: C.tile.cy };
     return C.compact ? { x: w * 0.82, y: h * 0.5 } : { x: w / 2, y: h * 0.47 };
   }
   function applyTransform() {
@@ -219,7 +220,7 @@ export function createConstellation(container, { accent, api, toast = () => {}, 
       const G = layoutGalaxy(C.data.projects);
       reach = Math.max(260, ...G.map((g) => Math.hypot(g.x, g.y / 0.8) + 140));
     }
-    const room = Math.min(w * (C.compact ? 0.16 : 0.5), h * (C.compact ? 0.4 : 0.42));
+    const room = C.tile ? Math.min(C.tile.w, C.tile.h) * 0.42 : Math.min(w * (C.compact ? 0.16 : 0.5), h * (C.compact ? 0.4 : 0.42));
     C.zoom = Math.max(0.15, Math.min(1.2, room / reach));
     C.pan = { x: 0, y: 0 };
     world.classList.toggle('cx-instant', instant);
@@ -680,7 +681,9 @@ export function createConstellation(container, { accent, api, toast = () => {}, 
     zoomOut: () => zoomAt(1 / 1.35),
     resetView: () => fit(),
     // An app open inside the orb: the map shrinks into the right-hand column.
-    setCompact(on) { C.compact = Boolean(on); render(); fit(); },
+    setCompact(on) { C.compact = Boolean(on); C.tile = null; render(); fit(); },
+    // The map in a tile of the orb's stage (cx, cy, w, h in pixels of the view), or the whole view (null).
+    setTile(tile) { C.tile = tile ? { ...tile } : null; C.compact = Boolean(tile); render(); fit(); },
     pulse(kind = 'info') { root.dataset.pulse = ''; void root.offsetWidth; root.dataset.pulse = kind; setTimeout(() => { root.dataset.pulse = ''; }, 2600); },
     zoomToward(id, t = 0) {
       if (!id || t <= 0) { fit(); return; }

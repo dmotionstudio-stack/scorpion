@@ -46,7 +46,6 @@ import winctl from './system.js';
 import { createUpdates } from './updates.js';
 import { createAppUpdates } from './app-updates.js';
 import { createDictation } from './dictation.js';
-import { createFloatOrb } from './float-orb.js';
 import { listFolder } from './files-list.js';
 import { scanForModels, commonFolders, wholeComputerRoots, isGguf } from './model-scan.js';
 import * as appFrame from './orb-frame.js';
@@ -267,7 +266,6 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      backgroundThrottling: false, // hidden or behind other windows it keeps listening for "Scorpion" (the floating orb)
     },
   });
   // Scorpion is offline: never navigate the app window anywhere else; open
@@ -1623,7 +1621,6 @@ function noteWindows(list) {
 // Type what I say (Windows, dictation.js): Win+Alt+T (or Ctrl+Alt+T) starts
 // or stops it; the page listens and transcribes, the helper types.
 let dictation = null;
-let floatOrb = null;
 let dictationKey = null;
 function registerDictationKey() {
   if (dictationKey) { globalShortcut.unregister(dictationKey); dictationKey = null; }
@@ -1695,8 +1692,6 @@ function registerIpc() {
   };
 
   h('app:state', state);
-  h('float:show', (on) => floatOrb?.show(on === true));
-  h('float:update', (p) => floatOrb?.update({ state: String(p?.state || 'standby'), text: String(p?.text || '') }));
   // ---- skills ----
   h('skills:list', () => skills.listSkills());
   h('skills:get', (name) => skills.getSkill(name));
@@ -2132,18 +2127,15 @@ function registerIpc() {
     return appFrame.mouse(cmd, { area: { x: p.x, y: p.y, w: p.width, h: p.height } });
   });
   // The orb's app panel: where it is (or null), a place covering the orb, an app to show, or a strip button.
-  h('orb:frame', async ({ panel, away, frame, action } = {}) => {
+  h('orb:frame', async ({ panel, away, frame, action, layout, hwnd } = {}) => {
     if (process.platform !== 'win32') return null;
     if (panel !== undefined) await appFrame.setPanel(panel);
     if (panel && pendingFrame) { const h = pendingFrame; pendingFrame = null; await appFrame.frameWindow(h); }
     if (away !== undefined) await appFrame.setAway(Boolean(away));
+    if (Array.isArray(layout)) return appFrame.setLayout(layout);
     if (frame) return appFrame.frameWindow(frame);
     if (action === 'popout' && fullMode) setFullMode(false);
-    if (action) {
-      const self = nativeId(win);
-      const windows = action === 'prev' || action === 'next' ? (await winctl.listWindows({ kept: true })).filter((w) => w.hwnd !== self && !/^Scorpion/.test(w.title)) : [];
-      return appFrame.action(action, { windows });
-    }
+    if (action) return appFrame.action(action, { hwnd });
     return appFrame.framed();
   });
   h('shell:taskbar', (on) => (process.platform === 'win32' ? setTaskbarAlwaysOn(on) : desktopStatus()));
@@ -2757,18 +2749,6 @@ app.whenReady().then(async () => {
   });
   registerSummon();
   registerWheelKey();
-  // The floating orb: a small orb over every window while Scorpion's window is in the background.
-  floatOrb = createFloatOrb({
-    BrowserWindow, screen, ipcMain, url: 'scorpion://app/float.html', preload: path.join(__dirname, '..', 'float-preload.cjs'), theme: () => store.getSettings().theme,
-    getPos: () => store.getSettings().orbFloatPos, setPos: (p) => store.updateSettings({ orbFloatPos: p }),
-    onCall: () => { if (win && !win.isDestroyed()) win.webContents.send('float:call'); },
-    onMenu: () => Menu.buildFromTemplate([
-      { label: 'Talk to Scorpion', click: () => { if (win && !win.isDestroyed()) win.webContents.send('float:call'); } },
-      { label: 'Open Scorpion', click: () => { if (win && !win.isDestroyed()) { win.show(); win.focus(); } } },
-      { type: 'separator' },
-      { label: 'Hide the floating orb', click: () => { const next = store.updateSettings({ orbFloat: false }); floatOrb.show(false); send('settings:changed', next); } },
-    ]).popup(),
-  });
   if (process.platform === 'win32') {
     dictation = createDictation({ BrowserWindow, screen, call: winHelper.call, url: 'scorpion://app/dictate.html', theme: () => store.getSettings().theme });
     registerDictationKey();

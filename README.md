@@ -24,6 +24,11 @@ internet connection to chat.
   workspace folder you choose and asks first for files anywhere else: *Allow*,
   *Don't allow*, or *Always allow this folder* (you can remove those in Settings).
   Changes and commands wait for your approval unless you turn on Auto-approve.
+  The message box has one drop-down for how Scorpion works: **Chat**, **Plan** or
+  **Build**, and **Auto-approve**, grouped together (the drop-down shows the mode, and
+  a badge while Auto-approve is on). The Preview, Terminal and Plan panels beside the
+  chat each have an edge you can drag to resize (double-click it for the usual size);
+  the conversation always keeps its room, and in a narrow window the panels go under it.
 - **Multi-step planning**: for bigger tasks the agent writes a plan, then updates it
   live as it works. Plan mode is read-only: it explores and plans but can't change anything.
 - **Specialist agents**: run one from the chat box with a slash. Type `/` to see the
@@ -71,9 +76,14 @@ internet connection to chat.
 - **Interact**: a holographic orb that takes over the whole screen for talking face
   to face (Interact in the sidebar, or Ctrl+I). The orb shows what Scorpion is
   doing (standby, listening, thinking, speaking) and pulses with your voice and its
-  own. Captions show what you said and the reply. Switch language right there.
-  Drag to spin, scroll to zoom, Space to talk or interrupt, Esc to leave. Its
-  colours follow your theme. Optional [hand gestures](#hand-gestures) spin and zoom
+  own. Captions show what you said and the reply. Drag to spin, scroll to zoom,
+  Space to talk or interrupt, Esc to leave. The screen is just the orb, a typing
+  box with Talk, and Scorpion's own taskbar (see below). The orb is always on it:
+  Scorpion's own pages (Home, the chat, Settings…) open as a tile beside the orb, like
+  an app, so you never leave it (the tile's ✕, or Esc, closes the page and the orb has
+  the whole screen again); the
+  language, the voice, the wake word, the camera features and the zoom are in
+  Settings → General → Orb. Its colours follow your theme. Optional [hand gestures](#hand-gestures) spin and zoom
   the orb with your webcam.
 - **Face recognition** (optional, Settings → People): add people from photos or
   the camera. Interact then tracks faces, turns the orb toward the person and
@@ -183,9 +193,6 @@ internet connection to chat.
   chose (Settings asks before turning it on, and a notice says which model is used).
   Full or Balanced brings your chosen model back. **Light while
   running on battery** switches to Light when you unplug and back when you plug in.
-- **Mini orb**: the orb's **Minimize** button (or opening a place over the orb) shrinks
-  it to a small living orb that floats over everything; click it to bring the orb back,
-  drag it anywhere (it stays where you put it).
 - **Constellation launcher** (an optional look for the orb's screen, in Settings →
   General → Orb look; the orb sphere is the default): instead of "which app do I
   need?", it asks "what am I working on?". Each project is a constellation: a warm star with its
@@ -211,14 +218,6 @@ internet connection to chat.
   Talk. Say "Scorpion" and ask; the answer is spoken, as a conversation (no file or
   command tools). There is no typing box, shortcut ring, apps or camera on it, and it
   listens for its name whenever it is open. Turn the setting off for the full orb below.
-- **The floating orb** (on by default once the voice is installed; Settings → Voice and
-  hands → *The orb*): while Scorpion's window is behind other windows, minimized or in the
-  tray, a small orb (72 px) floats over everything. Say "Scorpion": it wakes, greets you
-  ("Good morning. How can I help?"), listens, and answers aloud, with what is said shown
-  beside it. Click it to talk, drag it anywhere (it remembers where), right-click for the
-  menu (Talk, Open Scorpion, Hide). It listens for its name only while it floats; speech
-  is turned into text on your computer and nothing is kept. It never opens apps or runs
-  commands by itself: spoken questions are answered as a conversation.
 - **Unrestricted mode** (off by default; a switch in the sidebar under web search, or
   Settings): per chat or for every chat, Scorpion goes online and runs without asking
   for each step, so it can download models, agents and apps. Approvals offer *Allow for
@@ -230,27 +229,39 @@ internet connection to chat.
   app, tray items, USB and external drives with eject, a Files and Desktop menu); right-click
   the desktop or a folder to create a new folder or document. Settings has a date and
   time section: automatic from the internet or set by hand.
-- **The orb as the system**: in Interact (and as the desktop) shortcuts orbit the orb:
-  Apps, Files, Library, Chats, People, Settings and every open window, with its icon.
-  Pick one by saying its name ("files", "switch to Outlook"), clicking it, or with
-  Gestures on: point with an open hand and pinch quickly. Sweep your hand sideways to
-  switch windows; say "back" or push your open hand toward the screen to return to the
-  orb. Spoken requests run Windows through the agent, and anything that changes
+- **The orb as the system**: in Interact (and as the desktop) there is nothing around the
+  orb but its taskbar: Scorpion's own, with everything the Windows desktop one has. Scorpion
+  (back to Scorpion), the intent wheel, Apps and Files, your pinned apps and every open
+  window (an app's windows under one icon, groups, right-click menus; a click puts the
+  window in a tile of the orb), then USB drives, network, battery, notifications, mail,
+  chat, volume, the clock, Settings and power. It is customized as before (right-click an
+  empty part: layout, position, hiding, names, centered, size, look, what shows): it can be
+  on any edge (the edge rail down the right by default, or a bar), **drag an empty part of
+  it to another edge** to move it, **drag its inner edge** to make it thicker or thinner,
+  and it can **hide by itself** until the pointer reaches its edge. It is hidden when
+  Scorpion's own taskbar window is already on the screen, so there are never two. Say a place or a window ("files",
+  "switch to Outlook") or use the taskbar; with Gestures on, sweep your hand sideways to
+  switch windows; say "back" or push your open hand toward the screen to put the front app
+  away. Spoken requests run Windows through the agent, and anything that changes
   something is asked out loud ("Should I close Word? Say yes or no"). The orb shows
   what it's doing (listening, thinking, working, waiting for you), pulses for low
   battery, finished downloads, schedules and check-ins (and says them, if you turn that
   on), greets you by name at sign-in when face recognition is installed, and with the
   wake word on, saying "Scorpion" starts listening (speech is turned into text on your
   computer; nothing is kept).
-- **Apps open inside the orb** (Windows): while the orb is open, the app you bring to
-  the front (from the orb, the taskbar, by voice, or a file opened from Files) loses its
-  title bar and fills a panel next to the orb, which moves to the right. Scorpion's strip
-  above it switches apps, goes back to the orb (the app waits, minimized), pops it out
-  as a normal window, or closes it (it can still ask to save). One app at a time; the
-  others are ordinary minimized windows. Leaving the orb or quitting Scorpion gives every
-  app its normal window back, and so does the next start if Scorpion ever stops
-  unexpectedly. Apps running as administrator can't be framed and open normally. Turn it
-  off in Settings → General → Windows desktop.
+- **Apps open inside the orb** (Windows): every app you open while the orb is open (from
+  the orb, the taskbar, by voice, or a file opened from Files) loses its title bar and gets
+  a tile on the orb's screen, up to six at once, side by side like Windows Snap. The orb
+  always keeps a tile of its own and moves to the room the apps leave: an app that opened on
+  the left of the screen goes left, one that opened on the right goes right, so the orb ends
+  up between them (or beside them, on the other side). **Resize** by dragging the bar between
+  two tiles. **Move** a tile with the arrows in its title bar, or drag its title bar onto
+  another tile to swap them; the orb has the same arrows, so it can go anywhere. Each tile's
+  title bar also tucks the app away (–), gives it its normal window back (⧉) or closes it
+  (✕, it can still ask to save). Saying "back" tucks the front app away. Leaving the orb or
+  quitting Scorpion gives every app its normal window back, and so does the next start if
+  Scorpion ever stops unexpectedly. Apps running as administrator can't be framed and open
+  normally. Turn it off in Settings → General → Windows desktop.
 - **Full screen** (Settings → General → Full screen, on by default): Scorpion starts
   filling the whole screen, over every other window, with no title bar or window
   buttons. Leave it with **Ctrl+Esc** or **Esc pressed twice** (both work even while an

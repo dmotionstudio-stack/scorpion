@@ -13,4 +13,4 @@ export const groupOf = (view) => SETTINGS_GROUPS.find((g) => g.views.some(([v]) 
 
 // General has many fields, so it has tabs of its own in the second row (like the
 // groups above). Each field in the page says which tab it belongs to (data-sec).
-export const GENERAL_SECTIONS = [['look', 'Look'], ['desktop', 'Desktop'], ['privacy', 'Privacy'], ['chat', 'Chat'], ['voice', 'Voice and hands'], ['system', 'System']];
+export const GENERAL_SECTIONS = [['look', 'Look'], ['desktop', 'Desktop'], ['orb', 'Orb'], ['privacy', 'Privacy'], ['chat', 'Chat'], ['voice', 'Voice and hands'], ['system', 'System']];

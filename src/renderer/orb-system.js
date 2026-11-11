@@ -13,7 +13,12 @@
 import { parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
 import { intentsFor, matchSpoken } from '/shared/intents.js';
 import { PLATFORM } from './palette.js';
-import { bubbleItems, ringLook, siteUrl } from './orb-bubbles.js';
+import { ringLook, siteUrl } from './orb-bubbles.js';
+import { arrange, ensureWeights, resizeWeights, insertApp, removeApp, moveItem, swapItems, cellAt, sideOfRect, GAP } from '/shared/tiles.js';
+
+// The least a tile may be dragged down to (CSS pixels): app windows have a smallest size of their own.
+const MIN_TILE_W = 280;
+const MIN_TILE_H = 200;
 
 const IS_WINDOWS = navigator.userAgent.includes('Windows');
 const PLACES = [
@@ -29,7 +34,7 @@ const GREET_BY_TIME = () => { const h = new Date().getHours(); return h < 5 ? 'G
 const lowerFirst = (s) => (s ? s[0].toLowerCase() + s.slice(1) : s);
 
 export function initOrbSystem(ctx) {
-  const { api, $, S, IX, V, speaker, toast, errText, listen, sendMessage, setView, closeInteract, startFace, stopFace, FX, desktopUi, renderInteract, interactState } = ctx;
+  const { api, $, S, IX, V, speaker, toast, errText, listen, sendMessage, setView, closeInteract, startFace, stopFace, FX, desktopUi, renderInteract } = ctx;
   const O = { desktop: false, away: false, framed: null, windows: [], winIndex: -1, lastFocused: null, approval: null, asking: false, wakeListening: false, wakeTimer: 0, pollTimer: 0, eventTimer: 0, greetTimer: 0, pointer: null };
 
   // ---------- shortcuts ----------
@@ -37,7 +42,8 @@ export function initOrbSystem(ctx) {
   // The orb as a voice chat (Settings → Voice and hands): the voice is installed and the setting is on.
   const voiceOnly = () => S.settings.orbVoiceOnly !== false && Boolean(S.voice?.installed);
   // Voice only: no shortcuts around the orb (apps, places, windows).
-  const items = () => (voiceOnly() ? [] : bubbleItems(S.settings.orbBubbles, PLACES, O.windows));
+  // No bubbles around the orb: the apps are tiles, and Scorpion's taskbar on the orb's screen has the rest.
+  const items = () => [];
   const showShortcuts = () => {
     IX.orb?.setRingLook?.(ringLook(S.settings.orbBubbles));
     IX.orb?.setSatellites(items());
@@ -108,123 +114,231 @@ export function initOrbSystem(ctx) {
     if (!ok) await api.shellWindow({ hwnd, action: 'focus' }).catch((err) => toast(errText(err)));
   }
 
-  // The panel: the left of the screen between the status lines and the
-  // controls. The page draws its frame; the app's window is placed inside.
-  function panelRect() {
-    const x = 24;
-    const y = 148;
-    const h = $('#interact').clientHeight || innerHeight; // above Scorpion's taskbar in full mode
-    return { x, y, width: Math.max(320, Math.round(innerWidth * 0.64) - x), height: Math.max(240, h - y - 178) };
+  // ---------- apps as tiles ----------
+  // Every app that opens inside the orb gets a tile (shared/tiles.js); the orb keeps a tile of its own,
+  // always there. An app that opened on the left of the screen goes left, one on the right goes right, so
+  // the orb ends up between them (or beside them): it moves to wherever the apps leave room. Tiles can be
+  // moved (the arrows, or dragging a title bar onto another tile) and resized (drag the divider between them).
+  O.tiles = { items: ['orb'], weights: null, apps: new Map(), focus: null, layout: null, els: new Map() };
+  // The stage: the screen between the status lines above and the controls below.
+  function stageRect() {
+    const el = $('#interact');
+    const w = el.clientWidth || innerWidth;
+    const h = el.clientHeight || innerHeight;
+    // Room for the taskbar on whichever edge it is (none when it hides by itself); below: the captions and the typing row.
+    const ins = ctx.insets?.() || { top: 0, right: 0, bottom: 0, left: 0 };
+    return { x: 24 + ins.left, y: 108 + ins.top, w: Math.max(480, w - 48 - ins.left - ins.right), h: Math.max(260, h - 108 - ins.top - ins.bottom - 150) };
   }
   function sendPanel() {
     if (!IS_WINDOWS || !IX.open || S.settings.orbApps === false) return;
-    const r = panelRect();
-    const el = $('#interact');
-    for (const [k, v] of Object.entries({ x: r.x, y: r.y, w: r.width, h: r.height })) el.style.setProperty(`--app-${k}`, `${v}px`);
-    api.orbFrame({ panel: r }).catch(() => {});
+    const r = stageRect();
+    api.orbFrame({ panel: { x: r.x, y: r.y, width: r.w, height: r.h } }).catch(() => {});
+    relayout();
   }
-  function onFrameChanged(v) {
-    O.framed = v;
-    if (!IX.open) return;
-    if (v && O.away) returnToOrb(); // an app opened from a place shows in the orb
-    $('#interact').classList.toggle('ix-framed', Boolean(v));
-    $('#ix-app').classList.toggle('hidden', !v);
-    IX.orb?.setCompact(Boolean(v));
-    if (!v) return;
-    $('#ix-app-title').textContent = v.title;
-    const icon = O.windows.find((w) => w.hwnd === v.hwnd)?.icon;
-    if (icon) $('#ix-app-icon').src = icon;
-    $('#ix-app-icon').hidden = !icon;
-    O.lastFocused = v.hwnd;
-    O.winIndex = O.windows.findIndex((w) => w.hwnd === v.hwnd);
+  const appTitle = (id) => O.tiles.apps.get(id)?.title || 'App';
+  function tileEl(id) {
+    let el = O.tiles.els.get(id);
+    if (el) return el;
+    el = document.createElement('div');
+    el.className = id === 'orb' ? 'ix-tile ix-tile-orb' : id === 'scorpion' ? 'ix-tile ix-tile-page' : 'ix-tile';
+    el.dataset.id = id;
+    const arrows = '<button type="button" class="ix-btn" data-act="left" title="Move this tile left">◀</button><button type="button" class="ix-btn" data-act="right" title="Move this tile right">▶</button>';
+    const pageTile = `<div class="ix-tile-head"><span class="ix-tile-title">Scorpion</span><span class="ix-gap"></span>${arrows}<button type="button" class="ix-btn" data-act="closepage" title="Close this page: the orb stays">✕</button></div><div class="ix-page-body" id="ix-page-body"></div>`;
+    el.innerHTML = id === 'scorpion' ? pageTile : id === 'orb'
+      ? `<div class="ix-tile-head"><span class="ix-tile-title">Scorpion</span><span class="ix-gap"></span>${arrows}</div>`
+      : `<div class="ix-tile-head"><img class="ix-tile-icon" alt="" hidden><span class="ix-tile-title"></span><span class="ix-gap"></span>${arrows}<button type="button" class="ix-btn" data-act="min" title="Tuck this app away (it stays open, minimized)">–</button><button type="button" class="ix-btn" data-act="pop" title="Give this app its normal window">⧉</button><button type="button" class="ix-btn" data-act="close" title="Close the app (it can still ask to save your work)">✕</button></div>`;
+    $('#ix-tiles').appendChild(el);
+    O.tiles.els.set(id, el);
+    return el;
   }
-  const appAction = (what) => api.orbFrame({ action: what }).catch((err) => toast(errText(err)));
+  function dividerEl(key, axis, index) {
+    let el = O.tiles.els.get(key);
+    if (el) return el;
+    el = document.createElement('div');
+    el.className = 'ix-div';
+    el.dataset.axis = axis;
+    el.dataset.index = String(index);
+    el.title = 'Drag to resize';
+    $('#ix-tiles').appendChild(el);
+    O.tiles.els.set(key, el);
+    return el;
+  }
+  const place = (el, r) => { el.style.left = `${r.x}px`; el.style.top = `${r.y}px`; el.style.width = `${r.w}px`; el.style.height = `${r.h}px`; };
 
-  // As the desktop, places open over the orb and "back" returns to it; in a
-  // normal Interact session they just close Interact.
+  // Work out where everything goes, draw the frames, put the windows there and the orb in its tile.
+  function relayout() {
+    if (!IX.open) return;
+    const T = O.tiles;
+    T.weights = ensureWeights(T.weights, T.items);
+    const L = arrange(T.items, stageRect(), T.weights);
+    T.layout = L;
+    T.weights = L.weights;
+    const keep = new Set();
+    for (const c of L.cells) {
+      keep.add(c.id);
+      const el = tileEl(c.id);
+      place(el, c.rect);
+      el.classList.toggle('focus', c.id !== 'orb' && c.id === T.focus);
+      if (c.id !== 'orb' && c.id !== 'scorpion') {
+        el.querySelector('.ix-tile-title').textContent = appTitle(c.id);
+        const icon = T.apps.get(c.id)?.icon;
+        const img = el.querySelector('.ix-tile-icon');
+        if (icon && img.getAttribute('src') !== icon) img.src = icon;
+        img.hidden = !icon;
+      }
+      el.querySelector('[data-act="left"]').disabled = T.items.indexOf(c.id) === 0;
+      el.querySelector('[data-act="right"]').disabled = T.items.indexOf(c.id) === T.items.length - 1;
+    }
+    for (const d of L.dividers) { const key = `div-${d.axis}${d.index}`; keep.add(key); place(dividerEl(key, d.axis, d.index), d.rect); }
+    for (const [key, el] of [...T.els]) if (!keep.has(key)) { el.remove(); T.els.delete(key); }
+    // The orb in its tile, or the whole view when it is alone.
+    const orb = L.cells.find((c) => c.id === 'orb');
+    const apps = T.items.length > 1;
+    IX.orb?.setTile(apps ? { cx: orb.body.x + orb.body.w / 2, cy: orb.body.y + orb.body.h / 2, w: orb.body.w, h: orb.body.h } : null);
+    $('#ix-tiles').classList.toggle('hidden', !apps);
+    $('#interact').classList.toggle('ix-framed', apps);
+    // The windows go to their tiles (the newest layout wins in the main process).
+    if (IS_WINDOWS) {
+      const rects = L.cells.filter((c) => c.id !== 'orb').map((c) => ({ hwnd: c.id, x: c.body.x, y: c.body.y, w: c.body.w, h: c.body.h }));
+      if (rects.length) api.orbFrame({ layout: rects }).catch(() => {});
+    }
+  }
+
+  // The apps framed by the main process (orb-frame.js): newcomers take their side, the closed ones go.
+  function onFrameChanged(v) {
+    const list = Array.isArray(v) ? v : v ? [v] : [];
+    O.framed = list.length ? list : null;
+    if (!IX.open) return;
+    const T = O.tiles;
+    const now = new Set(list.map((x) => String(x.hwnd)));
+    let items = T.items.filter((id) => id === 'orb' || id === 'scorpion' || now.has(id));
+    for (const a of list) {
+      const id = String(a.hwnd);
+      if (!items.includes(id)) items = insertApp(items, id, a.orig ? sideOfRect(a.orig, screen.width * (window.devicePixelRatio || 1)) : 'right');
+      T.apps.set(id, { title: a.title, icon: O.windows.find((w) => w.hwnd === id)?.icon || T.apps.get(id)?.icon });
+      if (a.focus) { T.focus = id; O.lastFocused = id; }
+    }
+    for (const id of [...T.apps.keys()]) if (!now.has(id)) T.apps.delete(id);
+    if (!now.has(T.focus)) T.focus = list[0] ? String(list[0].hwnd) : null;
+    T.items = items;
+    if (list.length && O.away) returnToOrb(); // an app opened from a place shows in the orb
+    O.winIndex = O.windows.findIndex((w) => w.hwnd === T.focus);
+    relayout();
+  }
+  // The buttons of the tiles, the title bars (drag one onto another tile to swap them) and the dividers.
+  function wireTiles() {
+    const host = $('#ix-tiles');
+    host.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-act]');
+      const id = b?.closest('.ix-tile')?.dataset.id;
+      if (!b || !id) return;
+      const T = O.tiles;
+      if (b.dataset.act === 'left' || b.dataset.act === 'right') { T.items = moveItem(T.items, id, b.dataset.act === 'left' ? -1 : 1); relayout(); }
+      else if (b.dataset.act === 'closepage') hidePage();
+      else appAction({ min: 'minimize', pop: 'popout', close: 'close' }[b.dataset.act], id);
+    });
+    let drag = null;
+    host.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const div = e.target.closest('.ix-div');
+      if (div) {
+        const T = O.tiles;
+        const grid = T.layout.grid;
+        const stage = stageRect();
+        const axis = div.dataset.axis;
+        drag = { kind: 'div', axis, index: Number(div.dataset.index), from: axis === 'col' ? e.clientX : e.clientY, weights: T.weights, total: axis === 'col' ? stage.w - GAP * (grid.cols - 1) : stage.h - GAP * (grid.rows - 1) };
+        host.setPointerCapture(e.pointerId);
+        div.classList.add('on');
+        return;
+      }
+      const head = e.target.closest('.ix-tile-head');
+      if (head && !e.target.closest('button')) {
+        drag = { kind: 'tile', id: head.closest('.ix-tile').dataset.id, over: null };
+        host.setPointerCapture(e.pointerId);
+        head.closest('.ix-tile').classList.add('lifted');
+      }
+    });
+    host.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const T = O.tiles;
+      if (drag.kind === 'div') {
+        const now = drag.axis === 'col' ? e.clientX : e.clientY;
+        T.weights = resizeWeights(drag.weights, drag.axis, drag.index, now - drag.from, drag.total, drag.axis === 'col' ? MIN_TILE_W : MIN_TILE_H);
+        relayout();
+      } else {
+        const over = cellAt(T.layout.cells, e.clientX, e.clientY);
+        const id = over && over.id !== drag.id ? over.id : null;
+        if (id !== drag.over) { for (const el of T.els.values()) el.classList.remove('drop'); if (id) T.els.get(id)?.classList.add('drop'); drag.over = id; }
+      }
+    });
+    const end = () => {
+      if (!drag) return;
+      const d = drag;
+      drag = null;
+      for (const el of O.tiles.els.values()) el.classList.remove('drop', 'lifted', 'on');
+      if (d.kind === 'tile' && d.over) { O.tiles.items = swapItems(O.tiles.items, d.id, d.over); relayout(); }
+    };
+    host.addEventListener('pointerup', end);
+    host.addEventListener('pointercancel', end);
+  }
+  // A button of a tile, or a spoken "back": minimize, pop out, close, focus, everything away.
+  const appAction = (what, hwnd) => api.orbFrame({ action: what, hwnd }).catch((err) => toast(errText(err)));
+
+  // ---------- Scorpion's own pages as a tile ----------
+  // Home, the chat, Settings... open as a tile beside the orb, like an app: the orb is always on the screen.
+  // The page is the same one as ever (the whole Scorpion window, moved into the tile), so everything in it works.
+  const pageOpen = () => O.tiles.items.includes('scorpion');
+  function sidebarFor() { // the page's chat list gives way when its tile is narrow
+    const T = O.tiles;
+    if (!T.ro && typeof ResizeObserver !== 'undefined' && $('#ix-page-body')) {
+      T.ro = new ResizeObserver(() => {
+        let user = false;
+        try { user = localStorage.getItem('sidebarHidden') === '1'; } catch { /* default */ }
+        document.body.classList.toggle('sidebar-hidden', user || ($('#ix-page-body')?.clientWidth || 0) < 900);
+      });
+      T.ro.observe($('#ix-page-body'));
+    }
+  }
+  function showPage() {
+    const T = O.tiles;
+    const app = document.querySelector('.app');
+    if (!app || !IX.open) return;
+    if (!pageOpen()) T.items = insertApp(T.items, 'scorpion', 'left');
+    relayout(); // makes the tile
+    const body = $('#ix-page-body');
+    if (body && app.parentNode !== body) { T.pageApp = app; T.pageHome = { parent: app.parentNode, next: app.nextSibling }; body.appendChild(app); }
+    sidebarFor();
+    document.body.classList.add('orb-paged');
+  }
+  function hidePage() {
+    const T = O.tiles;
+    if (T.pageApp && T.pageHome && T.pageApp.parentNode !== T.pageHome.parent) T.pageHome.parent.insertBefore(T.pageApp, T.pageHome.next && T.pageHome.next.parentNode === T.pageHome.parent ? T.pageHome.next : null);
+    T.pageApp = null;
+    T.pageHome = null;
+    T.ro?.disconnect();
+    T.ro = null;
+    try { document.body.classList.toggle('sidebar-hidden', localStorage.getItem('sidebarHidden') === '1'); } catch { /* default */ }
+    document.body.classList.remove('orb-paged');
+    T.items = removeApp(T.items, 'scorpion');
+    relayout();
+  }
   function leaveOrb(open) {
-    if (!O.desktop) { closeInteract(); open(); return; }
-    if (IS_WINDOWS) api.orbFrame({ away: true }).catch(() => {}); // the app waits, minimized
-    O.away = true;
-    $('#interact').classList.add('hidden');
-    IX.orb?.stop();
-    showMini();
+    if (!IX.open) { open(); return; }
+    showPage();
     open();
   }
 
-  // ---------- the floating mini orb ----------
-  // While the orb is minimized (or a place is open over it), a small orb floats
-  // on the screen: click it to bring the orb back, drag it anywhere (where it
-  // goes is remembered on this computer).
-  function showMini() {
-    const m = $('#mini-orb');
-    try { const p = JSON.parse(localStorage.getItem('miniOrbAt') || 'null'); if (p) placeMini(p.x, p.y); } catch { /* default corner */ }
-    m.classList.remove('hidden');
-  }
-  const hideMini = () => $('#mini-orb').classList.add('hidden');
-  function placeMini(x, y) {
-    const m = $('#mini-orb');
-    const size = 72;
-    m.style.left = `${Math.max(4, Math.min(innerWidth - size - 4, x))}px`;
-    m.style.top = `${Math.max(4, Math.min(innerHeight - size - 4, y))}px`;
-    m.style.right = 'auto';
-    m.style.bottom = 'auto';
-  }
-  function wireMini() {
-    const m = $('#mini-orb');
-    let drag = null;
-    m.addEventListener('pointerdown', (e) => { const r = m.getBoundingClientRect(); drag = { x: e.clientX, y: e.clientY, dx: e.clientX - r.left, dy: e.clientY - r.top, moved: false }; m.setPointerCapture(e.pointerId); });
-    m.addEventListener('pointermove', (e) => {
-      if (!drag) return;
-      if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 5) return;
-      drag.moved = true;
-      m.classList.add('dragging');
-      placeMini(e.clientX - drag.dx, e.clientY - drag.dy);
-    });
-    m.addEventListener('pointerup', () => {
-      const d = drag;
-      drag = null;
-      m.classList.remove('dragging');
-      if (!d) return;
-      if (d.moved) { const r = m.getBoundingClientRect(); try { localStorage.setItem('miniOrbAt', JSON.stringify({ x: r.left, y: r.top })); } catch { /* not kept */ } return; }
-      restoreFromMini();
-    });
-    m.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); restoreFromMini(); } });
-  }
-  // Back to the orb: from a place over it, or reopened after minimizing.
-  function restoreFromMini() {
-    hideMini();
-    if (IX.open) returnToOrb(); else ctx.openInteract?.(O.minimizedAs || {});
-  }
-  // The orb's Minimize button: down to the mini orb.
-  function minimize() {
-    if (O.desktop) { leaveOrb(() => setView(S.lastMainView && S.lastMainView !== 'chat' ? S.lastMainView : 'home')); return; }
-    O.minimizedAs = {};
-    closeInteract();
-    // Windows: Scorpion's window steps aside (the taskbar, or the wheel's
-    // centre with Win+Shift+Space, brings the orb back).
-    if (IS_WINDOWS) { api.windowMinimize().catch(() => showMini()); return; }
-    showMini();
-  }
-
+  // Back to the orb alone: Scorpion's page tile closes (the orb never left).
   function returnToOrb() {
-    if (!IX.open) return false;
-    if (O.away) {
-      O.away = false;
-      $('#interact').classList.remove('hidden');
-      hideMini();
-      IX.orb?.start();
-      refreshWindows();
-      if (IS_WINDOWS) api.orbFrame({ away: false }).catch(() => {}); // and the app it was showing
-      return true;
-    }
-    return false;
+    if (!IX.open || !pageOpen()) return false;
+    hidePage();
+    return true;
   }
 
   // "Back" / push: return from a place, or put the window you switched to away.
   async function goBack() {
     if (returnToOrb()) return;
-    if (O.framed) { caption('Back to the orb'); await appAction('orb'); return; }
+    if (O.framed) { caption('Putting the app away'); await appAction('minimize', O.tiles.focus); return; }
     const front = O.windows.find((w) => w.active) || O.windows.find((w) => w.hwnd === O.lastFocused);
     if (front) {
       await api.shellWindow({ hwnd: front.hwnd, action: 'minimize' }).catch(() => {});
@@ -383,7 +497,7 @@ export function initOrbSystem(ctx) {
   // Home: everything back to the orb (apps wait, minimized).
   async function goHome() {
     returnToOrb();
-    if (O.framed) await appAction('orb');
+    if (O.framed) await appAction('minimizeAll');
     IX.orb?.resetView();
     caption('Home');
   }
@@ -422,8 +536,6 @@ export function initOrbSystem(ctx) {
       const id = IX.orb?.pick(...at(e));
       if (id) activate(items().find((i) => i.id === id));
     });
-    wireMini();
-    $('#ix-min').onclick = minimize;
   }
 
   // ---------- spoken approvals ----------
@@ -514,10 +626,7 @@ export function initOrbSystem(ctx) {
   // While it's on, Scorpion listens for speech; each thing said is
   // transcribed on this computer and only acted on if it starts with
   // "Scorpion". Nothing is recorded or kept.
-  // The floating orb is out while Scorpion's window is in the background (or hidden): then it
-  // listens for "Scorpion" too, so the orb can be called from anywhere.
-  const floatActive = () => S.settings.orbFloat !== false && Boolean(S.voice?.installed) && !document.hasFocus();
-  const wakeOn = () => Boolean(S.voice?.installed && ((IX.open && (S.settings.wakeWord || voiceOnly())) || floatActive()));
+  const wakeOn = () => Boolean(IX.open && (S.settings.wakeWord || voiceOnly()) && S.voice?.installed);
   function scheduleWake(ms = 400) {
     clearTimeout(O.wakeTimer);
     if (wakeOn()) O.wakeTimer = setTimeout(wakeTick, ms);
@@ -546,15 +655,13 @@ export function initOrbSystem(ctx) {
     ctx.recorder.stop();
     renderInteract();
   }
-  // Called by name alone (or a click on the floating orb): a greeting, then it listens for the request.
+  // Called by name alone: a greeting, then it listens for the request.
   function called() {
     stopWakeListening();
     if (speaker.busy) speaker.stop();
     const hello = callGreeting({ lang: S.settings.voiceLanguage });
     $('#ix-you').textContent = 'Scorpion';
     caption(hello);
-    O.floatMsg = { text: hello, until: Date.now() + 9000 };
-    refreshFloat();
     speaker.say(hello);
     const follow = () => {
       if (speaker.busy) { setTimeout(follow, 120); return; }
@@ -563,15 +670,14 @@ export function initOrbSystem(ctx) {
     setTimeout(follow, 150);
   }
   function run(text) {
-    O.floatMsg = { text: `“${text}”`, until: Date.now() + 5000 };
     if (handleSpoken(text)) { scheduleWake(600); return; }
     V.wakeTurn = true; // the reply is spoken
     sendMessage(text, { spoken: true });
     scheduleWake(800);
   }
-  async function toggleWake() {
-    const on = !S.settings.wakeWord;
-    if (on && !S.voice?.installed) { toast('The wake word needs the voice download first: Settings → Voice → Install.'); return; }
+  async function toggleWake(want) {
+    const on = typeof want === 'boolean' ? want : !S.settings.wakeWord;
+    if (on && !S.voice?.installed) { toast('The wake word needs the voice download first: Settings → Voice → Install.'); renderWake(); return; }
     S.settings = await api.updateSettings({ wakeWord: on });
     renderWake();
     if (on) { toast('Wake word on. Say "Scorpion" and then what you want.'); scheduleWake(200); }
@@ -579,53 +685,15 @@ export function initOrbSystem(ctx) {
   }
   function renderWake() {
     applyVoiceOnly();
-    const b = $('#ix-wake');
-    b.setAttribute('aria-pressed', String(Boolean(S.settings.wakeWord)));
-    b.textContent = S.settings.wakeWord ? 'Wake word on' : 'Wake word off';
+    const b = $('#orb-wake');
+    if (b) b.checked = Boolean(S.settings.wakeWord);
   }
-
-  // ---------- the floating orb ----------
-  // While Scorpion's window is behind other windows (or hidden), a small orb floats over
-  // everything (main/float-orb.js): it wakes when called, says hello, shows what is said and
-  // answered beside it, and goes small again. This page does the listening and speaking.
-  const replyText = () => {
-    const m = S.thread?.messages?.at(-1);
-    if (m?.role !== 'assistant') return '';
-    const t = (m.blocks || []).filter((b) => b.type === 'text').map((b) => b.text).join(' ').replace(/[*_#`>]+/g, '').replace(/\s+/g, ' ').trim();
-    return t.length > 200 ? '…' + t.slice(-198) : t;
-  };
-  function refreshFloat() {
-    const on = floatActive();
-    if (on !== O.floatOn) {
-      O.floatOn = on;
-      api.floatShow(on).catch(() => {});
-      O.floatSent = '';
-      if (on) scheduleWake(300); else if (!IX.open) stopWakeListening();
-    }
-    if (!on) return;
-    const state = interactState?.() || 'standby';
-    const working = state === 'speaking' || state === 'thinking';
-    if (working) O.floatBusyAt = Date.now();
-    // What to show beside it: the answer while it is written and spoken (and a few seconds after),
-    // else the greeting or what was just said.
-    const msg = O.floatMsg && O.floatMsg.until > Date.now() ? O.floatMsg.text : '';
-    const reply = working || Date.now() - (O.floatBusyAt || 0) < 5000 ? replyText() : '';
-    const text = reply || msg;
-    const shown = O.wakeListening && !text ? 'standby' : state;
-    const key = `${shown}|${text}`;
-    if (key === O.floatSent) return;
-    O.floatSent = key;
-    api.floatUpdate({ state: shown, text }).catch(() => {});
-  }
-  O.floatTimer = setInterval(refreshFloat, 350);
-  api.onFloatCall?.(() => { if (S.voice?.installed) called(); else toast('The floating orb needs the voice download first: Settings → Voice → Install.'); });
 
   // ---------- open / close ----------
   function onOpen({ desktop = false, signin = false } = {}) {
     O.desktop = desktop;
     O.away = false;
     $('#interact').classList.toggle('ix-desktop', desktop);
-    hideMini();
     showShortcuts();
     refreshWindows();
     clearInterval(O.pollTimer);
@@ -637,11 +705,11 @@ export function initOrbSystem(ctx) {
     if (signin) greetAtSignIn();
   }
   function onClose() {
+    hidePage(); // the Scorpion window goes back where it was
     clearInterval(O.pollTimer);
     stopWakeListening();
     O.away = false;
     O.desktop = false;
-    hideMini();
     $('#interact').classList.remove('ix-desktop');
     toggleGuide(false);
     clearApproval();
@@ -649,8 +717,13 @@ export function initOrbSystem(ctx) {
     if (IS_WINDOWS) api.orbFrame({ panel: null }).catch(() => {}); // apps get their windows back
     onFrameChanged(null);
     $('#interact').classList.remove('ix-framed');
-    $('#ix-app').classList.add('hidden');
-    IX.orb?.setCompact(false);
+    O.tiles.items = ['orb'];
+    O.tiles.weights = null;
+    O.tiles.apps.clear();
+    for (const el of O.tiles.els.values()) el.remove();
+    O.tiles.els.clear();
+    $('#ix-tiles').classList.add('hidden');
+    IX.orb?.setTile(null);
   }
 
   // Extra looks for the orb: waiting for the user's answer, or working on the PC.
@@ -663,29 +736,31 @@ export function initOrbSystem(ctx) {
   }
 
   $('#ix-approval-yes').onclick = () => answer(true);
-  $('#ix-app-prev').onclick = () => appAction('prev');
   $('#ix-guide-btn').onclick = () => toggleGuide();
   $('#ix-guide-close').onclick = () => toggleGuide(false);
-  $('#ix-app-next').onclick = () => appAction('next');
-  $('#ix-app-orb').onclick = () => appAction('orb');
-  $('#ix-app-pop').onclick = () => appAction('popout');
-  $('#ix-app-close').onclick = () => appAction('close');
+  wireTiles();
   api.onFrameChanged?.(onFrameChanged);
   window.addEventListener('resize', () => { clearTimeout(O.resizeTimer); O.resizeTimer = setTimeout(sendPanel, 200); });
   $('#ix-approval-no').onclick = () => answer(false);
-  $('#ix-wake').onclick = toggleWake;
+  $('#orb-wake').onchange = (e) => toggleWake(e.target.checked);
   wireMouse();
   api.onPcEvent?.(onPcEvent);
   // The orb looks calmer while another window is in front (less graphics work).
-  window.addEventListener('blur', () => { if (O.desktop) IX.orb?.setFrameCap(ctx.orbFps?.('away') ?? 12); setTimeout(refreshFloat, 120); });
-  window.addEventListener('focus', () => { IX.orb?.setFrameCap(ctx.orbFps?.('on') ?? 60); refreshFloat(); });
+  window.addEventListener('blur', () => { if (O.desktop) IX.orb?.setFrameCap(ctx.orbFps?.('away') ?? 12); });
+  window.addEventListener('focus', () => IX.orb?.setFrameCap(ctx.orbFps?.('on') ?? 60));
 
   return {
     onOpen, onClose, state, handleSpoken, handleGesture, onApproval, clearApproval, returnToOrb, greeted, scheduleWake, stopWake: stopWakeListening, leave: leaveOrb,
     toggleGuide, goHome, handleGlobals, togglePause,
+    // For the taskbar on the orb's screen: a place (Apps, Files) over the orb, a window into a tile of the orb, the stage.
+    place: (id) => { const p = PLACES.find((x) => x.id === id); if (p) activate(p); else leaveOrb(() => setView('home')); },
+    openWindow: (w) => { if (O.tiles.items.includes(String(w.hwnd))) appAction('focus', String(w.hwnd)); else activate({ kind: 'window', hwnd: w.hwnd, label: w.title }); },
+    sendPanel,
+    closePage: hidePage,
+    get pageOpen() { return pageOpen(); },
     // Settings changed (the orb's bubbles among them): the rings follow.
     refreshShortcuts: () => { if (IX.open) showShortcuts(); },
-    applyVoiceOnly, refreshFloat, callNow: called,
+    applyVoiceOnly,
     get voiceOnly() { return voiceOnly(); },
     get paused() { return Boolean(O.handsPaused); },
     get wakeListening() { return O.wakeListening; },

@@ -1,12 +1,12 @@
-// Apps open inside the orb: while the orb is open, the app in front loses its
-// title bar and border and is placed in the orb's app panel (kept on top of
-// Scorpion), with Scorpion's own strip above it. One app at a time: switching
-// minimizes the previous one with its normal window back. Leaving the orb or
-// quitting Scorpion gives every app its normal window back; if Scorpion stops
-// unexpectedly, the next start does it (frame.json).
+// Apps open inside the orb: while the orb is open, an app that comes to the front loses its
+// title bar and border and is placed in its own tile on the orb's stage (kept on top of
+// Scorpion), with Scorpion's own title bar above it. Several apps at once, side by side
+// like Windows Snap (shared/tiles.js decides the tiles; this puts the windows there).
+// Leaving the orb or quitting Scorpion gives every app its normal window back; if Scorpion
+// stops unexpectedly, the next start does it (frame.json).
 //
-// Nothing is hidden or closed behind the user's back: the framed app is the
-// real program, working normally; the others are ordinary minimized windows.
+// Nothing is hidden or closed behind the user's back: the framed apps are the real
+// programs, working normally.
 import fs from 'node:fs';
 import path from 'node:path';
 import * as win from './windows-control.js';
@@ -128,125 +128,158 @@ export function frameable(info, { selfPid = process.pid, skip = new Set() } = {}
   return true;
 }
 
-let deps = null; // { dataDir, panelToScreen(rect) -> physical rect, notify(info|null), icon(hwnd) }
-let panel = null; // physical pixels { x, y, w, h }
-let current = null; // { hwnd, title, style, rect, pid }
-let last = null; // the app parked while a place covers the orb
+let deps = null; // { dataDir, panelToScreen(rect) -> physical rect, notify(views|null) }
+let panel = null; // the stage, physical pixels { x, y, w, h }
+const tiles = new Map(); // window number -> { hwnd, title, pid, style, rect (its own, to give back), at (its tile, physical) }
+let parked = []; // the apps tucked away while a place covers the orb
+let focus = null; // the tile the user used last
 let timer = 0;
 let busy = false;
 const refused = new Set(); // windows that would not lose their title bar
 const released = new Set(); // popped out by the user: left as normal windows
+export const MAX_FRAMED = 6; // more stay ordinary windows
 
 export function initFrame(d) { deps = d; }
 const file = () => path.join(deps.dataDir, 'frame.json');
-const save = () => { try { if (current) fs.writeFileSync(file(), JSON.stringify(current)); else fs.rmSync(file(), { force: true }); } catch { /* best effort */ } };
+const save = () => { try { if (tiles.size) fs.writeFileSync(file(), JSON.stringify([...tiles.values()].map(({ hwnd, pid, style, rect }) => ({ hwnd, pid, style, rect })))); else fs.rmSync(file(), { force: true }); } catch { /* best effort */ } };
 const run = (script) => win.runPsKept(`${FRAME} ${script}`);
 const ptr = (hwnd) => `([IntPtr][long]${win.psQuote(hwnd)})`;
 const near = (a, b) => Math.abs(a - b) <= 3;
+const sameRect = (info, at) => near(info.rect.left, at.x) && near(info.rect.top, at.y) && near(info.rect.right - info.rect.left, at.w) && near(info.rect.bottom - info.rect.top, at.h);
+const placeScript = (t) => `[ScorpionFrame]::Place(${ptr(t.hwnd)}, ${t.at.x}, ${t.at.y}, ${t.at.w}, ${t.at.h})`;
 
+const views = () => [...tiles.values()].map((t) => ({ hwnd: t.hwnd, title: t.title, orig: t.rect, focus: t.hwnd === focus }));
+const view = () => (tiles.size ? views() : null);
+const tell = () => deps.notify(view());
+
+// Frame an app: its title bar and border off, on top, in a tile. Until the page says where its tile is,
+// it stays where it is. False: the app refused, or it is not an app window.
 async function frame(hwnd) {
-  if (!panel) return false;
-  last = null; // a new app in front replaces the one tucked away
+  const why = (m) => { if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', hwnd, m); return false; };
+  if (!panel) return why('no stage yet');
+  if (tiles.has(hwnd)) return true;
+  if (tiles.size >= MAX_FRAMED) return why('too many');
   let info = parseInfo(await run(`[ScorpionFrame]::Info(${ptr(hwnd)})`));
-  if (!info || !frameable({ ...info, visible: true }, { skip: refused })) return false;
-  // Its normal size and place are only known once it is neither minimized
-  // nor maximized.
+  if (!info || !frameable({ ...info, visible: true }, { skip: refused })) return why(`not an app window: ${JSON.stringify(info)}`);
+  // Its normal size and place are only known once it is neither minimized nor maximized.
   if (info.iconic || info.zoomed) {
     await run(`[ScorpionFrame]::Restore(${ptr(hwnd)})`);
     info = parseInfo(await run(`[ScorpionFrame]::Info(${ptr(hwnd)})`)) || info;
   }
-  if (current && current.hwnd !== hwnd) await release({ minimize: true });
-  const ok = (await run(`[ScorpionFrame]::Frame(${ptr(hwnd)}, ${panel.x}, ${panel.y}, ${panel.w}, ${panel.h})`)) === 'True';
-  // Its own size and place before (a maximized window comes back restored).
-  current = { hwnd, title: info.title, pid: info.pid, style: info.style, rect: info.rect };
+  const r = info.rect;
+  const ok = (await run(`[ScorpionFrame]::Frame(${ptr(hwnd)}, ${r.left}, ${r.top}, ${r.right - r.left}, ${r.bottom - r.top})`)) === 'True';
   if (!ok) {
     // The app refused (often one running as administrator): give it back.
     refused.add(hwnd);
-    await release({ minimize: false });
+    why('refused to lose its title bar');
+    await run(`[ScorpionFrame]::Release(${ptr(hwnd)}, ${info.style}, ${r.left}, ${r.top}, ${r.right - r.left}, ${r.bottom - r.top}, $false)`).catch(() => {});
     return false;
   }
   released.delete(hwnd);
+  tiles.set(hwnd, { hwnd, title: info.title, pid: info.pid, style: info.style, rect: r, at: { x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top } });
+  focus = hwnd;
   save();
-  deps.notify(view());
+  tell();
   return true;
 }
 
-async function release({ minimize }) {
-  const c = current;
-  if (!c) return;
-  current = null;
+// Give one app its normal window back (its own style, size and place), minimized or not.
+async function release(hwnd, { minimize }) {
+  const t = tiles.get(hwnd);
+  if (!t) return;
+  tiles.delete(hwnd);
+  if (focus === hwnd) focus = tiles.keys().next().value || null;
   save();
-  const { left, top, right, bottom } = c.rect;
-  await run(`[ScorpionFrame]::Release(${ptr(c.hwnd)}, ${c.style}, ${left}, ${top}, ${right - left}, ${bottom - top}, $${minimize ? 'true' : 'false'})`).catch(() => {});
-  deps.notify(null);
+  const { left, top, right, bottom } = t.rect;
+  await run(`[ScorpionFrame]::Release(${ptr(hwnd)}, ${t.style}, ${left}, ${top}, ${right - left}, ${bottom - top}, $${minimize ? 'true' : 'false'})`).catch(() => {});
+  tell();
 }
+const releaseAll = async ({ minimize }) => { for (const h of [...tiles.keys()]) await release(h, { minimize }); };
 
-const view = () => (current ? { hwnd: current.hwnd, title: current.title } : null);
-
-// Every 0.6 s while the orb is open: frame the app the user brought to the
-// front, keep the framed one in its panel, notice when it closed.
+// Every 0.6 s while the orb is open: frame the app the user brought to the front, keep every framed app in
+// its tile, notice when one closed or was minimized from elsewhere.
 async function tick() {
   if (busy || !panel) return;
   busy = true;
   try {
     const fg = parseInfo(await run('[ScorpionFrame]::Fg()'));
-    if (fg && fg.hwnd !== current?.hwnd && !released.has(fg.hwnd) && frameable(fg, { skip: refused })) {
-      await frame(fg.hwnd);
-      return;
+    if (fg && tiles.has(fg.hwnd)) focus = fg.hwnd;
+    else if (fg && !process.env.SCORPION_NO_AUTOFRAME && !released.has(fg.hwnd) && frameable(fg, { skip: refused }) && tiles.size < MAX_FRAMED) { await frame(fg.hwnd); return; } // (SCORPION_NO_AUTOFRAME: for tests that frame chosen windows only)
+    if (!tiles.size) return;
+    const out = await run([...tiles.keys()].map((h) => `[ScorpionFrame]::Info(${ptr(h)})`).join('; '));
+    const infos = new Map(String(out || '').split('\n').map((l) => parseInfo(l.trim())).filter(Boolean).map((i) => [i.hwnd, i]));
+    let changed = false;
+    for (const t of [...tiles.values()]) {
+      const info = infos.get(t.hwnd);
+      if (!info || !info.visible) { if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', t.hwnd, 'gone:', JSON.stringify(info)); tiles.delete(t.hwnd); changed = true; continue; } // closed
+      if (info.iconic) { if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', t.hwnd, 'minimized'); await release(t.hwnd, { minimize: true }); continue; } // minimized from elsewhere
+      if (info.title !== t.title) { t.title = info.title; changed = true; }
+      if (!sameRect(info, t.at)) await run(placeScript(t));
     }
-    if (!current) return;
-    const info = parseInfo(await run(`[ScorpionFrame]::Info(${ptr(current.hwnd)})`));
-    if (!info || !info.visible) { current = null; save(); deps.notify(null); return; } // closed
-    if (info.iconic) { await release({ minimize: true }); return; } // minimized from elsewhere
-    if (info.title !== current.title) { current.title = info.title; deps.notify(view()); }
-    const r = info.rect;
-    if (!near(r.left, panel.x) || !near(r.top, panel.y) || !near(r.right - r.left, panel.w) || !near(r.bottom - r.top, panel.h)) {
-      await run(`[ScorpionFrame]::Place(${ptr(current.hwnd)}, ${panel.x}, ${panel.y}, ${panel.w}, ${panel.h})`);
-    }
+    if (changed) { if (!tiles.has(focus)) focus = tiles.keys().next().value || null; save(); tell(); }
   } catch { /* PowerShell busy or restarting: next tick */ } finally {
     busy = false;
   }
 }
 
-// From the orb page: where the panel is (CSS pixels in Scorpion's window), or
-// null when the orb closes.
+// From the orb page: the stage (CSS pixels in Scorpion's window), or null when the orb closes.
 export async function setPanel(rect) {
   if (!rect) {
     clearInterval(timer);
     timer = 0;
     panel = null;
-    last = null;
-    await release({ minimize: false });
+    parked = [];
+    await releaseAll({ minimize: false });
     return;
   }
   panel = deps.panelToScreen(rect);
   if (!timer) timer = setInterval(tick, 600);
-  if (current) await run(`[ScorpionFrame]::Place(${ptr(current.hwnd)}, ${panel.x}, ${panel.y}, ${panel.w}, ${panel.h})`).catch(() => {});
 }
 
-// A place (Files, Settings…) covers the orb: tuck the app away until "back".
+// Where each tile is (CSS pixels): [{ hwnd, x, y, w, h }]. The newest layout wins while one is being placed.
+let layoutBusy = false;
+let layoutNext = null;
+export async function setLayout(rects) {
+  layoutNext = rects;
+  if (layoutBusy) return true;
+  layoutBusy = true;
+  try {
+    while (layoutNext) {
+      const list = layoutNext;
+      layoutNext = null;
+      for (const r of list) {
+        const t = tiles.get(String(r.hwnd));
+        if (!t) continue;
+        const p = deps.panelToScreen({ x: r.x, y: r.y, width: r.w, height: r.h });
+        t.at = { x: p.x, y: p.y, w: p.w, h: p.h };
+        await run(placeScript(t)).catch(() => {});
+      }
+    }
+  } finally { layoutBusy = false; }
+  return true;
+}
+
+// A place (Files, Settings…) covers the orb: tuck the apps away until "back".
 export async function setAway(away) {
-  if (away) { last = current?.hwnd || null; await release({ minimize: true }); }
-  else if (last) { const h = last; last = null; await frame(h); }
+  if (away) { parked = [...tiles.keys()]; await releaseAll({ minimize: true }); }
+  else { const list = parked; parked = []; for (const h of list) await frame(h); }
 }
 
-export async function action(what, { windows = [] } = {}) {
-  if (what === 'orb') return release({ minimize: true });
-  if (what === 'popout') { if (current) released.add(current.hwnd); return release({ minimize: false }); }
-  if (what === 'close') { if (current) await win.windowByHandle(current.hwnd, 'close'); return true; }
-  if (what === 'prev' || what === 'next') {
-    const list = windows.filter((w) => !refused.has(w.hwnd));
-    if (!list.length) return false;
-    const i = list.findIndex((w) => w.hwnd === current?.hwnd);
-    const next = list[(i < 0 ? 0 : i + (what === 'next' ? 1 : -1) + list.length) % list.length];
-    return frame(next.hwnd);
-  }
+// hwnd: the tile a button belongs to. popout: its normal window; minimize: tucked away; close: closed (it
+// can still ask to save); focus: in front; minimizeAll: every app tucked away.
+export async function action(what, { hwnd = null } = {}) {
+  const h = hwnd ? String(hwnd) : focus;
+  if (what === 'minimizeAll') { await releaseAll({ minimize: true }); return true; }
+  if (what === 'popout') { if (h) released.add(h); return release(h, { minimize: false }); }
+  if (what === 'minimize') return release(h, { minimize: true });
+  if (what === 'close') { if (h) await win.windowByHandle(h, 'close'); return true; }
+  if (what === 'focus') { if (h && tiles.has(h)) { focus = h; await run(`[ScorpionFrame]::Place(${ptr(h)}, ${tiles.get(h).at.x}, ${tiles.get(h).at.y}, ${tiles.get(h).at.w}, ${tiles.get(h).at.h})`); } return true; }
   throw new Error('Unknown action');
 }
 
-// The framed app back on top (Scorpion came forward in full mode).
+// The framed apps back on top (Scorpion came forward in full mode).
 export async function raise() {
-  if (current && panel) await run(`[ScorpionFrame]::Place(${ptr(current.hwnd)}, ${panel.x}, ${panel.y}, ${panel.w}, ${panel.h})`);
+  if (panel) for (const t of tiles.values()) await run(placeScript(t)).catch(() => {});
 }
 export const hasPanel = () => Boolean(panel);
 // The app in front, if it is an ordinary app window (not Scorpion, not Windows' own).
@@ -291,7 +324,8 @@ async function mouseDo(cmd, ...args) {
 // area: physical screen pixels { x, y, w, h }; by default the framed app's panel
 // (hands replacing the mouse pass the whole screen).
 export async function mouse(cmd = {}, { area = null } = {}) {
-  const a = area || (panel && current ? panel : null);
+  const t = tiles.get(focus) || tiles.values().next().value;
+  const a = area || (panel && t ? t.at : null);
   if (!a) return false;
   if (cmd.move) {
     // Moves arrive many times a second: only the newest one waiting counts.
@@ -322,17 +356,21 @@ export async function mouse(cmd = {}, { area = null } = {}) {
   return false;
 }
 export const framed = () => view();
+export const framedCount = () => tiles.size;
 
-// An app left framed when Scorpion stopped unexpectedly: its window back.
+// Apps left framed when Scorpion stopped unexpectedly: their windows back.
 export async function recover() {
-  let c = null;
-  try { c = JSON.parse(fs.readFileSync(file(), 'utf8')); } catch { return; }
+  let list = [];
+  try { list = JSON.parse(fs.readFileSync(file(), 'utf8')); } catch { return; }
   fs.rmSync(file(), { force: true });
-  // Only the same window of the same program (window numbers get reused).
-  const info = parseInfo(await run(`[ScorpionFrame]::Info(${ptr(c.hwnd)})`).catch(() => ''));
-  if (!info || info.pid !== c.pid) return;
-  current = c;
-  await release({ minimize: false });
+  if (!Array.isArray(list)) list = [list];
+  for (const c of list) {
+    // Only the same window of the same program (window numbers get reused).
+    const info = parseInfo(await run(`[ScorpionFrame]::Info(${ptr(c.hwnd)})`).catch(() => ''));
+    if (!info || info.pid !== c.pid) continue;
+    tiles.set(String(c.hwnd), { hwnd: String(c.hwnd), title: info.title, pid: c.pid, style: c.style, rect: c.rect, at: c.rect });
+    await release(String(c.hwnd), { minimize: false });
+  }
 }
 
 // A window's state (style, place, minimized…), for checks.

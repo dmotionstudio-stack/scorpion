@@ -82,8 +82,6 @@ const DEFAULT_SETTINGS = {
   appUpdates: true, // Windows and macOS: look for new versions of Scorpion on GitHub by itself (app-updates.js)
   handsAlwaysOn: false, // hand gestures turn on by themselves when Scorpion starts (camera); off: only when asked for (G in the orb, the Gestures button)
   talkAtStart: false, // the orb starts listening (microphone) as soon as it opens; off: only when asked for (the Talk button, the wake word)
-  orbFloat: true, // a small orb floats over every window while Scorpion is in the background, and wakes when called (needs the voice installed)
-  orbFloatPos: null, // where it was left: { x, y }
   orbVoiceOnly: true, // the orb is a voice chat: say "Scorpion" and ask, the answer is spoken; no typing, shortcuts, apps or camera on its screen (needs the voice installed)
   wakeWord: false, // saying "Scorpion" starts listening while the orb is open
   settingsVersion: 0, // which of the steps below these settings have been through

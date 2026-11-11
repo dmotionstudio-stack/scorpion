@@ -12,7 +12,8 @@ import { initHandControl } from './hand-control.js';
 import { HandTracker, cameraError, pointFilter } from './gestures.js';
 import { initWelcome } from './welcome.js';
 import { initLookSettings } from './settings-look.js';
-import { initOrbBubbles } from './orb-bubbles-ui.js';
+import { initInteractTaskbar } from './interact-taskbar.js';
+import { initPanelResize } from './panel-resize.js';
 import { initPalette } from './palette.js';
 import { initSystemSettings } from './settings-system.js';
 import { initAppUpdates } from './settings-app-updates.js';
@@ -150,7 +151,7 @@ let orbSys = null; // the orb as the whole system (orb-system.js)
 let hands = null; // hand gestures on Scorpion's own screens (hand-control.js)
 let welcome = null; // the spoken first start (welcome.js)
 let lookSettings = null; // Settings → General: Performance, the orb's look (settings-look.js)
-let orbBubblesUi = null; // Settings → General: the orb's bubbles (orb-bubbles-ui.js)
+let interactBar = null; // Scorpion's taskbar inside the orb's screen (interact-taskbar.js)
 let palette = null; // the command palette, Ctrl+K (palette.js)
 let systemSettings = null; // Settings → This computer on Scorpion OS (settings-system.js)
 let appUpdatesUi = null; // Settings → Updates on Windows and macOS (settings-app-updates.js)
@@ -240,6 +241,10 @@ function renderModes() {
   document.querySelectorAll('#modes [data-mode]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === mode)));
   const needsWs = mode !== 'chat' && !S.settings.workspace && S.settings.fileAccess !== 'full';
   $('#mode-hint').textContent = needsWs ? `${MODE_HINTS[mode]} Scorpion asks for a folder when it needs one.` : MODE_HINTS[mode];
+  // The drop-down's face: the mode, and that Auto-approve is on.
+  $('#mode-label').textContent = { chat: 'Chat', plan: 'Plan', build: 'Build' }[mode] || mode;
+  $('#mode-trigger').dataset.mode = mode;
+  $('#mode-auto').hidden = !S.settings.autoApprove;
 }
 
 // Spell the plan out so the model starts building instead of assuming the
@@ -1138,18 +1143,20 @@ function renderInteract() {
     ? `Downloading voice ${Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100))}%`
     : state === 'standby' && V.talk ? 'Ready' : state === 'standby' && orbSys?.wakeListening ? 'Say “Scorpion”' : STATE_LABEL[state] || 'Standby';
   $('#ix-model').textContent = S.engine?.chatModelName ? `· ${S.engine.chatModelName}` : '';
-  if (document.activeElement !== $('#ix-lang')) $('#ix-lang').innerHTML = languageOptions();
   if (V.langDownload) $('#ix-state').textContent = `Downloading voice ${Math.min(100, Math.round(((V.langDownload.loaded || 0) / (V.langDownload.total || 1)) * 100))}%`;
   const talk = $('#ix-talk');
   talk.setAttribute('aria-pressed', String(V.talk));
   talk.textContent = V.talk ? '■ Stop' : S.voice?.installed ? '● Talk' : d ? 'Installing…' : 'Install voice';
   talk.disabled = Boolean(d);
-  const voiceOn = Boolean(S.settings.voiceSpeak) || V.talk;
-  $('#ix-voice').setAttribute('aria-pressed', String(voiceOn));
-  $('#ix-face').setAttribute('aria-pressed', String(FX.on));
-  $('#ix-face').textContent = FX.on ? 'Face on' : 'Face off';
+  renderOrbControls();
   if (FX.on && FX.speaker && !V.download && !V.langDownload) $('#ix-model').textContent = '· with ' + FX.speaker.name + ($('#ix-model').textContent ? ' ' + $('#ix-model').textContent : '');
-  $('#ix-voice').textContent = voiceOn ? 'Voice on' : 'Voice off';
+}
+// The orb's switches in Settings → General → Orb: the camera features that are on right now, and the wake word.
+function renderOrbControls() {
+  const set = (id, on) => { const el = $(id); if (el) el.checked = Boolean(on); };
+  set('#orb-face', FX.on);
+  set('#orb-hands', G.on);
+  set('#orb-wake', S.settings.wakeWord);
 }
 
 // Hand tracking (gestures.js): on Windows, gestures on means the hand is the
@@ -1308,9 +1315,7 @@ function handAsMouse(r) {
 
 function renderGestures() {
   applyOrbCap();
-  const btn = $('#ix-gestures');
-  btn.setAttribute('aria-pressed', String(G.on));
-  btn.textContent = G.on ? 'Gestures on' : 'Gestures off';
+  renderOrbControls();
   const cam = $('#ix-cam');
   cam.classList.toggle('hidden', (!G.on && !G.error) || G.paused);
   cam.toggleAttribute('data-error', Boolean(G.error));
@@ -1341,14 +1346,13 @@ function interactOnChatEvent(ev) {
 
 function wireInteract() {
   $('#open-interact').onclick = openInteract;
-  $('#ix-close').onclick = closeInteract;
   $('#ix-talk').onclick = () => (V.talk ? stopTalk() : startTalk());
-  $('#ix-lang').onchange = (e) => setLanguage(e.target.value);
-  $('#ix-voice').onclick = () => $('#read-aloud').onclick();
-  $('#ix-zoom-in').onclick = () => IX.orb?.zoomIn();
-  $('#ix-zoom-out').onclick = () => IX.orb?.zoomOut();
-  $('#ix-reset').onclick = () => IX.orb?.resetView();
-  $('#ix-gestures').onclick = () => toggleHands();
+  // The orb's own switches live in Settings → General → Orb.
+  $('#orb-hands').onchange = (e) => toggleHands(e.target.checked);
+  const viewControl = (what) => () => { if (IX.orb) IX.orb[what]?.(); else toast('Open the orb first: the view applies to the orb on its screen.'); };
+  $('#orb-zoom-in').onclick = viewControl('zoomIn');
+  $('#orb-zoom-out').onclick = viewControl('zoomOut');
+  $('#orb-reset-view').onclick = viewControl('resetView');
   $('#hand-off').onclick = () => toggleHands(false);
   $('#hands-always').onchange = (e) => toggleHands(e.target.checked, { keep: true });
   $('#talk-at-start').onchange = async (e) => { S.settings = await api.updateSettings({ talkAtStart: e.target.checked }); };
@@ -1369,6 +1373,9 @@ function wireInteract() {
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); IX.open ? closeInteract() : openInteract(); return; }
     if (!IX.open || orbSys?.away) return;
+    // Typing and pressing buttons in Scorpion's page or the taskbar is theirs (Esc outside them closes the page tile).
+    if (e.target.closest?.('#ix-page-body, #ix-taskbar')) return;
+    if (e.key === 'Escape' && orbSys?.pageOpen) { e.preventDefault(); orbSys.closePage(); return; }
     if (e.key === 'Escape' && IX.orb?.handleEscape?.()) { e.preventDefault(); return; }
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -1391,8 +1398,8 @@ function wireInteract() {
       $('#ix-talk').click();
     }
     else if (e.key === 'r' || e.key === 'R') IX.orb?.resetView();
-    else if (e.key === 'g' || e.key === 'G') $('#ix-gestures').click();
-    else if (e.key === 'f' || e.key === 'F') $('#ix-face').click();
+    else if (e.key === 'g' || e.key === 'G') toggleHands();
+    else if (e.key === 'f' || e.key === 'F') (FX.on ? stopFace() : startFace());
     else if (e.key === '?' || e.key === 'h' || e.key === 'H') orbSys?.toggleGuide();
     else if (e.key === '+' || e.key === '=') IX.orb?.zoomIn();
     else if (e.key === '-' || e.key === '_') IX.orb?.zoomOut();
@@ -1703,7 +1710,7 @@ function wirePeople() {
     S.faces = await api.uninstallFaces();
     renderPeople();
   };
-  $('#ix-face').onclick = () => (FX.on ? stopFace() : startFace());
+  $('#orb-face').onchange = (e) => (e.target.checked ? startFace() : stopFace());
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); lockNow(); }
   });
@@ -1764,13 +1771,12 @@ async function toggleUnrestricted() {
 // ---------- settings page ----------
 function renderSettings() {
   lookSettings?.render();
-  orbBubblesUi?.render();
+  renderOrbControls();
   renderVoiceSettings();
   $('#ws-path').textContent = S.settings.workspace || 'Not set';
   $('#online-mode').checked = Boolean(S.settings.online);
   $('#unrestricted-mode').checked = S.settings.unrestricted === true;
   $('#orb-voice-only').checked = S.settings.orbVoiceOnly !== false;
-  $('#orb-float').checked = S.settings.orbFloat !== false;
   renderOnlineBadge();
   const full = S.settings.fileAccess === 'full';
   $('#file-access').value = full ? 'full' : 'ask';
@@ -2046,11 +2052,22 @@ function wire() {
   wirePeople();
   const libraryView = initLibrary({ api, $, esc, toast, errText, gb });
   desktopUi = initDesktop({ api, $, esc, toast, errText, setView, S });
-  orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, interactState, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
+  orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, insets: () => interactBar?.insets() || { top: 0, right: 0, bottom: 0, left: 0 }, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice });
-  orbBubblesUi = initOrbBubbles({ api, $, esc, S, toast, errText });
+  interactBar = initInteractTaskbar({
+    api, $, S, isOpen: () => IX.open && !orbSys?.away,
+    go: {
+      home: () => orbSys.place('home'),
+      apps: () => orbSys.place('apps'),
+      files: () => orbSys.place('files'),
+      settings: () => orbSys.leave(() => { showGeneralSection('orb'); setView('settings'); }),
+    },
+    openWindow: (w) => orbSys.openWindow(w),
+    onChange: () => orbSys?.sendPanel(),
+    save: (patch) => setSetting({ taskbar: { ...(S.settings.taskbar || {}), ...patch } }),
+  });
   lookSettings = initLookSettings({ $, api, S, setSetting, toast, IX, startWelcome: () => welcome.start({ force: true }) });
   systemSettings = initSystemSettings({ $, esc, api, toast, errText });
   appUpdatesUi = initAppUpdates({ $, api, S, toast, errText });
@@ -2171,7 +2188,13 @@ function wire() {
   };
   $('#choose-ws').onclick = $('#workspace-chip').onclick;
   $('#open-ws').onclick = () => api.openWorkspace();
-  $('#modes').onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); };
+  // The mode and Auto-approve: one drop-down in the message box.
+  const closeModeMenu = () => { $('#modes').classList.add('hidden'); $('#mode-trigger').setAttribute('aria-expanded', 'false'); };
+  $('#mode-trigger').onclick = (e) => { e.stopPropagation(); const open = $('#modes').classList.toggle('hidden') === false; $('#mode-trigger').setAttribute('aria-expanded', String(open)); };
+  $('#modes').onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b) { setMode(b.dataset.mode); closeModeMenu(); } };
+  document.addEventListener('click', (e) => { if (!e.target.closest('#mode-menu')) closeModeMenu(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModeMenu(); });
+  initPanelResize({ $ }); // the Preview, Terminal and Plan panels: drag their edge; the chat keeps its room
   $('#thinking-picker').onchange = (e) => setSetting({ thinking: e.target.value });
   $('#model-picker').onchange = async (e) => {
     const value = e.target.value;
@@ -2190,7 +2213,7 @@ function wire() {
   };
   $('#auto-approve').onchange = (e) => {
     if (e.target.checked && !confirm('Auto-approve lets the agent edit files and run commands in your workspace without asking. Turn it on?')) { e.target.checked = false; return; }
-    setSetting({ autoApprove: e.target.checked });
+    setSetting({ autoApprove: e.target.checked }).then(renderModes);
   };
   $('#toggle-plan').onclick = () => $('#plan-panel').classList.toggle('hidden');
 
@@ -2391,7 +2414,7 @@ function wire() {
   api.onSchedulesChanged(reloadSchedules);
   api.onOpenThread((id) => openThread(id));
   // The agent can set the workspace or allow a folder mid-chat.
-  api.onSettingsChanged((settings) => { S.settings = settings; renderTopbar(); renderModes(); renderSettings(); renderVoiceButtons(); IX.orb?.refreshSettings?.(); orbSys?.refreshShortcuts?.(); });
+  api.onSettingsChanged((settings) => { S.settings = settings; interactBar?.apply(settings); renderTopbar(); renderModes(); renderSettings(); renderVoiceButtons(); IX.orb?.refreshSettings?.(); orbSys?.refreshShortcuts?.(); });
   const setOnline = async (on) => {
     S.settings = await api.updateSettings({ online: on });
     renderSettings();
@@ -2406,7 +2429,6 @@ function wire() {
   $('#unrestricted-log').onclick = () => api.unrestrictedLog().catch((err) => toast(errText(err), 'error'));
   $('#online-badge').onclick = () => setOnline(!S.settings.online);
   $('#unrestricted-badge').onclick = toggleUnrestricted;
-  $('#orb-float').onchange = async (e) => { await setSetting({ orbFloat: e.target.checked }); orbSys?.refreshFloat(); };
   $('#orb-voice-only').onchange = async (e) => { await setSetting({ orbVoiceOnly: e.target.checked }); orbSys?.applyVoiceOnly(); if (e.target.checked) orbSys?.scheduleWake(300); };
   $('#file-access').onchange = async (e) => {
     const full = e.target.value === 'full';
