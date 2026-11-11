@@ -578,9 +578,10 @@ Scorpion needs a model file once. You can get one in any of three ways:
 |---|---|---|
 | `qwen3.5-4b` | Recommended chat + agent model; best Qwen for Haitian Creole | 2.7 GB |
 | `qwen3-1.7b` | Only for slow computers: fast, chat only | 1.1 GB |
+| `lfm3-1.7b` | Liquid AI LFM3: a small multilingual model (16 languages, not Haitian Creole), quick with Thinking off | 1.1 GB |
 
-The two Qwen models are the ones that ship (the Scorpion OS ISO bundles both and picks
-the faster-fitting one for the computer). The catalog also lists models you download
+The two Qwen models and LFM3 are the ones that ship (the Scorpion OS ISO bundles them and picks
+the best-fitting one for the computer). The catalog also lists models you download
 in the app, from the Ollama registry, with their size and checksum checked; Scorpion
 never picks these by itself and they are never bundled:
 

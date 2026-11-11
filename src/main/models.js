@@ -40,6 +40,17 @@ export const CATALOG = [
     thinks: true,
     note: 'Only for computers where the 4B models are too slow: about twice as fast, fine for conversation, but it did poorly in the agent tests, so it is unreliable with tools and long jobs. Scorpion picks it by itself only when nothing better runs comfortably. Apache-2.0.',
   },
+  {
+    id: 'lfm3-1.7b',
+    kind: 'chat',
+    name: 'LFM3 1.7B',
+    uri: 'hf:LiquidAI/LFM3-1.7B-GGUF/LFM3-1.7B-Q4_K_M.gguf',
+    size: '1.1 GB',
+    skill: 'tools',
+    tier: 1,
+    thinks: true,
+    note: 'A small multilingual model from Liquid AI (English, French, Spanish, German, Italian, Portuguese, Arabic, Chinese, Japanese, Korean, Hindi, Russian, Vietnamese, Thai, Indonesian and Polish; not Haitian Creole). Quick: about 0.2 s to the first words with Thinking off. Calls simple tools but failed the Build-mode file test, and it thinks at length, so use Quick or Off for talking. LFM Open License v1.0 (not Apache or MIT): read it before commercial use.',
+  },
   // More models, downloaded from the Ollama registry (a direct link to the model file; the
   // checksum is checked). They have not been through the agent check, so Scorpion never picks
   // one by itself: you choose them. Too big for a release file, so they are never bundled.

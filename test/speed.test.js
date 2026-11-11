@@ -70,3 +70,16 @@ test('a memory reading too low to be real is tried again, then not trusted', () 
   assert.equal(measureMemoryTrusted({ measure: seq(0.6, 0.7, 0.5, 0.9) }), null, 'never a believable reading: the estimate assumes a typical one');
   assert.equal(measureMemoryTrusted({ measure: seq(null, null, null, null) }), null);
 });
+
+test('a reply gets its thinking room on top of the answer, so thinking cannot use it all up', async () => {
+  const { replyTokens, THINK_BUDGET } = await import('../src/main/speed.js');
+  assert.equal(replyTokens({ spoken: true, effort: 'off' }), 400);
+  assert.equal(replyTokens({ spoken: true, effort: 'low' }), 400 + THINK_BUDGET.low, 'a spoken answer keeps its 400 after Quick thinking');
+  assert.equal(replyTokens({ spoken: true }), 400, 'a model that is not given a limit (remote)');
+  assert.equal(replyTokens({ mode: 'chat', contextSize: 16384, effort: 'off' }), 3072);
+  assert.equal(replyTokens({ mode: 'build', contextSize: 16384, effort: 'off' }), 6144);
+  assert.equal(replyTokens({ mode: 'chat', contextSize: 16384, effort: 'medium' }), 3072 + THINK_BUDGET.medium);
+  assert.equal(replyTokens({ mode: 'chat', contextSize: 4096, effort: 'off' }), 2048, 'never more than half the context for the answer');
+  assert.ok(replyTokens({ mode: 'build', contextSize: 4096, effort: 'medium' }) <= 4096 * 0.75, 'and the whole reply stays inside the context');
+  assert.equal(replyTokens({ mode: 'chat', contextSize: 16384, effort: 'high' }), 3072, 'Deep has no thinking limit of its own');
+});

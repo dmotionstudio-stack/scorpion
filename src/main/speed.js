@@ -13,6 +13,16 @@ const GB = 1024 ** 3;
 // the top of a chat): none for Off, a little for Quick, more for Normal, no limit for Deep.
 export const THINK_BUDGET = { off: 0, low: 384, medium: 1536, high: undefined };
 
+// The most a reply may write, in tokens: the answer (short when spoken, more room when building, never
+// more than half the context) plus what the model may think first. The thinking comes on top: a model
+// that thinks a lot (LFM3) used to spend the whole limit thinking and be cut off in the middle of its answer.
+export function replyTokens({ spoken = false, mode = 'chat', contextSize = 8192, effort = null } = {}) {
+  const think = THINK_BUDGET[effort] || 0;
+  if (spoken) return 400 + think;
+  const answer = Math.min(mode === 'build' ? 6144 : 3072, Math.floor(contextSize / 2));
+  return Math.min(answer + think, Math.floor(contextSize * 0.75));
+}
+
 // Typical memory speed (GB/s) of a graphics card with room for the model: a
 // laptop card is about 100, a desktop one 200 or more; Apple's unified memory
 // about 100 on the base chips.

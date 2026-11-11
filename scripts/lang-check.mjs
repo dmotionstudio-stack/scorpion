@@ -1,5 +1,5 @@
 // How a model handles spoken conversation in other languages:
-//   node scripts/lang-check.mjs <chat.gguf> [gpuLayers]
+//   node scripts/lang-check.mjs <chat.gguf> [gpuLayers]   (EFFORT=low|off to set the Thinking level)
 // For French, Spanish and Haitian Creole it measures time to the first words
 // and writing speed, and prints the reply, using Scorpion's own spoken-turn
 // instructions. Judge the language quality by reading the replies.
@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import * as store from '../src/main/store.js';
 import * as engine from '../src/main/engine.js';
+import { replyTokens } from '../src/main/speed.js';
 import * as agents from '../src/main/agents.js';
 import { buildFunctions, buildSystemPrompt } from '../src/main/agent.js';
 
@@ -29,7 +30,8 @@ for (const [lang, text] of turns) {
   let chunks = 0;
   const t0 = performance.now();
   await engine.runTurn({
-    threadId: `lang-${lang}`, history: null, temperature: 0.6, maxTokens: 400,
+    threadId: `lang-${lang}`, history: null, temperature: 0.6, maxTokens: replyTokens({ spoken: true, effort: process.env.EFFORT || null }),
+    effort: process.env.EFFORT || null, // off | low | medium | high: the Thinking level, as in a spoken turn (the app uses low)
     systemPrompt: buildSystemPrompt(settings, { docNames: [], agent, spoken: true }),
     text,
     functions: buildFunctions({ settings, agent, rag: { hasDocuments: () => false }, emit() {}, requestApproval: async () => true, streamedText: () => out }),

@@ -7,7 +7,7 @@ import { createPreview } from './preview.js';
 import { SCAN_SCRIPT, describe as describePage } from './agent-browser.js';
 import { createDrives, driveLabel } from './drives.js';
 import { downloadFile, fetchJson, humanSize } from './fetcher.js';
-import { recommend } from './speed.js';
+import { recommend, replyTokens } from './speed.js';
 import { NEW_KINDS, createItem } from './new-items.js';
 import path from 'node:path';
 import os from 'node:os';
@@ -1170,10 +1170,9 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
       systemPrompt: promptFor(settings, agent, { canAskForFolders: Boolean(requestFolderAccess), spoken, speaker, mood }),
       text: [await withDocumentContext(recall, searcher), memory.intentsNote(due)].filter(Boolean).join('\n\n'),
       temperature,
-      // Building writes whole files and iterates on errors, so it gets more room.
-      // A single reply also has to fit in the context, so cap it at half of it.
-      // A spoken conversation wants short, quick turns, like talking to a person.
-      maxTokens: spoken ? 400 : Math.min(settings.mode === 'build' ? 6144 : 3072, Math.floor((info.contextSize || 8192) / 2)),
+      // Building writes whole files and iterates on errors, so it gets more room; a spoken conversation
+      // wants short, quick turns. What the model may think first comes on top (speed.js replyTokens).
+      maxTokens: replyTokens({ spoken, mode: settings.mode, contextSize: info.contextSize || 8192, effort }),
       signal: controller.signal,
       functions: buildFunctions({
         settings, agent, rag: searcher, memory, threadId, emit, requestApproval, requestFolderAccess, allowedFolders, ...toolFlags(),

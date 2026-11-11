@@ -304,7 +304,7 @@ test('every catalog entry is well formed and fast models carry a tested skill', 
     if (c.skill) assert.ok(['agent', 'tools', 'chat'].includes(c.skill), c.id);
   }
   assert.equal(CATALOG[0].skill, 'agent'); // the default pick must handle Build mode
-  for (const id of ['qwen3.5-4b', 'qwen3-1.7b']) assert.ok(ids.has(id), id);
+  for (const id of ['qwen3.5-4b', 'qwen3-1.7b', 'lfm3-1.7b']) assert.ok(ids.has(id), id);
   for (const id of ['qwen3-4b', 'gpt-oss-20b', 'nomic-embed']) assert.ok(!ids.has(id), `${id} was removed`);
   for (const id of ['gemma3-4b', 'gemma3-1b', 'llama3.2-3b', 'llama3.2-1b']) assert.ok(!ids.has(id), `${id} was removed`);
   // Qwen models that did poorly with the agent (see the Qwen comparison) stay out.
