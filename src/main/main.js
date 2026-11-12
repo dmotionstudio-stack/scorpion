@@ -597,7 +597,7 @@ async function state() {
     speed: await speedTable().then((t) => ({ pick: t.pick?.path ?? null, rows: t.rows.map((r) => ({ path: r.path, tps: r.tps, level: r.level?.id ?? null, label: r.level?.label ?? '' })) })).catch(() => ({ pick: null, rows: [] })),
     models: models.listLocalModels(modelEnv()).map((m) => ({ ...m, fit: fit(m.kind, m.bytes), skill: models.CATALOG.find((c) => models.findInstalled(c, [m]))?.skill })),
     catalog: models.CATALOG.map((c) => ({ ...c, fit: fit(c.kind, parseSize(c.size)) })),
-    threads: store.listThreads(),
+    threads: store.listThreads().filter((t) => !t.orb), // the orb's own conversation is not one of the chats
     documents: rag.listDocuments(),
     memories: memory.listMemories(),
     agents: agents.listAgents(),
@@ -965,7 +965,7 @@ const toolFlags = () => ({
   facesReady: faces.faceStatus().installed,
   libraryReady: library.libraryStatus().counts.total > 0,
   mediaReady: Object.values(mediaModelStatus()).some((m) => m.installed),
-  windowsReady: process.platform === 'win32' || process.platform === 'linux', // the agent can run the computer (apps, windows, files, settings)
+  windowsReady: process.platform === 'win32' || process.platform === 'linux' || process.platform === 'darwin', // the agent can run the computer (apps, windows, files, settings)
   extraTools: extraTools(),
 });
 
@@ -2110,7 +2110,7 @@ function registerIpc() {
   h('workspaces:open', (id) => { const w = workspaces.findWorkspace(id); if (w) openFolder(w.path); return true; });
   h('home:get', () => ({
     workspaces: workspaces.listWorkspaces(),
-    activity: recentActivity({ threads: store.listThreads(), getThread: store.getThread, schedules: scheduler.listSchedules(), dreams: dreamState(), heartbeat: persona.heartbeatState(), library: library.libraryStatus() }),
+    activity: recentActivity({ threads: store.listThreads().filter((t) => !t.orb), getThread: store.getThread, schedules: scheduler.listSchedules(), dreams: dreamState(), heartbeat: persona.heartbeatState(), library: library.libraryStatus() }),
   }));
   h('workspace:open', (threadId) => { const t = typeof threadId === 'string' && store.getThread(threadId); const w = (t && t.workspace) || store.getSettings().workspace; if (w) openFolder(w); });
 
@@ -2621,8 +2621,9 @@ function registerIpc() {
   h('files:recycle', async (items) => { for (const p of items || []) await winctl.recyclePath(p); return true; });
 
   h('thread:create', (opts) => {
-    const { agentId, mode } = typeof opts === 'string' ? { agentId: opts } : opts || {};
+    const { agentId, mode, orb } = typeof opts === 'string' ? { agentId: opts } : opts || {};
     const t = store.createThread();
+    if (orb) { t.orb = true; t.title = 'Orb conversation'; t.mode = 'chat'; store.saveThread(t); return t; } // voice and typing in the orb: kept apart from the chats
     if (agentId) t.agentId = agents.getAgent(agentId).id;
     if (['chat', 'plan', 'build'].includes(mode)) { t.mode = mode; if (mode !== store.getSettings().lastChatMode) store.updateSettings({ lastChatMode: mode }); }
     // The chat starts in the given workspace (which becomes the active one), or the active one.

@@ -664,17 +664,43 @@ function voiceReady() {
 }
 const speaksReplies = () => Boolean(S.voice?.installed && (S.settings.voiceSpeak || V.talk || V.wakeTurn || (IX.open && S.settings.orbVoiceOnly !== false)));
 
+// The orb has a conversation of its own (a hidden chat): what is said or typed in the orb goes there, never into the open chat,
+// and what happens in a chat never shows or speaks in the orb. While the orb is open its conversation is the voice thread.
+const OT = { id: null, thread: null, loading: null };
+const MAX_ORB_MESSAGES = 80; // a longer one starts afresh
+function ensureOrbThread() {
+  if (OT.thread && OT.thread.messages.length < MAX_ORB_MESSAGES) return Promise.resolve(OT.thread);
+  OT.loading ??= (async () => {
+    let t = OT.thread ? null : S.settings.orbThread ? await api.getThread(S.settings.orbThread).catch(() => null) : null;
+    if (!t || t.messages.length >= MAX_ORB_MESSAGES) {
+      t = await api.createThread({ orb: true });
+      S.settings = await api.updateSettings({ orbThread: t.id });
+    }
+    OT.thread = t;
+    OT.id = t.id;
+    return t;
+  })().finally(() => { OT.loading = null; });
+  return OT.loading;
+}
+const voiceThreadId = () => (IX.open ? OT.id : S.thread?.id);
+const voiceBusy = () => { const id = voiceThreadId(); return Boolean(id && S.running.has(id)); };
+
 function voiceOnChatEvent(ev) {
-  if (ev.threadId !== S.thread?.id) return;
-  interactOnChatEvent(ev);
-  if (ev.type === 'start') { V.replyDone = false; if (speaksReplies()) speaker.stop(); }
-  if (!speaksReplies()) {
-    if (ev.type === 'done') V.replyDone = true;
+  const orb = Boolean(OT.id) && ev.threadId === OT.id;
+  const chat = ev.threadId === S.thread?.id;
+  if (!orb && !chat) return;
+  if (orb) interactOnChatEvent(ev); // only the orb's own conversation shows in the orb
+  // A chat is read aloud only when Read aloud is on while the orb is open; otherwise the orb is the voice.
+  const voice = orb || !IX.open;
+  const speaks = orb ? speaksReplies() : IX.open ? Boolean(S.voice?.installed && S.settings.voiceSpeak) : speaksReplies();
+  if (ev.type === 'start') { if (voice) V.replyDone = false; if (speaks) speaker.stop(); }
+  if (!speaks) {
+    if (ev.type === 'done' && voice) V.replyDone = true;
     return;
   }
   if (ev.type === 'text' && !ev.parent) speaker.feed(ev.delta);
   if (ev.type === 'done') {
-    V.replyDone = true;
+    if (voice) V.replyDone = true;
     if (ev.error || ev.stopped) speaker.stop();
     speaker.flush(); // continues the conversation once the reply is spoken
   }
@@ -744,13 +770,13 @@ function micError(err) {
 
 async function talkTurn() {
   if (!V.talk || V.dictating || V.starting || recorder.active || V.transcribing || speaker.busy) return;
-  if (S.thread && S.running.has(S.thread.id)) return; // resumes when the reply is spoken
+  if (voiceBusy()) return; // resumes when the reply is spoken
   await listen((text) => {
     if (!V.talk) return;
     if (!text) { talkTurn(); return; } // silence or noise: keep listening
     if (/^(stop|goodbye|bye|end (the )?conversation)[.!]?$/i.test(text.trim())) { stopTalk(); toast('Conversation ended.'); return; }
     if (orbSys?.handleSpoken(text)) { setTimeout(talkTurn, 400); return; }
-    sendMessage(text, { spoken: true });
+    sendMessage(text, { spoken: true, orb: IX.open });
   });
 }
 
@@ -936,7 +962,7 @@ function wireVoice() {
     if (!voiceReady()) return;
     speaker.stop();
     await listen((text) => {
-      if (text) sendMessage(text, { spoken: true });
+      if (text) sendMessage(text, { spoken: true, orb: IX.open });
       else toast('Didn\'t catch that. Try again a little closer to the microphone.');
     });
   };
@@ -1085,7 +1111,7 @@ function interactState() {
   if (extra) return extra;
   // Listening for the wake word looks like standby: it isn't a conversation.
   const waking = orbSys?.wakeListening;
-  if ((V.transcribing && !waking) || (S.thread && S.running.has(S.thread.id))) return 'thinking';
+  if ((V.transcribing && !waking) || voiceBusy()) return 'thinking';
   if (recorder.active && !waking) return 'listening';
   return 'standby';
 }
@@ -1369,7 +1395,7 @@ function wireInteract() {
     $('#ix-input').value = '';
     if (!S.settings.chatModel) closeInteract();
     speaker.stop();
-    sendMessage(text, { spoken: V.talk || speaksReplies() });
+    sendMessage(text, { spoken: V.talk || speaksReplies(), orb: true });
   };
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); IX.open ? closeInteract() : openInteract(); return; }
@@ -1897,11 +1923,12 @@ async function setChatAgent(agent) {
   return true;
 }
 
-async function sendMessage(text, { spoken = false } = {}) {
+// orb: said or typed in the orb: it goes to the orb's own conversation, and the chats stay as they are.
+async function sendMessage(text, { spoken = false, orb = false } = {}) {
   text = text.trim();
   if (!text) return;
   // "/coder fix this" runs that agent; "/coder" alone just switches to it.
-  const command = parseAgentCommand(text, S.agents);
+  const command = orb ? null : parseAgentCommand(text, S.agents);
   if (command) {
     if (!(await setChatAgent(command.agent))) return;
     if (!command.rest) {
@@ -1911,31 +1938,32 @@ async function sendMessage(text, { spoken = false } = {}) {
     }
     text = command.rest;
   }
-  if (IX.open) $('#ix-you').textContent = text;
+  if (orb) $('#ix-you').textContent = text;
   if (!S.settings.chatModel) { toast('Pick or download a chat model first.'); setView('models'); return; }
-  if (!S.thread) await newThread();
-  const thread = S.thread;
+  if (!orb && !S.thread) await newThread();
+  const thread = orb ? await ensureOrbThread() : S.thread;
   if (S.running.has(thread.id)) return;
   thread.messages.push({ role: 'user', text }, { role: 'assistant', blocks: [], agentId: thread.agentId, model: S.engine?.chatModelName || modelName(S.settings.chatModel) });
   S.running.add(thread.id);
-  $('#input').value = ''; autosize(); renderSlashMenu();
-  renderThreads(); renderModelSwitch(); renderMessages();
+  if (orb) renderInteract();
+  else { $('#input').value = ''; autosize(); renderSlashMenu(); renderThreads(); renderModelSwitch(); renderMessages(); }
   // In Interact with FACE on, the reply knows who is talking.
-  const speakerName = IX.open && FX.on ? FX.speaker?.name || null : null;
-  const mood = IX.open && FX.on ? FX.mood || null : null;
+  const speakerName = orb && FX.on ? FX.speaker?.name || null : null;
+  const mood = orb && FX.on ? FX.mood || null : null;
   try { await api.send({ threadId: thread.id, text, spoken, speaker: speakerName, mood }); } catch (err) {
     S.running.delete(thread.id);
-    thread.messages.at(-1).error = String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-    renderMessages();
+    const message = String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+    thread.messages.at(-1).error = message;
+    if (orb) { $('#ix-reply').textContent = `Error: ${message}`; renderInteract(); } else renderMessages();
   }
 }
 
 function applyChatEvent(ev) {
   voiceOnChatEvent(ev);
   if (ev.type === 'done') home?.refresh(); // recent activity
-  if (ev.type === 'approval') { S.pending.set(ev.id, ev); if (ev.threadId === S.thread?.id) orbSys?.onApproval(ev); }
+  if (ev.type === 'approval') { S.pending.set(ev.id, ev); if (OT.id && ev.threadId === OT.id) orbSys?.onApproval(ev); }
   if (ev.type === 'tool-result') orbSys?.clearApproval(ev.id);
-  if (ev.type === 'done' && ev.threadId === S.thread?.id) orbSys?.clearApproval();
+  if (ev.type === 'done' && OT.id && ev.threadId === OT.id) orbSys?.clearApproval();
   if (ev.type === 'memory') { reloadMemories(); return; }
   if (ev.type === 'done') {
     S.running.delete(ev.threadId);
@@ -1954,6 +1982,11 @@ function applyChatEvent(ev) {
     if (S.thread?.id === ev.threadId && S.thread.messages.at(-1)?.role !== 'assistant') {
       api.getThread(ev.threadId).then((t) => { if (S.thread?.id === t.id) { S.thread = t; renderMessages(); } });
     }
+    return;
+  }
+  if (OT.thread && OT.id === ev.threadId) {
+    const last = OT.thread.messages.at(-1);
+    if (last?.role === 'assistant' && ev.type !== 'done') applyEvent(last.blocks, ev);
     return;
   }
   if (S.thread?.id !== ev.threadId) return;
@@ -2056,7 +2089,7 @@ function wire() {
   wirePeople();
   const libraryView = initLibrary({ api, $, esc, toast, errText, gb });
   desktopUi = initDesktop({ api, $, esc, toast, errText, setView, S });
-  orbSys = initOrbSystem({ api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, insets: () => interactBar?.insets() || { top: 0, right: 0, bottom: 0, left: 0 }, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
+  orbSys = initOrbSystem({ voiceBusy, orbThread: () => OT.thread, api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, insets: () => interactBar?.insets() || { top: 0, right: 0, bottom: 0, left: 0 }, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice });
@@ -2130,7 +2163,7 @@ function wire() {
   }).catch(() => {});
   palette = initPalette({
     $, esc, api, toast, errText, nav: onNav, live: () => Boolean(S.live),
-    ask: (text) => { if (!IX.open) setView('chat'); sendMessage(text); },
+    ask: (text) => { setView('chat'); sendMessage(text); },
     ui: {
       newChat: () => { if (IX.open && !orbSys.away) orbSys.leave(() => newThread()); else newThread(); },
       talk: () => onNav({ view: 'orb', talk: true }),

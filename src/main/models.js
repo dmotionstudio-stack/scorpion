@@ -79,6 +79,16 @@ export const CATALOG = [
     note: 'NVIDIA Nemotron 3.5 Lightning. A very large download (23.7 GB) that needs a powerful computer.',
   },
   {
+    id: 'qwen3.5-9b-defiant-fable',
+    kind: 'chat',
+    name: 'Qwen3.5 9B Defiant Fable',
+    uri: 'hf:DavidAU/Qwen3.5-9B-The-Defiant-Fable-Uncensored-Heretic-NEO-IMATRIX-MAX-MTP-GGUF/Qwen3.5-9B-The-Defiant-Fable-Uncnr-Heretic-NEO-MAX-MTP-IQ4_NL.gguf',
+    size: '6.3 GB',
+    tier: 3,
+    thinks: true,
+    note: 'A community fine-tune of Qwen3.5 9B (DavidAU, IQ4_NL, uncensored). Bigger and slower than Qwen3.5 4B: it needs a computer with about 8 GB of memory to spare. It has not been through the agent check, so Scorpion never picks it by itself. Too big to come with the installer or the USB system: download it here.',
+  },
+  {
     id: 'embeddinggemma-2', kind: 'embedding', name: 'EmbeddingGemma 2 (740M)', file: 'embeddinggemma-2-740m.gguf', size: '290 MB', bytes: 303957280,
     url: 'https://registry.ollama.ai/v2/library/embeddinggemma-2/blobs/sha256:111e84992a0406bacb70d11dddd8874001c783cc56b82c462ec82a2f5b8d08b1',
     sha256: '111e84992a0406bacb70d11dddd8874001c783cc56b82c462ec82a2f5b8d08b1',

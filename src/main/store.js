@@ -85,6 +85,7 @@ const DEFAULT_SETTINGS = {
   orbTileClip: {}, // per app (its program path): how much of the app's own title bar is cut off inside the orb, in points
   orbCaptions: 'below', // the orb's screen: what is said shows 'below' the orb, 'above' it or is 'hidden'
   orbTitle: 'left', // the title and status line: 'left', 'center', 'right' or 'hidden'
+  orbThread: null, // the orb's own conversation (a hidden chat): voice and typing in the orb never mix with the chats
   orbTiles: 'auto', // how the tiles are laid out: 'auto', 'columns', 'rows' or 'grid' (shared/tiles.js)
   orbVoiceOnly: true, // the orb is a voice chat: say "Scorpion" and ask, the answer is spoken; no typing, shortcuts, apps or camera on its screen (needs the voice installed)
   wakeWord: false, // saying "Scorpion" starts listening while the orb is open
@@ -210,7 +211,7 @@ export function listThreads() {
     .filter((f) => f.endsWith('.json'))
     .map((f) => readJson(path.join(dir, f), null))
     .filter(Boolean)
-    .map(({ id, title, updatedAt }) => ({ id, title, updatedAt }))
+    .map(({ id, title, updatedAt, orb }) => ({ id, title, updatedAt, orb: Boolean(orb) }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 

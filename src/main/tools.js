@@ -720,7 +720,7 @@ export const TOOLS = {
   // ---------- Windows: apps, windows, files, Settings, system ----------
   list_apps: {
     access: 'system', requires: 'windows', noWorkspace: true,
-    description: process.platform === 'linux' ? 'List the apps installed on this computer. Optional filter by name.' : 'List the apps installed on this Windows PC (desktop programs and Store apps). Optional filter by name.',
+    description: process.platform === 'linux' || process.platform === 'darwin' ? 'List the apps installed on this computer. Optional filter by name.' : 'List the apps installed on this Windows PC (desktop programs and Store apps). Optional filter by name.',
     params: { type: 'object', properties: { filter: { type: 'string' } } },
     async run({ filter }) {
       const apps = await win.listApps();
@@ -832,12 +832,12 @@ export const TOOLS = {
   },
   windows_settings: {
     access: 'system', requires: 'windows', noWorkspace: true,
-    description: `Open a page of ${process.platform === 'linux' ? 'the settings' : 'Windows Settings'}. Pages: ${Object.keys(win.SETTINGS_PAGES).join(', ')}.`,
+    description: `Open a page of ${process.platform === 'linux' ? 'the settings' : process.platform === 'darwin' ? 'System Settings' : 'Windows Settings'}. Pages: ${Object.keys(win.SETTINGS_PAGES).join(', ')}.`,
     params: { type: 'object', properties: { page: { type: 'string' } } },
     describeAction: ({ page }) => `open Settings: ${page}`,
     async run({ page }) {
       const opened = await win.openSettings(page);
-      return `Opened ${process.platform === 'linux' ? 'settings' : 'Windows Settings'}${opened ? ` (${opened})` : ''}.`;
+      return `Opened ${process.platform === 'linux' ? 'settings' : process.platform === 'darwin' ? 'System Settings' : 'Windows Settings'}${opened ? ` (${opened})` : ''}.`;
     },
   },
   system_control: {

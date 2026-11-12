@@ -121,7 +121,7 @@ export function initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi }
 
   // Thumb up/down: answer the question waiting in this chat, or talk / stop.
   function thumb(dir) {
-    const waiting = [...S.pending.values()].filter((p) => p.threadId === S.thread?.id).pop();
+    const waiting = [...S.pending.values()].filter((p) => p.threadId === S.thread?.id || p.threadId === S.settings.orbThread).pop();
     if (waiting) {
       api.approve({ id: waiting.id, approved: dir === 'up' });
       S.pending.delete(waiting.id);

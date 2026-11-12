@@ -1,7 +1,7 @@
 {
   "name": "scorpion",
   "productName": "Scorpion",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "description": "Offline AI assistant and agent. Runs local GGUF models with llama.cpp - no API key, no internet.",
   "type": "module",
   "main": "src/main/main.js",
@@ -137,7 +137,8 @@
       ],
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Scorpion listens to your voice so you can talk to it. Speech is processed on this Mac and never sent anywhere.",
-        "NSCameraUsageDescription": "Scorpion watches your hands, only while Interact's gestures are on, so you can spin and zoom the orb. Video is processed on this Mac and never sent anywhere."
+        "NSCameraUsageDescription": "Scorpion watches your hands, only while Interact's gestures are on, so you can spin and zoom the orb. Video is processed on this Mac and never sent anywhere.",
+      "NSAppleEventsUsageDescription": "Scorpion controls other apps for you (opens them, lists and switches their windows) when you ask. Nothing leaves this Mac."
       }
     },
     "linux": {

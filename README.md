@@ -106,6 +106,12 @@ internet connection to chat.
   mounted under /Volumes. macOS also asks before an app reads Desktop, Documents,
   Downloads or other disks; Settings has a button that opens Full Disk Access, where
   switching Scorpion on lets it reach everything.
+- **Scorpion runs your Mac** (macOS): the agent can list the apps installed on the Mac (Applications, Utilities,
+  ~/Applications), open them, list the open windows and bring one forward, minimize, zoom or close it, open System Settings
+  panes, show a file in Finder, move files to the Trash, and use the system controls (volume, mute, dark mode, screenshot,
+  lock, sleep, restart, shut down, music play/pause in Music or Spotify). The first time, macOS asks to let Scorpion control
+  System Events (Automation) and to turn Scorpion on under Privacy & Security → Accessibility; until then Scorpion says
+  exactly what to switch on. Nothing leaves the Mac.
 - **Skills** (Settings → Skills): folders with a `SKILL.md` that teach the agent how
   to do a kind of job your way. Only names and one-line descriptions sit in the
   prompt; the agent reads a whole skill when a task matches. Four come built in,
@@ -253,6 +259,9 @@ internet connection to chat.
   on), greets you by name at sign-in when face recognition is installed, and with the
   wake word on, saying "Scorpion" starts listening (speech is turned into text on your
   computer; nothing is kept).
+- **The orb has its own conversation.** What you say or type to the orb goes to a conversation of its own (a hidden chat,
+  never listed with your chats), and what you type in a chat never shows or speaks in the orb. The orb stays for voice
+  and its own conversation; chats stay in Scorpion's page.
 - **Apps open inside the orb** (Windows): every app you open while the orb is open (from
   the orb, the taskbar, by voice, or a file opened from Files) loses its title bar and gets
   a tile on the orb's screen, up to six at once, side by side like Windows Snap. Each window is

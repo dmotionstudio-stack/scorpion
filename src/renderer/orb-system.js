@@ -34,7 +34,7 @@ const GREET_BY_TIME = () => { const h = new Date().getHours(); return h < 5 ? 'G
 const lowerFirst = (s) => (s ? s[0].toLowerCase() + s.slice(1) : s);
 
 export function initOrbSystem(ctx) {
-  const { api, $, S, IX, V, speaker, toast, errText, listen, sendMessage, setView, closeInteract, startFace, stopFace, FX, desktopUi, renderInteract } = ctx;
+  const { voiceBusy, orbThread, api, $, S, IX, V, speaker, toast, errText, listen, sendMessage, setView, closeInteract, startFace, stopFace, FX, desktopUi, renderInteract } = ctx;
   const O = { desktop: false, away: false, framed: null, windows: [], winIndex: -1, lastFocused: null, approval: null, asking: false, wakeListening: false, wakeTimer: 0, pollTimer: 0, eventTimer: 0, greetTimer: 0, pointer: null };
 
   // ---------- shortcuts ----------
@@ -662,7 +662,7 @@ export function initOrbSystem(ctx) {
     box.classList.remove('hidden');
     clearTimeout(O.eventTimer);
     O.eventTimer = setTimeout(() => box.classList.add('hidden'), 8000);
-    const busy = speaker.busy || V.transcribing || (S.thread && S.running.has(S.thread.id)) || O.approval;
+    const busy = speaker.busy || V.transcribing || voiceBusy() || O.approval;
     if (S.settings.orbSpeakEvents && S.voice?.installed && !busy) speaker.say(ev.text);
   }
 
@@ -697,7 +697,7 @@ export function initOrbSystem(ctx) {
   }
   async function wakeTick() {
     if (!wakeOn()) return;
-    const busy = V.talk || V.dictating || V.starting || V.onText || V.transcribing || speaker.busy || O.approval || O.asking || (S.thread && S.running.has(S.thread.id));
+    const busy = V.talk || V.dictating || V.starting || V.onText || V.transcribing || speaker.busy || O.approval || O.asking || voiceBusy();
     if (busy) { scheduleWake(700); return; }
     O.wakeListening = true;
     renderInteract();
@@ -736,7 +736,7 @@ export function initOrbSystem(ctx) {
   function run(text) {
     if (handleSpoken(text)) { scheduleWake(600); return; }
     V.wakeTurn = true; // the reply is spoken
-    sendMessage(text, { spoken: true });
+    sendMessage(text, { spoken: true, orb: true });
     scheduleWake(800);
   }
   async function toggleWake(want) {
@@ -793,8 +793,8 @@ export function initOrbSystem(ctx) {
   // Extra looks for the orb: waiting for the user's answer, or working on the PC.
   function state() {
     if (O.approval) return 'waiting';
-    const msg = S.thread?.messages.at(-1);
-    const running = S.thread && S.running.has(S.thread.id);
+    const msg = orbThread()?.messages.at(-1);
+    const running = voiceBusy();
     if (running && msg?.blocks?.some((b) => b.type === 'tool' && b.status === 'running')) return 'acting';
     return null;
   }
