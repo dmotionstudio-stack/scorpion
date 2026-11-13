@@ -950,8 +950,9 @@ function turnSettings(base, { workspace, mode, thread } = {}) {
   const own = thread?.workspace && fs.existsSync(thread.workspace) ? thread.workspace : null;
   return { ...base, workspace: workspace ?? own ?? base.workspace ?? (full ? os.homedir() : null), mode: mode || thread?.mode || 'build' };
 }
-function promptFor(settings, agent, { canAskForFolders, spoken = false, speaker = null, mood = null }) {
+function promptFor(settings, agent, { canAskForFolders, spoken = false, speaker = null, mood = null, orb = false }) {
   return buildSystemPrompt(settings, {
+    orb,
     docNames: rag.listDocuments().map((d) => d.name),
     memoryBlock: settings.memoryEnabled ? memory.memoryPromptBlock() : '',
     agent,
@@ -1098,7 +1099,10 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
   const base = store.getSettings();
   const full = base.fileAccess === 'full';
   // Full access: every drive is allowed, and relative paths start at home.
-  const settings = turnSettings(base, { workspace, mode, thread });
+  // The orb's own conversation (a hidden chat): a spoken-style chat with the computer tools only, a short prompt, its own thinking
+  // level (off unless Settings → General → Orb says otherwise), and no snippets of your other chats.
+  const orb = Boolean(thread.orb);
+  const settings = turnSettings(base, { workspace, mode: orb ? 'chat' : mode, thread });
   // Unrestricted mode (Settings → Privacy) is for chats someone started themselves; a scheduled run or a message from outside never gets it.
   if ((base.unrestricted === true || thread.unrestricted === true) && interactive) Object.assign(settings, { unrestricted: true, online: true, autoApprove: true });
   else settings.unrestricted = false;
@@ -1147,12 +1151,12 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
   const searcher = rag.createSearcher(settings);
   let streamed = '';
   const info = source.remote ? { contextSize: source.contextSize || 32768, maxToolChars: 16000 } : await engine.engineInfo();
-  const effort = source.remote ? null : await thinkingLevel(settings.thinking, { mode: settings.mode, spoken }, slot === 'voice' ? await voiceModelPath() : await effectiveChatModel());
+  const effort = source.remote ? null : orb ? (['low', 'medium'].includes(base.orbThinking) ? base.orbThinking : 'off') : await thinkingLevel(settings.thinking, { mode: settings.mode, spoken }, slot === 'voice' ? await voiceModelPath() : await effectiveChatModel());
   // Questions of fact: the model's most likely answer, not a creative one.
   const baseTemperature = agent.temperature ?? settings.temperature;
   const temperature = settings.preciseAnswers !== false && isFactualQuestion(text) ? Math.min(baseTemperature, 0.2) : baseTemperature;
   try {
-    const recall = settings.memoryEnabled && settings.recallEnabled ? withConversationRecall(text, memory, threadId) : text;
+    const recall = settings.memoryEnabled && settings.recallEnabled && !orb ? withConversationRecall(text, memory, threadId) : text;
     // Standing intents: "when X comes up, do Y" (only for messages from a person).
     const due = intents && settings.memoryEnabled ? memory.fireIntents(text) : [];
     if (due.length) send('memory:changed');
@@ -1165,15 +1169,15 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
       slot,
       effort,
       history: thread.history,
-      systemPrompt: promptFor(settings, agent, { canAskForFolders: Boolean(requestFolderAccess), spoken, speaker, mood }),
+      systemPrompt: promptFor(settings, agent, { canAskForFolders: Boolean(requestFolderAccess), spoken: spoken || orb, speaker, mood, orb }),
       text: [await withDocumentContext(recall, searcher), memory.intentsNote(due)].filter(Boolean).join('\n\n'),
       temperature,
       // Building writes whole files and iterates on errors, so it gets more room; a spoken conversation
       // wants short, quick turns. What the model may think first comes on top (speed.js replyTokens).
-      maxTokens: replyTokens({ spoken, mode: settings.mode, contextSize: info.contextSize || 8192, effort }),
+      maxTokens: replyTokens({ spoken: spoken || orb, mode: settings.mode, contextSize: info.contextSize || 8192, effort }),
       signal: controller.signal,
       functions: buildFunctions({
-        settings, agent, rag: searcher, memory, threadId, emit, requestApproval, requestFolderAccess, allowedFolders, ...toolFlags(),
+        orb, settings, agent, rag: searcher, memory, threadId, emit, requestApproval, requestFolderAccess, allowedFolders, ...toolFlags(),
         services: agentServices(settings, controller.signal), onUnrestricted: logUnrestricted,
         signal: controller.signal, streamedText: () => streamed,
         runHelper: (opts) => (source.remote ? remote.runRemoteHelper({ ...opts, provider: source, apiKey: providerKey(source) }) : engine.runHelperTurn({ ...opts, slot })),

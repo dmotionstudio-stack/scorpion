@@ -98,7 +98,8 @@ function messageText(m) {
 
 function buildIndex() {
   const docs = [];
-  for (const { id } of listThreads()) {
+  for (const { id, orb } of listThreads()) {
+    if (orb) continue; // what is said to the orb stays out of what chats recall
     const t = getThread(id);
     if (!t) continue;
     const msgs = t.messages || [];

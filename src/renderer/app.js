@@ -690,6 +690,8 @@ function voiceOnChatEvent(ev) {
   const chat = ev.threadId === S.thread?.id;
   if (!orb && !chat) return;
   if (orb) interactOnChatEvent(ev); // only the orb's own conversation shows in the orb
+  if (orb && ev.type === 'text' && !ev.parent && !TM.token && TM.sent) TM.token = performance.now();
+  if (orb && ev.type === 'done') setTimeout(timingReport, 4000); // reported once the voice has started (or not at all)
   // While the orb is open it is the voice, and only for its own conversation: a chat is never read aloud then (Read aloud
   // speaks chats again once the orb is closed).
   const voice = orb || !IX.open;
@@ -707,7 +709,7 @@ function voiceOnChatEvent(ev) {
   }
 }
 speaker.onIdle = () => { if (V.replyDone) { V.wakeTurn = false; talkTurn(); orbSys?.scheduleWake(300); } };
-speaker.onChange = () => renderVoiceButtons();
+speaker.onChange = () => { if (speaker.playing && TM.token && !TM.audio) { TM.audio = performance.now(); timingReport(); } renderVoiceButtons(); };
 
 function renderVoiceButtons() {
   renderInteract();
@@ -741,12 +743,25 @@ async function listen(onText) {
   renderVoiceButtons();
 }
 
+// Where the time goes in a spoken answer in the orb: after you stop talking, the transcript, the model's first word, the voice.
+const TM = { t0: 0, text: 0, sent: 0, token: 0, audio: 0, shown: true };
+const secs = (a, b) => (a && b ? `${((b - a) / 1000).toFixed(1)} s` : 'n/a');
+function timingReport() {
+  if (TM.shown || !TM.sent || !TM.token) return;
+  TM.shown = true;
+  const line = `Last answer: transcript ${secs(TM.t0, TM.text)}, model's first word ${secs(TM.sent, TM.token)}, first sound ${secs(TM.token, TM.audio)}; ${secs(TM.t0 || TM.sent, TM.audio || TM.token)} in all.`;
+  console.log('[orb timing]', line);
+  const el = document.getElementById('orb-timing');
+  if (el) el.textContent = line;
+}
 async function heard(pcm) {
+  Object.assign(TM, { t0: performance.now(), text: 0, sent: 0, token: 0, audio: 0, shown: false });
   V.transcribing = true;
   renderVoiceButtons();
   let text = '';
   try { text = await api.transcribe(pcm); } catch (err) { toast(errText(err)); }
   V.transcribing = false;
+  TM.text = performance.now();
   renderVoiceButtons();
   const done = V.onText;
   V.onText = null;
@@ -1375,7 +1390,7 @@ function wireInteract() {
   $('#open-interact').onclick = openInteract;
   $('#ix-talk').onclick = () => (V.talk ? stopTalk() : startTalk());
   // The orb's own settings live in Settings → General → Orb.
-  for (const [id, key] of [['#orb-captions', 'orbCaptions'], ['#orb-title', 'orbTitle'], ['#orb-tiles', 'orbTiles']]) $(id).onchange = async (e) => { await setSetting({ [key]: e.target.value }); orbSys?.refreshShortcuts(); };
+  for (const [id, key] of [['#orb-captions', 'orbCaptions'], ['#orb-title', 'orbTitle'], ['#orb-tiles', 'orbTiles'], ['#orb-thinking', 'orbThinking']]) $(id).onchange = async (e) => { await setSetting({ [key]: e.target.value }); orbSys?.refreshShortcuts(); };
   $('#orb-hands').onchange = (e) => toggleHands(e.target.checked);
   const viewControl = (what) => () => { if (IX.orb) IX.orb[what]?.(); else toast('Open the orb first: the view applies to the orb on its screen.'); };
   $('#orb-zoom-in').onclick = viewControl('zoomIn');
@@ -1806,6 +1821,7 @@ function renderSettings() {
   $('#unrestricted-mode').checked = S.settings.unrestricted === true;
   $('#orb-voice-only').checked = S.settings.orbVoiceOnly !== false;
   $('#orb-captions').value = S.settings.orbCaptions || 'below';
+  $('#orb-thinking').value = ['low', 'medium'].includes(S.settings.orbThinking) ? S.settings.orbThinking : 'off';
   $('#orb-title').value = S.settings.orbTitle || 'left';
   $('#orb-tiles').value = S.settings.orbTiles || 'auto';
   renderOnlineBadge();
@@ -1939,7 +1955,7 @@ async function sendMessage(text, { spoken = false, orb = false } = {}) {
     }
     text = command.rest;
   }
-  if (orb) $('#ix-you').textContent = text;
+  if (orb) { $('#ix-you').textContent = text; if (TM.sent) Object.assign(TM, { t0: 0, text: 0, token: 0, audio: 0 }); TM.shown = false; TM.sent = performance.now(); }
   if (!S.settings.chatModel) { toast('Pick or download a chat model first.'); setView('models'); return; }
   if (!orb && !S.thread) await newThread();
   const thread = orb ? await ensureOrbThread() : S.thread;
