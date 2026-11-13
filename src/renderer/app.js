@@ -690,9 +690,10 @@ function voiceOnChatEvent(ev) {
   const chat = ev.threadId === S.thread?.id;
   if (!orb && !chat) return;
   if (orb) interactOnChatEvent(ev); // only the orb's own conversation shows in the orb
-  // A chat is read aloud only when Read aloud is on while the orb is open; otherwise the orb is the voice.
+  // While the orb is open it is the voice, and only for its own conversation: a chat is never read aloud then (Read aloud
+  // speaks chats again once the orb is closed).
   const voice = orb || !IX.open;
-  const speaks = orb ? speaksReplies() : IX.open ? Boolean(S.voice?.installed && S.settings.voiceSpeak) : speaksReplies();
+  const speaks = orb ? speaksReplies() : IX.open ? false : speaksReplies();
   if (ev.type === 'start') { if (voice) V.replyDone = false; if (speaks) speaker.stop(); }
   if (!speaks) {
     if (ev.type === 'done' && voice) V.replyDone = true;
