@@ -4,13 +4,20 @@
 
 const RATE = 16000; // what Whisper expects
 
+// Speculative listening: at the first short pause the speech so far is already transcribed, while the recorder waits to see if
+// the turn is over. If it is, the transcript is ready (or nearly) when the turn ends; if you carry on, it is thrown away.
+// The speech is the same when only quiet was added since the snapshot (no more than ~0.9 s of it).
+export const canReuse = (snapshotSamples, finalSamples, rate = RATE) => Boolean(snapshotSamples) && finalSamples >= snapshotSamples && finalSamples - snapshotSamples <= rate * 0.9;
+
 // Records the microphone at 16 kHz. With `vad` on, it waits for speech, then
 // stops by itself after a pause and hands the audio to onEnd; with keepOpen
 // too, it hands each piece over and carries on listening (Type what I say).
 export class Recorder {
   get active() { return Boolean(this.ctx); }
 
-  async start({ vad = true, onEnd, onLevel, keepOpen = false } = {}) {
+  // endMs: how long a pause ends your turn (a short turn, under ~3 s, gets endShortMs: quick commands and questions).
+  // onPause(pcm): called once per pause (after specMs of quiet) with the speech so far, a copy; the recording goes on.
+  async start({ vad = true, onEnd, onLevel, keepOpen = false, endMs = 800, endShortMs = endMs, onPause = null, specMs = 320 } = {}) {
     if (this.ctx) return;
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -25,12 +32,13 @@ export class Recorder {
     }
     this.ctx = new AudioContext({ sampleRate: RATE });
     const source = this.ctx.createMediaStreamSource(this.stream);
-    const node = this.ctx.createScriptProcessor(4096, 1, 1);
+    const node = this.ctx.createScriptProcessor(2048, 1, 1); // 128 ms steps: the end of speech is noticed sooner
     this.chunks = [];
     let heard = false;
     let quietMs = 0;
     let spokenMs = 0;
     let noise = 0.01;
+    let paused = false; // onPause already called for this pause
     node.onaudioprocess = (e) => {
       const data = new Float32Array(e.inputBuffer.getChannelData(0));
       let sum = 0;
@@ -52,8 +60,10 @@ export class Recorder {
       this.chunks.push(data);
       spokenMs += ms;
       quietMs = loud ? 0 : quietMs + ms;
-      // ~0.8 s of quiet ends your turn: quick, like a person waiting for you to finish.
-      if (quietMs > 800 || spokenMs > 30000) {
+      if (loud) paused = false;
+      else if (onPause && !paused && quietMs >= specMs && spokenMs - quietMs > 500) { paused = true; onPause(this.snapshot()); }
+      // A pause ends your turn: quick, like a person waiting for you to finish (a little shorter after a short sentence).
+      if (quietMs > (spokenMs < 3000 ? endShortMs : endMs) || spokenMs > 30000) {
         if (!keepOpen) { onEnd?.(this.stop()); return; }
         const pcm = this.take();
         heard = false;
@@ -75,6 +85,15 @@ export class Recorder {
     this.ctx.close().catch(() => {});
     this.ctx = null;
     return this.take();
+  }
+
+  // A copy of the audio recorded so far (the recording goes on).
+  snapshot() {
+    const length = this.chunks.reduce((n, c) => n + c.length, 0);
+    const pcm = new Float32Array(length);
+    let at = 0;
+    for (const c of this.chunks) { pcm.set(c, at); at += c.length; }
+    return pcm;
   }
 
   // The audio recorded so far, and a fresh start for what comes next.

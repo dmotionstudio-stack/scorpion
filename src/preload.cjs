@@ -228,6 +228,8 @@ contextBridge.exposeInMainWorld('scorpion', {
   speak: invoke('voice:speak'),
   micAccess: invoke('voice:micAccess'),
   warmVoice: invoke('voice:warm'),
+  warmOrb: invoke('orb:warm'),
+  orbModel: invoke('orb:model'),
   // Type what I say (Windows): the state, a sentence to type, the shortcut.
   dictation: invoke('dictation'),
   onDictationToggle: on('dictation:toggle'),

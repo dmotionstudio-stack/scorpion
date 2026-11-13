@@ -10,7 +10,7 @@
 //   left (orb-frame.js does the window work), the orb moves to the right.
 // - At sign-in the orb greets the person it recognizes.
 // - The wake word: saying "Scorpion" starts listening.
-import { parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
+import { instantCommand, parseAction, bestApp, parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
 import { intentsFor, matchSpoken } from '/shared/intents.js';
 import { PLATFORM } from './palette.js';
 import { ringLook, siteUrl } from './orb-bubbles.js';
@@ -420,8 +420,41 @@ export function initOrbSystem(ctx) {
   }
 
   // A spoken command the orb handles itself. Returns true if it did.
+  // The time, the date, the volume: done at once, without the model (also in a voice-only orb).
+  function instant(text) {
+    if (!IX.open) return false;
+    const lang = S.settings.voiceLanguage;
+    const say = (line) => { caption(line); if (S.voice?.installed) speaker.say(line); };
+    const q = instantCommand(text, { lang });
+    if (q) {
+      $('#ix-you').textContent = text;
+      caption(q.say);
+      if (q.volume) for (let i = 0; i < (q.volume === 'mute' ? 1 : IS_WINDOWS ? 5 : 2); i++) api.shellVolume(q.volume).catch(() => {});
+      if (q.volume !== 'mute' && S.voice?.installed) speaker.say(q.say);
+      return true;
+    }
+    // Open an app, a screenshot, dark or light mode, the battery: at once too. An app that is not in the installed list goes to the model.
+    const a = parseAction(text, { lang });
+    if (!a) return false;
+    if (a.open) {
+      const app = bestApp(a.open, O.appList);
+      if (!app) return false;
+      $('#ix-you').textContent = text;
+      say(`Opening ${app.name}.`);
+      api.shellLaunch({ id: app.id, name: app.name }).catch((err) => toast(errText(err), 'error'));
+      return true;
+    }
+    $('#ix-you').textContent = text;
+    if (a.intent) { say(a.say); api.intentRun(a.intent).catch((err) => toast(errText(err), 'error')); return true; }
+    if (a.battery) {
+      api.shellTray().then((t) => say(typeof t?.battery === 'number' ? `The battery is at ${t.battery} percent${t.charging ? ', charging' : ''}.` : 'This computer has no battery.')).catch(() => say("I can't read the battery."));
+      return true;
+    }
+    return false;
+  }
   function handleSpoken(text) {
     if (!IX.open) return false;
+    if (instant(text)) return true;
     if (voiceOnly()) return false; // everything said is a question for Scorpion: no opening apps or running intents
     if (O.approval) { answer(parseYesNo(text)); return true; }
     const m = matchShortcut(text, items());
@@ -763,6 +796,7 @@ export function initOrbSystem(ctx) {
     clearInterval(O.pollTimer);
     if (IS_WINDOWS) O.pollTimer = setInterval(refreshWindows, 2500);
     api.pcEvents(true).catch(() => {});
+    api.shellApps?.().then((list) => { O.appList = Array.isArray(list) ? list : []; }).catch(() => {}); // for "open Safari": answered at once
     sendPanel();
     renderWake();
     scheduleWake(800);
@@ -815,7 +849,7 @@ export function initOrbSystem(ctx) {
   window.addEventListener('focus', () => IX.orb?.setFrameCap(ctx.orbFps?.('on') ?? 60));
 
   return {
-    onOpen, onClose, state, handleSpoken, handleGesture, onApproval, clearApproval, returnToOrb, greeted, scheduleWake, stopWake: stopWakeListening, leave: leaveOrb,
+    onOpen, onClose, state, handleSpoken, instant, handleGesture, onApproval, clearApproval, returnToOrb, greeted, scheduleWake, stopWake: stopWakeListening, leave: leaveOrb,
     toggleGuide, goHome, handleGlobals, togglePause,
     // For the taskbar on the orb's screen: a place (Apps, Files) over the orb, a window into a tile of the orb, the stage.
     openFolder: (dir) => leaveOrb(() => (desktopUi ? desktopUi.showFiles(dir) : api.shellLinkOpen(dir))),

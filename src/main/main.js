@@ -973,13 +973,27 @@ const toolFlags = () => ({
 // A fast model for spoken turns. "auto": when the chat model is slow on this
 // computer (a big one on the processor), talk with the best installed model
 // that runs fast here; null means "use the chat model".
-async function voiceModelPath() {
+// The orb on "auto": when the chat model is a big one (over 3.2 GB), the orb talks with a clearly smaller installed model that
+// runs fast here and handles tools (Qwen3.5 4B, LFM3 1.7B…): it only opens apps and answers short questions, and the small one
+// answers in a fraction of the time. Settings → Voice → Voice model: "Same as chat" keeps the chat model for the orb.
+const BIG_CHAT_BYTES = 3.2 * 1024 ** 3;
+async function orbFastModel(file) {
+  const local = models.listLocalModels(modelEnv()).filter((m) => m.kind === 'chat');
+  const main = local.find((m) => m.path === file);
+  if (!main || main.bytes <= BIG_CHAT_BYTES) return null;
+  const hw = await engine.hardwareInfo().catch(() => null);
+  const handlesTools = (m) => ['agent', 'tools'].includes(models.CATALOG.find((c) => models.findInstalled(c, [m]))?.skill);
+  const pick = local.filter((m) => m.path !== file && m.bytes <= main.bytes * 0.6 && handlesTools(m) && engine.modelFit(m.bytes, hw) === 'fast')
+    .sort((a, b) => models.catalogRank(a) - models.catalogRank(b));
+  return pick[0]?.path ?? null;
+}
+async function voiceModelPath({ orb = false } = {}) {
   const s = store.getSettings();
   if (s.voiceModel === 'same') return null;
   const local = models.listLocalModels(modelEnv()).filter((m) => m.kind === 'chat');
   const chatFile = await effectiveChatModel();
   if (s.voiceModel && s.voiceModel !== 'auto') return s.voiceModel !== chatFile && local.some((m) => m.path === s.voiceModel) ? s.voiceModel : null;
-  return fastModelFor(chatFile);
+  return (await fastModelFor(chatFile)) || (orb ? await orbFastModel(chatFile) : null);
 }
 
 async function loadVoiceModel(file) {
@@ -990,23 +1004,23 @@ async function loadVoiceModel(file) {
 
 // Warm-up: read a new chat's instructions and tool list in the background
 // right after a model loads, so the first message is answered quickly.
-async function warmUp({ spoken = false } = {}) {
+async function warmUp({ spoken = false, orb = false } = {}) {
   if (activeSource().remote || running.size) return false;
   const base = store.getSettings();
-  const settings = turnSettings(base, { mode: spoken ? undefined : base.lastChatMode });
+  const settings = turnSettings(base, { mode: orb ? 'chat' : spoken ? undefined : base.lastChatMode });
   const agent = agents.getAgent('scorpion');
-  const voicePath = spoken ? await voiceModelPath() : null;
+  const voicePath = spoken || orb ? await voiceModelPath({ orb }) : null;
   const slot = voicePath ? 'voice' : 'main';
   if (voicePath) await loadVoiceModel(voicePath);
   if (!engine.isChatReady(slot)) return false;
   const functions = buildFunctions({
-    settings, agent, rag: rag.createSearcher(settings), memory, threadId: null, emit() {}, requestApproval: async () => false,
+    orb, settings, agent, rag: rag.createSearcher(settings), memory, threadId: null, emit() {}, requestApproval: async () => false,
     requestFolderAccess: async () => null, allowedFolders: [], streamedText: () => '', runHelper: async () => '', ...toolFlags(),
   });
   return engine.warmUp({
-    systemPrompt: promptFor(settings, agent, { canAskForFolders: true, spoken }),
+    systemPrompt: promptFor(settings, agent, { canAskForFolders: true, spoken: spoken || orb, orb }),
     functions,
-    effort: await thinkingLevel(base.thinking, { mode: settings.mode, spoken }, voicePath || (await effectiveChatModel())),
+    effort: orb ? (['low', 'medium'].includes(base.orbThinking) ? base.orbThinking : 'off') : await thinkingLevel(base.thinking, { mode: settings.mode, spoken }, voicePath || (await effectiveChatModel())),
     slot,
   });
 }
@@ -1109,7 +1123,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
   const agent = agents.getAgent(thread.agentId || 'scorpion');
   let source = activeSource();
   // Spoken turns use the fast voice model when the chat model is slow here.
-  const voicePath = spoken && !source.remote ? await voiceModelPath() : null;
+  const voicePath = (spoken || orb) && !source.remote ? await voiceModelPath({ orb }) : null;
   const slot = voicePath ? 'voice' : 'main';
   if (voicePath) await loadVoiceModel(voicePath);
   else if (!source.remote && (!engine.isChatReady() || (!running.size && (await engine.engineInfo()).chatModel !== (await effectiveChatModel())))) await loadChat();
@@ -1928,6 +1942,15 @@ function registerIpc() {
     await voice.installVoice((p) => send('voice:download', p));
     return voice.voiceStatus();
   });
+  // The orb just opened: its prompt and tools are read now, on the model it will talk with.
+  // Which model the orb answers with (Settings → General → Orb says so).
+  h('orb:model', async () => {
+    const p = await voiceModelPath({ orb: true });
+    const chat = await effectiveChatModel();
+    const list = models.listLocalModels(modelEnv());
+    return { name: p ? list.find((m) => m.path === p)?.name || null : null, chat: list.find((m) => m.path === chat)?.name || null };
+  });
+  h('orb:warm', () => { warmUp({ spoken: true, orb: true }).catch(() => {}); return true; });
   h('voice:warm', () => { voice.warmUp(store.getSettings().voiceLanguage); warmUp({ spoken: true }).catch(() => {}); return true; });
   h('voice:installLanguage', async (lang) => {
     await voice.installLanguageVoice(lang, (p) => send('voice:download', { ...p, lang }));

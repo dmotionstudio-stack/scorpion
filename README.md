@@ -265,6 +265,14 @@ internet connection to chat.
   To answer fast, the orb thinks first only if you ask (Settings → General → Orb → Thinking: Off, Quick or Normal; Off is the
   default), carries a short prompt and only the computer tools (apps, windows, settings, system controls, calculator, web when
   Online is on), and never sees snippets of your chats. The same tab shows where the time went after each answer.
+  Its prompt and tools are read ahead of time when it opens, a short pause already ends a short question or command, the time,
+  the date and the volume ("what time is it", "louder", "mute"), "open Safari" (any installed app), a screenshot, dark or light mode
+  and the battery are done at once without the model, and an answer that
+  takes a while shows "Working on it…" (and says "One moment." in English after three seconds).
+  When your chat model is a big one (over 3.2 GB), the orb answers with a clearly smaller installed model that runs fast and
+  handles tools (Qwen3.5 4B, LFM3 1.7B), and Settings → General → Orb says which one; Settings → Voice → Voice model
+  ("Same as chat") keeps the chat model for the orb.
+  While you talk, a short pause already starts the transcription, so when you really stop the words are ready sooner.
 - **The taskbar is yours to arrange** (Windows, macOS and the orb): right-click an empty part of it. **Show** turns every button on or off (Scorpion, Apps, Files, Power, network, battery, volume, clock, notifications, mail, chat, USB drives, Orb settings); **Add a folder or file…** keeps folders and files on the bar (a folder opens in Files, a file in its program; right-click one to show it, move it or remove it); pinned apps and these can be moved left or right from their right-click menu. On a Mac the notification, network and battery icons open System Settings and the app icons come from the Mac.
 - **Apps open inside the orb** (Windows): every app you open while the orb is open (from
   the orb, the taskbar, by voice, or a file opened from Files) loses its title bar and gets

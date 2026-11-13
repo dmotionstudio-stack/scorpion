@@ -1,7 +1,7 @@
 import { marked } from '/vendor/marked.js';
 import DOMPurify from '/vendor/purify.js';
 import { applyEvent } from '/shared/events.js';
-import { Recorder, Speaker } from './voice.js';
+import { canReuse, Recorder, Speaker } from './voice.js';
 import { FaceCam, drawFaces } from './facecam.js';
 import { initLibrary } from './library-ui.js';
 import { initExtras } from './extras-ui.js';
@@ -143,6 +143,15 @@ function showGeneralSection(id) {
   S.generalSection = id;
   try { localStorage.setItem('generalSection', id); } catch { /* not kept */ }
   if (S.view === 'settings') renderSettingsNav('settings');
+  if (id === 'orb') showOrbModel();
+}
+// The model the orb answers with: a small fast one when the chat model is a big one.
+function showOrbModel() {
+  const el = document.getElementById('orb-model');
+  if (!el) return;
+  api.orbModel?.().then((r) => {
+    el.textContent = r?.name ? `The orb answers with ${r.name}, smaller and faster than your chat model (${r.chat}). Settings → Voice → Voice model changes this.` : r?.chat ? `The orb answers with your chat model, ${r.chat}.` : '';
+  }).catch(() => {});
 }
 let extras = null; // Skills, Personality, Connections and the Memory page extras
 let home = null; // the home screen (home-ui.js)
@@ -690,7 +699,8 @@ function voiceOnChatEvent(ev) {
   const chat = ev.threadId === S.thread?.id;
   if (!orb && !chat) return;
   if (orb) interactOnChatEvent(ev); // only the orb's own conversation shows in the orb
-  if (orb && ev.type === 'text' && !ev.parent && !TM.token && TM.sent) TM.token = performance.now();
+  if (orb && ev.type === 'text' && !ev.parent && String(ev.delta || '').trim() && !TM.token && TM.sent) { TM.token = performance.now(); stopFillers(); }
+  if (orb && ev.type === 'done') stopFillers();
   if (orb && ev.type === 'done') setTimeout(timingReport, 4000); // reported once the voice has started (or not at all)
   // While the orb is open it is the voice, and only for its own conversation: a chat is never read aloud then (Read aloud
   // speaks chats again once the orb is closed).
@@ -733,7 +743,8 @@ async function listen(onText) {
   V.onText = onText;
   try {
     if (!(await api.micAccess())) throw Object.assign(new Error('Microphone access denied'), { name: 'NotAllowedError' });
-    await recorder.start({ vad: true, onEnd: heard, onLevel: (l) => { V.micLevel = l; } });
+    // In the orb a short pause already ends a short question or command (quick answers), a long sentence waits a little longer.
+    await recorder.start({ vad: true, onEnd: heard, onLevel: (l) => { V.micLevel = l; }, onPause: speculate, ...(IX.open ? { endMs: 750, endShortMs: 600 } : {}) });
   } catch (err) {
     micError(err);
     return;
@@ -744,7 +755,8 @@ async function listen(onText) {
 }
 
 // Where the time goes in a spoken answer in the orb: after you stop talking, the transcript, the model's first word, the voice.
-const TM = { t0: 0, text: 0, sent: 0, token: 0, audio: 0, shown: true };
+const TM = { t0: 0, text: 0, sent: 0, token: 0, audio: 0, shown: true, fill1: 0, fill2: 0 };
+const stopFillers = () => { clearTimeout(TM.fill1); clearTimeout(TM.fill2); };
 const secs = (a, b) => (a && b ? `${((b - a) / 1000).toFixed(1)} s` : 'n/a');
 function timingReport() {
   if (TM.shown || !TM.sent || !TM.token) return;
@@ -754,12 +766,21 @@ function timingReport() {
   const el = document.getElementById('orb-timing');
   if (el) el.textContent = line;
 }
+// At a short pause the speech so far is transcribed already; if the turn then ends, that transcript is used (voice.js canReuse).
+function speculate(pcm) {
+  V.spec = { samples: pcm.length, promise: api.transcribe(pcm).catch(() => null) };
+}
 async function heard(pcm) {
   Object.assign(TM, { t0: performance.now(), text: 0, sent: 0, token: 0, audio: 0, shown: false });
   V.transcribing = true;
   renderVoiceButtons();
   let text = '';
-  try { text = await api.transcribe(pcm); } catch (err) { toast(errText(err)); }
+  const spec = V.spec;
+  V.spec = null;
+  try {
+    const early = spec && canReuse(spec.samples, pcm.length) ? await spec.promise : null;
+    text = early != null ? early : await api.transcribe(pcm);
+  } catch (err) { toast(errText(err)); }
   V.transcribing = false;
   TM.text = performance.now();
   renderVoiceButtons();
@@ -1098,6 +1119,7 @@ async function openInteract(opts = {}) {
   }
   if (!IX.open) return;
   orbSys?.onOpen({ desktop, signin: opts?.signin === true });
+  if (S.settings.chatModel) api.warmOrb?.().catch(() => {}); // its prompt and tools are read now, so the first question is not slowed by them
   // A fresh install (no chats yet): the spoken first start, once.
   if (!S.settings.welcomeDone && !S.threads?.length) welcome?.start();
   // Hands and listening only when asked for (G, the Gestures and Talk
@@ -1411,6 +1433,7 @@ function wireInteract() {
     $('#ix-input').value = '';
     if (!S.settings.chatModel) closeInteract();
     speaker.stop();
+    if (orbSys?.instant(text)) return;
     sendMessage(text, { spoken: V.talk || speaksReplies(), orb: true });
   };
   document.addEventListener('keydown', (e) => {
@@ -1955,11 +1978,16 @@ async function sendMessage(text, { spoken = false, orb = false } = {}) {
     }
     text = command.rest;
   }
-  if (orb) { $('#ix-you').textContent = text; if (TM.sent) Object.assign(TM, { t0: 0, text: 0, token: 0, audio: 0 }); TM.shown = false; TM.sent = performance.now(); }
-  if (!S.settings.chatModel) { toast('Pick or download a chat model first.'); setView('models'); return; }
+  if (orb) { $('#ix-you').textContent = text; if (TM.sent) Object.assign(TM, { t0: 0, text: 0, token: 0, audio: 0 }); TM.shown = false; TM.sent = performance.now();
+    // An answer that takes a while: the orb says it is working (written after 1.2 s; spoken, in English, after 3 s).
+    stopFillers();
+    TM.fill1 = setTimeout(() => { if (!TM.token && IX.open) $('#ix-reply').textContent = 'Working on it…'; }, 1200);
+    TM.fill2 = setTimeout(() => { if (!TM.token && IX.open && spoken && S.voice?.installed && String(S.settings.voiceLanguage || 'en').toLowerCase().startsWith('en') && !speaker.busy) speaker.enqueue('One moment.'); }, 3000);
+  }
+  if (!S.settings.chatModel) { stopFillers(); toast('Pick or download a chat model first.'); setView('models'); return; }
   if (!orb && !S.thread) await newThread();
   const thread = orb ? await ensureOrbThread() : S.thread;
-  if (S.running.has(thread.id)) return;
+  if (S.running.has(thread.id)) { if (orb) stopFillers(); return; }
   thread.messages.push({ role: 'user', text }, { role: 'assistant', blocks: [], agentId: thread.agentId, model: S.engine?.chatModelName || modelName(S.settings.chatModel) });
   S.running.add(thread.id);
   if (orb) renderInteract();
