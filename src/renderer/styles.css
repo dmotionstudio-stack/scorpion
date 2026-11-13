@@ -1046,6 +1046,7 @@ body.ix-voice-only .ix-ask, body.ix-voice-only .ix-facecam, body.ix-voice-only .
 .ix-taskbar { position: absolute; z-index: 30; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 12px; color: #f1ece4;
   background: color-mix(in srgb, #050403 86%, transparent); backdrop-filter: blur(10px); transition: transform .22s ease; }
 .ix-taskbar[hidden] { display: none; }
+.ix-taskbar [hidden] { display: none !important; } /* a button hidden in Show */
 .itb-at-bottom { left: 0; right: 0; bottom: 0; height: var(--itb, 48px); border-top: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 -6px 26px rgb(0 0 0 / .45); }
 .itb-at-top { left: 0; right: 0; top: 0; height: var(--itb, 48px); border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 6px 26px rgb(0 0 0 / .45); }
 .itb-at-left, .itb-at-right { top: 0; bottom: 0; width: var(--itb, 64px); flex-direction: column; padding: 8px 0; gap: 4px; }

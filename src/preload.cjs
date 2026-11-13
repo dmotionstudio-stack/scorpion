@@ -116,6 +116,8 @@ contextBridge.exposeInMainWorld('scorpion', {
   pathForFile: (f) => webUtils.getPathForFile(f),
   shellPin: invoke('shell:pin'),
   shellPinned: invoke('shell:pinned'),
+  shellLinks: invoke('shell:links'),
+  shellLinkOpen: invoke('shell:linkOpen'),
   filesList: invoke('files:list'),
   desktopItems: invoke('desktop:items'),
   filesNew: invoke('files:new'),

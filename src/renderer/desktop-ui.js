@@ -158,11 +158,20 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
   const visible = () => F.items.filter((i) => F.hidden || !i.hidden);
   const selectedItems = () => F.items.filter((i) => F.selected.has(i.path));
 
+  // A Mac writes paths with / (and its top is "This Mac" with the startup disk), Windows with \ ("This PC").
+  const MAC = navigator.userAgent.includes('Macintosh');
+  const TOP = MAC ? 'This Mac' : 'This PC';
+  const BIN = MAC ? 'the Trash' : 'the Recycle Bin';
   function crumbs() {
-    if (!F.dir) return `<button class="crumb" data-go="">This PC</button>`;
+    if (!F.dir) return `<button class="crumb" data-go="">${TOP}</button>`;
+    if (!F.dir.includes('\\')) {
+      const names = F.dir.split('/').filter(Boolean);
+      const root = `<button class="crumb" data-go="">${TOP}</button><span class="crumb-sep">›</span><button class="crumb" data-go="/">${MAC ? 'Macintosh HD' : '/'}</button>`;
+      return root + names.map((p, i) => `<span class="crumb-sep">›</span><button class="crumb" data-go="${esc('/' + names.slice(0, i + 1).join('/'))}">${esc(p)}</button>`).join('');
+    }
     const parts = F.dir.split('\\').filter(Boolean);
     let acc = '';
-    return `<button class="crumb" data-go="">This PC</button>` + parts.map((p, i) => {
+    return `<button class="crumb" data-go="">${TOP}</button>` + parts.map((p, i) => {
       acc = i === 0 ? `${p}\\` : `${acc}${acc.endsWith('\\') ? '' : '\\'}${p}`;
       return `<span class="crumb-sep">›</span><button class="crumb" data-go="${esc(acc)}">${esc(p)}</button>`;
     }).join('');
@@ -179,7 +188,7 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     for (const id of ['#files-copy', '#files-cut', '#files-recycle']) $(id).disabled = !sel.length || !F.dir;
     $('#files-rename').disabled = sel.length !== 1 || !F.dir;
     $('#files-list').innerHTML = items.length ? items.map((i) => {
-      const icon = !F.dir && /^[A-Z]:\\$/.test(i.path) ? ICON.drive : i.dir ? ICON.folder : ICON.file;
+      const icon = !F.dir && (i.drive || /^[A-Z]:\\$/.test(i.path)) ? ICON.drive : i.dir ? ICON.folder : ICON.file;
       const name = F.renaming === i.path
         ? `<form class="files-rename" data-rename="${esc(i.path)}"><input class="text-input" value="${esc(i.name)}" aria-label="New name"><button class="btn small" type="submit">Rename</button></form>`
         : `<span class="files-name">${esc(i.name)}</span>`;
@@ -209,8 +218,8 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
   async function recycle() {
     const sel = selectedItems();
     if (!sel.length) return;
-    if (!confirm(sel.length === 1 ? `Move "${sel[0].name}" to the Recycle Bin?` : `Move ${sel.length} items to the Recycle Bin?`)) return;
-    try { await api.filesRecycle(sel.map((i) => i.path)); toast('Moved to the Recycle Bin'); } catch (err) { toast(errText(err), 'error'); }
+    if (!confirm(sel.length === 1 ? `Move "${sel[0].name}" to ${BIN}?` : `Move ${sel.length} items to ${BIN}?`)) return;
+    try { await api.filesRecycle(sel.map((i) => i.path)); toast(`Moved to ${BIN}`); } catch (err) { toast(errText(err), 'error'); }
     go(F.dir, { remember: false });
   }
 

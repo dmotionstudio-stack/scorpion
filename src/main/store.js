@@ -64,7 +64,7 @@ const DEFAULT_SETTINGS = {
   // its apps), an app's open windows combined under one icon, app
   // names or icons only, centered, size, look, hiding by itself until the pointer reaches
   // its edge, and which items show.
-  taskbar: { pinned: [], groups: [], combine: true, groupTray: false, labels: true, center: false, size: 'normal', style: 'holo', autoHide: false, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true } },
+  taskbar: { pinned: [], links: [], groups: [], combine: true, groupTray: false, labels: true, center: false, size: 'normal', style: 'holo', autoHide: false, show: { home: true, apps: true, files: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true } },
   taskbarAlwaysOn: true, // Windows: the holographic taskbar in place of the Windows one whenever Scorpion runs
   orbDesktop: true, // as the Windows desktop, show the orb (false: the Home page)
   orbGreet: true, // at sign-in, the orb greets the person it recognizes (face recognition installed)

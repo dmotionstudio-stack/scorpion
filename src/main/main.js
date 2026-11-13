@@ -1516,7 +1516,7 @@ function registerSummon(accel) {
 // 'orbit' (the edge rail with its summon button and the intent wheel) or 'bar'.
 function taskbarSettings() {
   const t = store.getSettings().taskbar || {};
-  return { pinned: [], groups: [], combine: true, groupTray: false, labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(t.show || {}) } };
+  return { pinned: [], links: [], groups: [], combine: true, groupTray: false, labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { home: true, apps: true, files: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(t.show || {}) } };
 }
 function setTaskbarLook(t) {
   // Groups hold only apps that are still pinned.
@@ -2181,9 +2181,14 @@ function registerIpc() {
   h('shell:wheel', ({ open, centre } = {}) => (open ? desktop.openWheel(centre ? screen.getCursorScreenPoint() : null) : desktop.closeWheel()));
   // The edge rail's glance items: notifications, Wi-Fi, battery, mail.
   const RAIL_LINKS = { notifications: 'ms-actioncenter:', network: 'ms-availablenetworks:', battery: 'ms-settings:batterysaver' };
+  const MAC_LINKS = { notifications: 'notifications', network: 'network', battery: 'battery' };
   h('shell:glance', (what) => {
-    if (what === 'mail') return openDefault('mailto', process.platform === 'linux' ? 'mailto:' : 'outlookmail:');
+    if (what === 'mail') return process.platform === 'darwin' ? shell.openExternal('mailto:') : openDefault('mailto', process.platform === 'linux' ? 'mailto:' : 'outlookmail:');
     if (what === 'chat') return showView('chat');
+    if (process.platform === 'darwin') {
+      if (!MAC_LINKS[what]) throw new Error('Unknown item');
+      return winctl.openSettings(MAC_LINKS[what]);
+    }
     // Scorpion OS: the session's notification history (mako) and settings tools.
     if (process.platform === 'linux') {
       if (what === 'notifications') return winctl.showNotifications();
@@ -2380,9 +2385,23 @@ function registerIpc() {
         // Force-quit, for an app that no longer responds (unsaved work is lost).
         item('End task', () => winctl.endTask(String(hwnd), { ownPids: app.getAppMetrics().map((m) => m.pid) })
           .catch((err) => dialog.showMessageBox(owner, { type: 'info', message: 'End task', detail: err.message })))];
+    } else if (kind === 'link') {
+      // A folder or file kept on the taskbar.
+      const t = taskbarSettings();
+      const at = t.links.findIndex((l) => l.path === path0);
+      const swap = (to) => { const list = [...t.links]; [list[at], list[to]] = [list[to], list[at]]; return setTaskbarLook({ ...t, links: list }); };
+      template = [{ label: name || path.basename(String(path0)), enabled: false }, { type: 'separator' },
+        item('Open', () => handlers['shell:linkOpen'](path0)),
+        item(process.platform === 'darwin' ? 'Show in Finder' : 'Show in its folder', () => winctl.openPath(path0, { reveal: true })),
+        { type: 'separator' },
+        { label: 'Move left', enabled: at > 0, click: () => swap(at - 1) },
+        { label: 'Move right', enabled: at >= 0 && at < t.links.length - 1, click: () => swap(at + 1) },
+        item('Remove from taskbar', () => setTaskbarLook({ ...t, links: t.links.filter((l) => l.path !== path0) }))];
     } else if (kind === 'pinned') {
       // Its group: one of those there are, a new one, or none.
       const t = taskbarSettings();
+      const at = t.pinned.findIndex((p) => p.id === id);
+      const swapPin = (to) => { const list = [...t.pinned]; [list[at], list[to]] = [list[to], list[at]]; return setTaskbarLook({ ...t, pinned: list }); };
       const mine = groupOf(t.groups, id);
       const move = (to) => setTaskbarLook({ ...t, groups: setGroup(t.groups, id, to) });
       const fresh = freeGroupNames(t.groups);
@@ -2392,6 +2411,8 @@ function registerIpc() {
           { label: 'No group', type: 'radio', checked: !mine, click: () => move(null) },
           ...t.groups.map((g) => ({ label: g.name, type: 'radio', checked: mine?.id === g.id, click: () => move(g.name) })),
           ...(fresh.length ? [{ type: 'separator' }, { label: 'New group', submenu: fresh.map((n) => item(n, () => move(n))) }] : [])] },
+        { label: 'Move left', enabled: at > 0, click: () => swapPin(at - 1) },
+        { label: 'Move right', enabled: at >= 0 && at < t.pinned.length - 1, click: () => swapPin(at + 1) },
         item('Unpin from taskbar', () => setPinned({ id, name, on: false }))];
     } else if (kind === 'drives') {
       // The drives icon: every USB stick and external drive, each with Open and Eject.
@@ -2459,7 +2480,7 @@ function registerIpc() {
       // Customizing the taskbar (right-click on an empty part of it).
       const t = taskbarSettings();
       const set = (patch) => setTaskbarLook({ ...t, ...patch });
-      const show = (k) => ({ label: { network: 'Network', battery: 'Battery', volume: 'Volume', clock: 'Clock', notifications: 'Notifications', mail: 'Mail', chat: 'Chat with Scorpion', drives: 'USB and external drives', settings: 'Orb settings button' }[k], type: 'checkbox', checked: t.show[k] !== false, click: () => set({ show: { ...t.show, [k]: t.show[k] === false } }) });
+      const show = (k) => ({ label: { home: 'Scorpion button', apps: 'Apps button', files: 'Files button', power: 'Power button', network: 'Network', battery: 'Battery', volume: 'Volume', clock: 'Clock', notifications: 'Notifications', mail: 'Mail', chat: 'Chat with Scorpion', drives: 'USB and external drives', settings: 'Orb settings button' }[k], type: 'checkbox', checked: t.show[k] !== false, click: () => set({ show: { ...t.show, [k]: t.show[k] === false } }) });
       const autoHide = { label: 'Hide automatically', type: 'checkbox', checked: t.autoHide === true, click: () => set({ autoHide: t.autoHide !== true }) };
       const edges = [['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']];
       const here = desktop.railEdge();
@@ -2473,7 +2494,15 @@ function registerIpc() {
         { label: "Combine an app's windows", type: 'checkbox', checked: t.combine !== false, click: () => set({ combine: t.combine === false }) },
         { label: 'Size', submenu: ['small', 'normal', 'large'].map((v) => ({ label: v[0].toUpperCase() + v.slice(1), type: 'radio', checked: t.size === v, click: () => set({ size: v }) })) },
         { label: 'Look', submenu: [['holo', 'Holographic'], ['neon', 'Neon'], ['glass', 'Glass'], ['solid', 'Solid']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.style === v, click: () => set({ style: v }) })) },
-        { label: 'Show', submenu: ['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume', 'drives', 'settings'].map(show) },
+        { label: 'Show', submenu: [...['home', 'apps', 'files', 'power'].map(show), { type: 'separator' }, ...['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume', 'drives', 'settings'].map(show)] },
+        item('Add a folder or file…', async () => {
+          desktop.holdRail(true);
+          const r = await dialog.showOpenDialog(owner, { title: 'Add to the taskbar', properties: ['openFile', 'openDirectory', 'multiSelections'] }).finally(() => desktop.holdRail(false));
+          if (r.canceled || !r.filePaths.length) return;
+          const known = new Set(t.links.map((l) => l.path));
+          setTaskbarLook({ ...t, links: [...t.links, ...r.filePaths.filter((p) => !known.has(p)).map((p) => ({ path: p, name: path.basename(p) || p }))].slice(0, 24) });
+        }),
+        ...(t.links.length ? [item('Remove all folders and files', () => setTaskbarLook({ ...t, links: [] }))] : []),
         { type: 'separator' },
         { label: 'Desktop background', submenu: backgroundMenu(item) },
         item('Add or remove apps…', () => showView('apps')),
@@ -2561,7 +2590,19 @@ function registerIpc() {
   });
   // The native shell host is up: its panels replace Scorpion's own rail and dot.
   h('shell:hostReady', () => { desktop.useHost(true); sendTaskbarInset(); watchWindows(); return true; });
-  h('shell:appIcons', (fresh) => (process.platform === 'linux' ? winctl.appIcons() : appIcons.appIcons({ fresh: Boolean(fresh) })));
+  // The apps' own icons on a Mac: the system gives each bundle's icon.
+  let macIcons = null;
+  const macAppIcons = async (fresh) => {
+    if (macIcons && !fresh) return macIcons;
+    const out = {};
+    for (const a of await winctl.listApps({ fresh: Boolean(fresh) })) {
+      try { const img = await app.getFileIcon(a.id, { size: 'normal' }); if (!img.isEmpty()) out[a.id] = img.resize({ width: 48, height: 48 }).toDataURL(); } catch { /* no icon: the initial shows */ }
+    }
+    macIcons = out;
+    return out;
+  };
+  const iconsFor = (fresh) => (process.platform === 'linux' ? winctl.appIcons() : process.platform === 'darwin' ? macAppIcons(fresh) : appIcons.appIcons({ fresh: Boolean(fresh) }));
+  h('shell:appIcons', (fresh) => iconsFor(Boolean(fresh)));
   // The constellation launcher (constellations.js).
   h('const:get', () => constellations.load(taskbarSettings().pinned));
   h('const:save', (data) => constellations.save(data));
@@ -2577,9 +2618,17 @@ function registerIpc() {
   h('shell:pin', ({ id, name, on }) => setPinned({ id, name, on }));
   // The pinned apps with their icons, for the taskbar.
   h('shell:pinned', async () => {
-    const known = process.platform === 'linux' ? await winctl.appIcons() : await appIcons.appIcons();
-    return Promise.all(taskbarSettings().pinned.map(async (p) => ({ ...p, icon: known[p.id] || (/^[a-z]:\\/i.test(p.id) ? await fileIcon(p.id) : null) })));
+    const known = await iconsFor(false).catch(() => ({}));
+    return Promise.all(taskbarSettings().pinned.map(async (p) => ({ ...p, icon: known[p.id] || (/^[a-z]:\\/i.test(p.id) || p.id.endsWith('.app') ? await fileIcon(p.id) : null) })));
   });
+  // Folders and files kept on the taskbar (Add a folder or file…): what each is, and its icon.
+  h('shell:links', async () => Promise.all(taskbarSettings().links.map(async (l) => {
+    let dir = false;
+    try { dir = fs.statSync(l.path).isDirectory(); } catch { /* gone: still shown, it says so when opened */ }
+    return { ...l, dir, icon: dir ? null : await fileIcon(l.path) };
+  })));
+  // Open one: a folder in Scorpion's Files (while Scorpion is the desktop) or the system's file manager, a file in its program.
+  h('shell:linkOpen', (p) => { const target = String(p || ''); return fs.existsSync(target) && fs.statSync(target).isDirectory() ? openFolder(target) : winctl.openPath(target); });
   h('shell:apps', async (fresh) => (await winctl.listApps({ fresh: Boolean(fresh) })).map((a) => ({ id: a.id, name: a.name })));
   h('shell:launch', async ({ id, name }) => winctl.launchApp({ id, name }, { viaExplorer: desktop.shellMode() !== 'shell' }));
   h('files:list', (dir) => listFolder(dir));

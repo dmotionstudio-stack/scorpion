@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { scanApps, parseWindows, fromHandle, parseBattery, parseVolume, permissionHint, isRunnable, SETTINGS_PAGES, openSettings, matchByName } from '../src/main/mac-control.js';
+import { scanApps, parseWindows, parseBundles, fromHandle, parseBattery, parseVolume, permissionHint, isRunnable, SETTINGS_PAGES, openSettings, matchByName } from '../src/main/mac-control.js';
 
 // A folder tree for scanApps: { dir: [entries] }, an entry ending in .app or a name, folders marked with a trailing /.
 const fakeFs = (tree) => ({
@@ -60,4 +60,12 @@ test('programs that run when opened ask first; settings panes resolve by name', 
   assert.equal(isRunnable('/Users/a/photo.png'), false);
   assert.ok(SETTINGS_PAGES.display && SETTINGS_PAGES.sound && SETTINGS_PAGES.privacy);
   assert.throws(() => openSettings('nonsense page'), /Unknown Settings page/);
+});
+
+test('a window knows its app bundle, for its icon and for pinning', () => {
+  const bundles = parseBundles('  501 /Applications/Safari.app/Contents/MacOS/Safari\n  610 /System/Applications/Notes.app/Contents/MacOS/Notes\n  7 /usr/sbin/cfprefsd\n');
+  assert.equal(bundles.get(501), '/Applications/Safari.app');
+  assert.equal(bundles.has(7), false);
+  const wins = parseWindows('501\tSafari\ttrue\tfalse\t1\tApple\n', bundles);
+  assert.equal(wins[0].exe, '/Applications/Safari.app');
 });

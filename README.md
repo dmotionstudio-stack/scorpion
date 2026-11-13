@@ -262,6 +262,7 @@ internet connection to chat.
 - **The orb has its own conversation.** What you say or type to the orb goes to a conversation of its own (a hidden chat,
   never listed with your chats), and what you type in a chat never shows or speaks in the orb. The orb stays for voice
   and its own conversation; chats stay in Scorpion's page.
+- **The taskbar is yours to arrange** (Windows, macOS and the orb): right-click an empty part of it. **Show** turns every button on or off (Scorpion, Apps, Files, Power, network, battery, volume, clock, notifications, mail, chat, USB drives, Orb settings); **Add a folder or file…** keeps folders and files on the bar (a folder opens in Files, a file in its program; right-click one to show it, move it or remove it); pinned apps and these can be moved left or right from their right-click menu. On a Mac the notification, network and battery icons open System Settings and the app icons come from the Mac.
 - **Apps open inside the orb** (Windows): every app you open while the orb is open (from
   the orb, the taskbar, by voice, or a file opened from Files) loses its title bar and gets
   a tile on the orb's screen, up to six at once, side by side like Windows Snap. Each window is

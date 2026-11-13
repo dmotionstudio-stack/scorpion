@@ -60,7 +60,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
       <button class="itb-btn" id="itb-apps" title="Apps">${ICON.apps}</button>
       <button class="itb-btn" id="itb-files" title="Files">${ICON.files}</button>
     </div>
-    <div class="itb-apps" id="itb-apps-area"><nav class="itb-pinned" id="itb-pinned" aria-label="Pinned apps"></nav><span class="itb-sep" id="itb-sep" hidden></span><nav class="itb-windows" id="itb-windows" aria-label="Open windows"></nav></div>
+    <div class="itb-apps" id="itb-apps-area"><nav class="itb-pinned" id="itb-pinned" aria-label="Pinned apps"></nav><nav class="itb-pinned itb-links" id="itb-links" aria-label="Folders and files"></nav><span class="itb-sep" id="itb-sep" hidden></span><nav class="itb-windows" id="itb-windows" aria-label="Open windows"></nav></div>
     <div class="itb-tray">
       <button class="itb-btn itb-item" id="itb-tray" hidden title="Network, notifications, mail, chat and sound" aria-haspopup="menu">${ICON.tray}</button>
       <button class="itb-btn itb-item" id="itb-drives" hidden title="USB and external drives" aria-haspopup="menu">${ICON.drives}</button>
@@ -81,6 +81,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
   const q = (s) => root.querySelector(s);
   let windows = [];
   let pinned = [];
+  let links = []; // folders and files kept on the bar: [{ path, name, dir, icon }]
   let look = { labels: true, size: 'normal', style: 'holo', show: {}, groups: [], combine: true };
   let shown = { pins: [], wins: [] };
   let live = null; // a thickness being dragged: { key, px }
@@ -103,7 +104,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
 
   function apply(settings) {
     const s = settings || S.settings || {};
-    look = { labels: true, size: 'normal', style: 'holo', layout: 'orbit', ...(s.taskbar || {}), show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(s.taskbar?.show || {}) } };
+    look = { labels: true, size: 'normal', style: 'holo', layout: 'orbit', ...(s.taskbar || {}), show: { home: true, apps: true, files: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(s.taskbar?.show || {}) } };
     const edge = edgeOf(look);
     for (const c of [...root.classList]) if (/^itb-(at|style|size)-/.test(c)) root.classList.remove(c);
     root.classList.add(`itb-at-${edge}`, `itb-style-${['holo', 'neon', 'glass', 'solid'].includes(look.style) ? look.style : 'holo'}`, `itb-size-${['small', 'normal', 'large'].includes(look.size) ? look.size : 'normal'}`);
@@ -116,6 +117,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
     for (const [k, el] of [['network', '#itb-net'], ['volume', '#itb-volume'], ['clock', '#itb-clock'], ['notifications', '[data-glance="notifications"]'], ['mail', '[data-glance="mail"]'], ['chat', '[data-glance="chat"]']]) q(el).hidden = look.show[k] === false;
     q('#itb-battery').dataset.off = look.show.battery === false ? '1' : '';
     q('#itb-settings').hidden = look.show.settings === false; // the Orb settings button
+    for (const k of ['home', 'apps', 'files', 'power']) q(`#itb-${k}`).hidden = look.show[k] === false; // the buttons at the ends
     showDrives(lastDrives);
     place();
   }
@@ -144,7 +146,16 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
       const w = it.w;
       return `<button class="itb-btn itb-win running${w.active ? ' active' : ''}" data-hwnd="${esc(w.hwnd)}" title="${esc(w.title)}">${icon(w.icon, w.process || w.title)}<span class="itb-title">${esc(w.title)}</span></button>`;
     }).join('');
-    q('#itb-sep').hidden = !shown.pins.length || !shown.wins.length;
+    const folder = ICON.files;
+    q('#itb-links').innerHTML = links.map((l) => `<button class="itb-btn itb-win itb-pin itb-link" data-link="${esc(l.path)}" title="${esc(l.path)}">${l.dir ? folder : icon(l.icon, l.name)}<span class="itb-title">${esc(l.name)}</span></button>`).join('');
+    q('#itb-sep').hidden = !(shown.pins.length || links.length) || !shown.wins.length;
+  }
+  // The pinned apps (a scan of the app folders) and the folders and files kept on the bar.
+  async function loadItems() {
+    const [p, l] = await Promise.all([api.shellPinned().catch(() => pinned), api.shellLinks?.().catch(() => links) ?? links]);
+    pinned = p;
+    links = Array.isArray(l) ? l : [];
+    render();
   }
   async function refreshWindows() {
     try {
@@ -197,6 +208,8 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
     if (group) { groupMenu(group.dataset.group); return; }
     const wins = e.target.closest('[data-wins]');
     if (wins) { const it = shown.wins.find((x) => x.key === wins.dataset.wins); if (it) windowsMenu(it.windows, it.name); return; }
+    const link = e.target.closest('[data-link]');
+    if (link) { const l = links.find((x) => x.path === link.dataset.link); if (l) go.link(l); return; }
     const pin = e.target.closest('[data-pin]');
     const it = pin && shown.pins.find((x) => x.app?.id === pin.dataset.pin);
     if (!it) return;
@@ -221,6 +234,8 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
     if (group) { groupMenu(group.dataset.group); return; }
     const wins = e.target.closest('[data-wins]');
     if (wins) { const it = shown.wins.find((x) => x.key === wins.dataset.wins); if (it) windowsMenu(it.windows, it.name); return; }
+    const link = e.target.closest('[data-link]');
+    if (link) { const l = links.find((x) => x.path === link.dataset.link); if (l) api.shellMenu({ kind: 'link', path: l.path, name: l.name }); return; }
     const pin = e.target.closest('[data-pin]');
     if (pin) { const p = pinned.find((x) => x.id === pin.dataset.pin); if (p) api.shellMenu({ kind: 'pinned', id: p.id, name: p.name }); return; }
     if (!e.target.closest('button')) api.shellMenu({ kind: 'bar' }); // an empty part: customize
@@ -303,7 +318,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
       if (on) {
         apply();
         clock(); refreshWindows(); refreshTray(); // what is open and the clock at once; the pinned apps (a scan of the Start menu) when they come
-        api.shellPinned().then((p) => { pinned = p; render(); }).catch(() => {});
+        loadItems();
         api.shellDrives?.().then(showDrives).catch(() => {});
         const poll = { full: 1500, balanced: 2500, light: 4000 }[S.perf] || 1500;
         timers = [setInterval(clock, 1000), setInterval(refreshWindows, poll), setInterval(refreshTray, 30_000), setInterval(() => api.shellDrives?.().then(showDrives).catch(() => {}), 30_000)];
@@ -313,5 +328,5 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
   }
   api.onDrivesChanged?.(showDrives);
   setInterval(sync, 700);
-  return { sync, apply: (s) => { apply(s); render(); }, insets, refresh: () => { sync(); refreshWindows(); } };
+  return { sync, apply: (s) => { apply(s); loadItems(); }, insets, refresh: () => { sync(); refreshWindows(); } };
 }

@@ -15,6 +15,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 let windows = [];
 let pinned = []; // [{ id, name, icon }]
+let links = []; // folders and files kept on the bar: [{ path, name, dir, icon }]
 let look = { labels: true, center: false, size: 'normal', style: 'holo', show: {}, groups: [], combine: true };
 let shown = { pins: [], wins: [] }; // what's on the bar now (layoutTaskbar)
 
@@ -22,7 +23,7 @@ async function applySettings(settings) {
   const s = settings || (await api.state().catch(() => null))?.settings;
   if (!s) return;
   if (s.theme) document.documentElement.dataset.theme = s.theme;
-  look = { labels: true, center: false, size: 'normal', style: 'holo', ...(s.taskbar || {}), show: { network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(s.taskbar?.show || {}) } };
+  look = { labels: true, center: false, size: 'normal', style: 'holo', ...(s.taskbar || {}), show: { home: true, apps: true, files: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(s.taskbar?.show || {}) } };
   const b = document.body.classList;
   for (const c of [...b]) if (/^tb-(style|size)-/.test(c)) b.remove(c);
   b.add(`tb-style-${look.style}`, `tb-size-${look.size}`);
@@ -37,7 +38,10 @@ async function applySettings(settings) {
   $('#tb-battery').dataset.off = look.show.battery === false ? '1' : '';
   showDrives(lastDrives);
   refreshTray();
+  for (const k of ['home', 'apps', 'files', 'power']) { const b = document.getElementById(`tb-${k}`); if (b) b.hidden = look.show[k] === false; } // the buttons at the ends
   pinned = await api.shellPinned().catch(() => pinned);
+  const l = await (api.shellLinks?.() ?? Promise.resolve(links)).catch(() => links);
+  links = Array.isArray(l) ? l : [];
   render();
 }
 
@@ -58,7 +62,10 @@ function render() {
     const w = it.w;
     return `<button class="tb-btn tb-win running${w.active ? ' active' : ''}" data-hwnd="${esc(w.hwnd)}" title="${esc(w.title)}">${icon(w.icon, w.process || w.title)}<span class="tb-title">${esc(w.title)}</span></button>`;
   }).join('');
-  $('#tb-sep').hidden = !shown.pins.length || !shown.wins.length;
+  const folder = '<svg class="tb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+  const linksEl = $('#tb-links');
+  if (linksEl) linksEl.innerHTML = links.map((l) => `<button class="tb-btn tb-win tb-pin tb-link" data-link="${esc(l.path)}" title="${esc(l.path)}">${l.dir ? folder : icon(l.icon, l.name)}<span class="tb-title">${esc(l.name)}</span></button>`).join('');
+  $('#tb-sep').hidden = !(shown.pins.length || links.length) || !shown.wins.length;
 }
 // The dropdowns (native menus, so they reach above the thin bar): a group's
 // apps, or an app's windows.
@@ -125,6 +132,8 @@ $('#tb-apps-area').addEventListener('click', async (e) => {
   if (group) { groupMenu(group.dataset.group); return; }
   const wins = e.target.closest('[data-wins]');
   if (wins) { const it = shown.wins.find((x) => x.key === wins.dataset.wins); if (it) windowsMenu(it.windows, it.name); return; }
+  const link = e.target.closest('[data-link]');
+  if (link) { api.shellLinkOpen?.(link.dataset.link).catch(() => {}); return; }
   const pin = e.target.closest('[data-pin]');
   if (!pin) return;
   const it = shown.pins.find((x) => x.app?.id === pin.dataset.pin);
@@ -150,6 +159,8 @@ document.addEventListener('contextmenu', (e) => {
   if (group) { groupMenu(group.dataset.group); return; }
   const wins = e.target.closest('[data-wins]');
   if (wins) { const it = shown.wins.find((x) => x.key === wins.dataset.wins); if (it) windowsMenu(it.windows, it.name); return; }
+  const link = e.target.closest('[data-link]');
+  if (link) { const l = links.find((x) => x.path === link.dataset.link); if (l) api.shellMenu({ kind: 'link', path: l.path, name: l.name }); return; }
   const pin = e.target.closest('[data-pin]');
   if (pin) { const p = pinned.find((x) => x.id === pin.dataset.pin); api.shellMenu({ kind: 'pinned', id: p.id, name: p.name }); return; }
   if (!e.target.closest('button')) api.shellMenu({ kind: 'bar' }); // an empty part: customize

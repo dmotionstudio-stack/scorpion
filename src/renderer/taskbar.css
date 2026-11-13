@@ -176,3 +176,5 @@ body.tb-size-large .tb-win { --ic: 28px; }
 .tb-group .tb-title::after { content: " \25BE"; opacity: .7; }
 .tb-count { flex: none; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; box-sizing: border-box; font-size: 10px; line-height: 15px; text-align: center; font-weight: 600; background: color-mix(in srgb, var(--accent) 30%, transparent); color: #fff; }
 body.tb-icons-only .tb-win .tb-count { position: absolute; right: 1px; top: 1px; min-width: 13px; height: 13px; padding: 0 3px; line-height: 13px; font-size: 9px; }
+
+.tb-btn[hidden], .taskbar [hidden] { display: none !important; } /* a button hidden in Show */

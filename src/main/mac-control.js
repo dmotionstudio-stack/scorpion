@@ -130,7 +130,8 @@ const LIST = [
 ];
 
 // The rows above, as windows. hwnd is "pid:number": what window actions take back.
-export function parseWindows(out) {
+// exeOf: the app bundle of a pid (its icon and "pinned" come from it).
+export function parseWindows(out, exeOf = new Map()) {
   const rows = String(out || '').split(/\r?\n/).filter(Boolean).map((l) => l.split('\t'));
   return rows.map(([pid, proc, fm, mn, idx, ...title]) => ({
     hwnd: `${pid}:${idx}`,
@@ -139,11 +140,21 @@ export function parseWindows(out) {
     title: title.join('\t') || proc,
     active: fm === 'true' && Number(idx) === 1,
     minimized: mn === 'true',
-    exe: null,
+    exe: exeOf.get(Number(pid)) || null,
   })).filter((w) => w.pid && w.process);
 }
+// pid -> the .app bundle it runs from, out of `ps -axo pid=,comm=` lines.
+export function parseBundles(out) {
+  const map = new Map();
+  for (const l of String(out || '').split(/\r?\n/)) {
+    const m = /^\s*(\d+)\s+(.*?\.app)(?:\/|$)/.exec(l);
+    if (m) map.set(Number(m[1]), m[2]);
+  }
+  return map;
+}
 export async function listWindows() {
-  return parseWindows(await osaChecked(LIST, [], { timeout: 20000 }));
+  const [out, ps] = await Promise.all([osaChecked(LIST, [], { timeout: 20000 }), run('ps', ['-axo', 'pid=,comm=']).catch(() => '')]);
+  return parseWindows(out, parseBundles(ps));
 }
 export function fromHandle(h) {
   const m = /^(\d+):(\d+)$/.exec(String(h));

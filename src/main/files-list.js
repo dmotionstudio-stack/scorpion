@@ -16,7 +16,7 @@ export function rootItems({ platform = process.platform, home = os.homedir(), io
   const places = (PLACES[platform] || PLACES.win32).map((n) => ({ name: n, path: P.join(home, n), dir: true })).filter((p) => exists(p.path));
   const drives = [];
   if (platform === 'darwin') {
-    drives.push({ name: 'Macintosh HD', path: '/', dir: true });
+    drives.push({ name: 'Macintosh HD', path: '/', dir: true, drive: true });
     const readdir = io.readdir || ((d) => fs.readdirSync(d));
     const realpath = io.realpath || fs.realpathSync;
     let volumes = [];
@@ -27,10 +27,10 @@ export function rootItems({ platform = process.platform, home = os.homedir(), io
       let real = p;
       try { real = realpath(p); } catch { /* a share that went away */ continue; }
       if (real === '/') continue; // the startup disk, listed above under its own name
-      drives.push({ name, path: p, dir: true });
+      drives.push({ name, path: p, dir: true, drive: true });
     }
   } else if (platform === 'win32') {
-    for (let c = 67; c <= 90; c++) { const d = `${String.fromCharCode(c)}:\\`; if (exists(d)) drives.push({ name: d, path: d, dir: true }); }
+    for (let c = 67; c <= 90; c++) { const d = `${String.fromCharCode(c)}:\\`; if (exists(d)) drives.push({ name: d, path: d, dir: true, drive: true }); }
   }
   return [...places, ...drives];
 }

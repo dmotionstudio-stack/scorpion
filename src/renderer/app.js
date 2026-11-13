@@ -2099,6 +2099,7 @@ function wire() {
       home: () => orbSys.place('home'),
       apps: () => orbSys.place('apps'),
       files: () => orbSys.place('files'),
+      link: (l) => (l.dir ? orbSys.openFolder(l.path) : api.shellLinkOpen(l.path).catch((err) => toast(errText(err), 'error'))),
       settings: () => orbSys.leave(() => { showGeneralSection('orb'); setView('settings'); }),
     },
     openWindow: (w) => orbSys.openWindow(w),

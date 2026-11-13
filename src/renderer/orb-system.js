@@ -818,6 +818,7 @@ export function initOrbSystem(ctx) {
     onOpen, onClose, state, handleSpoken, handleGesture, onApproval, clearApproval, returnToOrb, greeted, scheduleWake, stopWake: stopWakeListening, leave: leaveOrb,
     toggleGuide, goHome, handleGlobals, togglePause,
     // For the taskbar on the orb's screen: a place (Apps, Files) over the orb, a window into a tile of the orb, the stage.
+    openFolder: (dir) => leaveOrb(() => (desktopUi ? desktopUi.showFiles(dir) : api.shellLinkOpen(dir))),
     place: (id) => { const p = PLACES.find((x) => x.id === id); if (p) activate(p); else leaveOrb(() => setView('home')); },
     openWindow: (w) => { if (O.tiles.items.includes(String(w.hwnd))) appAction('focus', String(w.hwnd)); else activate({ kind: 'window', hwnd: w.hwnd, label: w.title }); },
     sendPanel,
