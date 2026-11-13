@@ -58,6 +58,7 @@ test('programs that run when opened ask first; settings panes resolve by name', 
   assert.equal(isRunnable('/Users/a/tool.command'), true);
   assert.equal(isRunnable('/Applications/Safari.app'), true);
   assert.equal(isRunnable('/Users/a/photo.png'), false);
+  assert.equal(isRunnable('C:/x/run.bat'), true, 'a Windows program on a Mac drive asks too');
   assert.ok(SETTINGS_PAGES.display && SETTINGS_PAGES.sound && SETTINGS_PAGES.privacy);
   assert.throws(() => openSettings('nonsense page'), /Unknown Settings page/);
 });

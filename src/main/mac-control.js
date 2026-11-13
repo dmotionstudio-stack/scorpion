@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
-import { matchByName, copyPath, ACTIONS, actionRisk } from './windows-control.js';
+import { matchByName, copyPath, ACTIONS, actionRisk, isRunnable as winRunnable } from './windows-control.js';
 
 export { matchByName, copyPath, ACTIONS, actionRisk };
 export const supported = process.platform === 'darwin';
@@ -238,7 +238,8 @@ export async function endTask(hwnd, opts) {
 
 // ---------- files and folders ----------
 const RUNNABLE = new Set(['.app', '.command', '.sh', '.pkg', '.mpkg', '.dmg', '.scpt', '.workflow', '.jar', '.terminal', '.tool', '.py', '.pl', '.rb']);
-export const isRunnable = (p) => RUNNABLE.has(path.extname(String(p)).toLowerCase());
+// Opening one of these runs it (a Windows program or script too: it can sit on a Mac drive), so that asks first.
+export const isRunnable = (p) => winRunnable(p) || RUNNABLE.has(path.extname(String(p)).toLowerCase());
 export function openPath(p, { reveal = false } = {}) {
   return new Promise((resolve) => execFile('open', reveal ? ['-R', p] : [p], () => resolve(p)));
 }
