@@ -107,6 +107,10 @@ function setView(view) {
   $('#open-settings').classList.toggle('active', inSettings);
   $('#open-library').classList.toggle('active', view === 'library');
   $('#open-home').classList.toggle('active', view === 'home');
+  // Library, Apps and Files have no top bar of their own: this one carries the Home button (the chat and the settings have theirs).
+  const bar = ['library', 'apps', 'files'].includes(view);
+  $('#homebar').classList.toggle('hidden', !bar);
+  if (bar) $('#homebar-title').textContent = { library: 'Library', apps: 'Apps', files: 'Files' }[view];
   $('#threads').classList.toggle('off-chat', view !== 'chat'); // the open chat is highlighted only in the chat view
   if (view === 'home') home?.show();
   if (view === 'settings') desktopUi?.renderSettings();
@@ -2115,6 +2119,8 @@ function wire() {
   $('#open-settings').onclick = () => (MAIN_VIEWS.includes(S.view) ? setView(S.lastSettingsView || 'settings') : setView(S.lastMainView || 'home'));
   $('#back-to-chat').onclick = () => setView(S.lastMainView || 'home');
   $('#open-home').onclick = () => setView('home');
+  for (const id of ['#topbar-home', '#settings-home', '#homebar-home']) $(id).onclick = () => setView('home');
+  document.addEventListener('keydown', (e) => { if (e.altKey && e.key === 'Home') { e.preventDefault(); setView('home'); } });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !MAIN_VIEWS.includes(S.view)) setView(S.lastMainView || 'home'); });
   $('#threads').onclick = async (e) => {
     const del = e.target.closest('[data-del]');

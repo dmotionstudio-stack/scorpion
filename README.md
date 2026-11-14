@@ -18,6 +18,7 @@ internet connection to chat.
   screen. The sidebar can be hidden for more room (the button in its corner, or
   Ctrl+B). The header above the tools can be dragged smaller (the bar under it) to show more tools;
   double-click the bar to hide it or bring it back. Everything underneath is the same local AI.
+  Home is never far: a big, bold **Home** button heads the sidebar and also sits at the left of the top bar in the chat, in every Settings page and in Library, Apps and Files, so it is one click away even with the sidebar hidden (**Alt+Home** works anywhere).
 - **Chat** with local models (Qwen3.5 4B and Qwen3 1.7B come from the catalog; any GGUF file works), with streaming and Markdown. A **Thinking** switch in the chat turns a model's reasoning up, down or off, and the Models page estimates how fast each model will answer on your computer. Scorpion can pick the best model for your computer's speed by itself (and Scorpion OS does so at first start).
   While an answer is being written, the chat shows what it is doing: the model's reasoning open and growing with a blinking bar and a running time ("Thinking… 12 s"), and under the answer a moving bar with what it is doing (Starting, Thinking, Working: a tool, Writing) and how long it has been. Afterwards the reasoning folds to "Thought for 46 s".
 - **Agent**: Scorpion reads, writes and edits files and runs terminal commands. On

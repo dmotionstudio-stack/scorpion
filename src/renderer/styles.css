@@ -550,7 +550,15 @@ button.home-act { cursor: pointer; font: inherit; }
 button.home-act:hover { border-color: var(--accent); }
 .home-act.error .ico { color: var(--danger); }
 .home-act .when { flex: none; white-space: nowrap; }
-.navbtn.home-open { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+/* Home: the way back to everything, so it is big and bold in the sidebar, and a button in every top bar. */
+.navbtn.home-open { display: inline-flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 800; padding: 10px 10px; color: var(--text); }
+.navbtn.home-open .ico { width: 22px; height: 22px; }
+.home-pill { display: inline-flex; align-items: center; gap: 8px; flex: none; font: inherit; font-size: 15px; font-weight: 800; padding: 7px 16px 7px 12px; border-radius: 999px; cursor: pointer; color: var(--accent-text, var(--accent)); background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); }
+.home-pill:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); color: var(--text); }
+.home-pill .ico { width: 18px; height: 18px; }
+.homebar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.homebar.hidden { display: none; }
+.homebar-title { font-weight: 700; color: var(--muted); }
 .threads.off-chat .thread.active { background: none; color: var(--muted); }
 
 /* Apps and Files (desktop-ui.js) */

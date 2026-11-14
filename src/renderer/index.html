@@ -39,8 +39,11 @@
     </aside>
 
     <main class="main">
+      <!-- Pages without a top bar of their own (Library, Apps, Files): a Home button, always in reach -->
+      <div class="homebar hidden" id="homebar"><button type="button" class="home-pill" id="homebar-home" title="Home (Alt+Home)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>Home</button><span class="homebar-title" id="homebar-title"></span></div>
       <!-- SETTINGS TABS (shown on every settings page) -->
       <header class="settings-header hidden" id="settings-header">
+        <button type="button" class="home-pill" id="settings-home" title="Home (Alt+Home)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>Home</button>
         <button class="btn small ghost" id="back-to-chat">← Back</button>
         <!-- Filled from settings-nav.js: a few groups, and a second row for a group's pages -->
         <nav class="stabs" id="settings-groups" aria-label="Settings sections"></nav>
@@ -50,6 +53,7 @@
       <!-- CHAT -->
       <section class="view" id="view-chat">
         <header class="topbar">
+          <button type="button" class="home-pill" id="topbar-home" title="Home (Alt+Home)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>Home</button>
           <span class="agent-tag hidden" id="agent-tag"></span>
           <div class="model-switch" title="Model used for every chat">
             <span class="status" id="model-status"></span>
