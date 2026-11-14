@@ -637,7 +637,6 @@ never picks these by itself and they are never bundled:
 | `gemma4-e4b` | Google Gemma 4 E4B, chat and tools | 5.1 GB |
 | `deepseek-v4.1-flash-9b` | DeepSeek V4.1 Flash 9B, reasoning | 5.2 GB |
 | `mimo-v2.6` | Xiaomi MiMo V2.6, reasoning | 5.2 GB |
-| `nemotron-3.5-lightning` | NVIDIA Nemotron 3.5 Lightning, needs a powerful computer | 23.7 GB |
 | `embeddinggemma-2` | EmbeddingGemma 2, for Chat with documents | 290 MB |
 
 Any other `.gguf` model works too: import it or scan for it.

@@ -73,12 +73,6 @@ export const CATALOG = [
     note: 'Xiaomi MiMo V2.6, a reasoning model.',
   },
   {
-    id: 'nemotron-3.5-lightning', kind: 'chat', name: 'Nemotron 3.5 Lightning', file: 'nemotron-3.5-lightning.gguf', size: '23.7 GB', bytes: 25430738944,
-    url: 'https://registry.ollama.ai/v2/library/nemotron-3.5-lightning/blobs/sha256:5c19f6282f4fc51cb114cb6c876d70ca2fc3b9cf0fbd0a018d9908f4fe1f63b3',
-    sha256: '5c19f6282f4fc51cb114cb6c876d70ca2fc3b9cf0fbd0a018d9908f4fe1f63b3',
-    note: 'NVIDIA Nemotron 3.5 Lightning. A very large download (23.7 GB) that needs a powerful computer.',
-  },
-  {
     id: 'qwen3.5-9b-defiant-fable',
     kind: 'chat',
     name: 'Qwen3.5 9B Defiant Fable',
@@ -87,6 +81,16 @@ export const CATALOG = [
     tier: 3,
     thinks: true,
     note: 'A community fine-tune of Qwen3.5 9B (DavidAU, IQ4_NL, uncensored). Bigger and slower than Qwen3.5 4B: it needs a computer with about 8 GB of memory to spare. It has not been through the agent check, so Scorpion never picks it by itself. Too big to come with the installer or the USB system: download it here.',
+  },
+  {
+    id: 'qwopus3.5-9b-v3',
+    kind: 'chat',
+    name: 'Qwopus3.5 9B v3 (abliterated)',
+    uri: 'hf:mradermacher/Huihui-Qwopus3.5-9B-v3-abliterated-i1-GGUF/Huihui-Qwopus3.5-9B-v3-abliterated.i1-Q6_K.gguf',
+    size: '6.9 GB',
+    tier: 3,
+    thinks: true,
+    note: 'An abliterated Qwen3.5 9B by Huihui (Qwopus v3), quantized to Q6_K with an importance matrix by mradermacher. Apache-2.0. Bigger and slower than Qwen3.5 4B: it needs about 8 GB of memory to spare. It has not been through the agent check, so Scorpion never picks it by itself. Too big to come with the installer or the USB system: download it here.',
   },
   {
     id: 'embeddinggemma-2', kind: 'embedding', name: 'EmbeddingGemma 2 (740M)', file: 'embeddinggemma-2-740m.gguf', size: '290 MB', bytes: 303957280,
