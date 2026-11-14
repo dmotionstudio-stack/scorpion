@@ -347,10 +347,30 @@ function hasPending(blocks) {
   return (blocks || []).some((x) => S.pending.has(x.id) || hasPending(x.children));
 }
 
+// How long, in words: 8 s, 1 min 05 s.
+const fmtSecs = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`; };
+// The reasoning: open and growing with a blinking bar and a running timer while the model thinks; "Thought for 8 s" after.
+function thoughtHtml(b, thinkingNow) {
+  const took = b.at && b.until && b.until - b.at >= 1000 ? fmtSecs(b.until - b.at) : '';
+  const label = thinkingNow ? `Thinking… <span class="live-t" data-live-since="${b.at || Date.now()}">${b.at ? fmtSecs(Date.now() - b.at) : ''}</span>` : took ? `Thought for ${took}` : 'Thinking';
+  return `<details class="thought${thinkingNow ? ' thinking' : ''}"${thinkingNow ? ' open' : ''}><summary>${label}</summary><div class="body${thinkingNow ? ' cursor' : ''}">${esc(b.text)}</div></details>`;
+}
+// The line under a live answer: a moving bar, what it is doing, and for how long.
+function liveStatus(msg) {
+  const blocks = msg.blocks || [];
+  const last = blocks.at(-1);
+  const waiting = last?.type === 'tool' && S.pending.has(last.id);
+  const what = waiting ? 'Waiting for your OK'
+    : last?.type === 'tool' && last.status === 'running' ? `Working: ${TOOL_LABEL[last.name] || last.name}`
+      : last?.type === 'text' && last.text?.trim() ? 'Writing'
+        : blocks.length ? 'Thinking' : 'Starting';
+  const since = msg.startedAt || blocks[0]?.at || Date.now();
+  return `<div class="live-status" aria-live="polite"><span class="live-bar" aria-hidden="true"></span><span class="what">${esc(what)}</span><span class="live-t" data-live-since="${since}">${fmtSecs(Date.now() - since)}</span></div>`;
+}
 function renderBlockList(blocks, live) {
-  return blocks.map((b) => {
+  return blocks.map((b, i, arr) => {
     if (b.type === 'text') return `<div class="md">${md(b.text)}</div>`;
-    if (b.type === 'thought') return `<details class="thought"${live ? ' open' : ''}><summary>Thinking</summary><div class="body">${esc(b.text)}</div></details>`;
+    if (b.type === 'thought') return thoughtHtml(b, live && i === arr.length - 1);
     if (b.type === 'plan') return `<div class="plan-block"><div class="title">PLAN</div>${renderPlanSteps(b.steps)}</div>`;
     if (b.type === 'tool') return toolHtml(b, live);
     return '';
@@ -367,6 +387,7 @@ function renderBlocks(msg, live) {
   let html = renderBlockList(blocks, live);
   if (live && !blocks.length) html += '<div class="md cursor muted"></div>';
   else if (live && blocks.at(-1)?.type === 'text') html = html.replace(/<div class="md">(?![\s\S]*<div class="md">)/, '<div class="md cursor">');
+  if (live && !msg.error) html += liveStatus(msg);
   if (msg.error) html += `<div class="err">Error: ${esc(msg.error)}</div>`;
   if (msg.stopped) html += '<div class="muted small">Stopped.</div>';
   return html;
@@ -405,6 +426,7 @@ function renderMessages(keepScroll) {
       pre.appendChild(b);
     });
   }
+  box.querySelectorAll('.thought.thinking .body').forEach((el) => { el.scrollTop = el.scrollHeight; });
   if (!keepScroll || nearBottom) box.scrollTop = box.scrollHeight;
   renderPlanPanel();
   const busy = S.thread && S.running.has(S.thread.id);
@@ -424,6 +446,10 @@ function scheduleRender() {
   if (frame) return;
   frame = requestAnimationFrame(() => { frame = 0; renderMessages(true); });
 }
+// The running times ("Thinking… 12 s") count every second without redrawing the chat.
+setInterval(() => {
+  for (const el of document.querySelectorAll('[data-live-since]')) el.textContent = fmtSecs(Date.now() - Number(el.dataset.liveSince));
+}, 500);
 
 // ---------- models page ----------
 const FIT = {
@@ -1988,7 +2014,7 @@ async function sendMessage(text, { spoken = false, orb = false } = {}) {
   if (!orb && !S.thread) await newThread();
   const thread = orb ? await ensureOrbThread() : S.thread;
   if (S.running.has(thread.id)) { if (orb) stopFillers(); return; }
-  thread.messages.push({ role: 'user', text }, { role: 'assistant', blocks: [], agentId: thread.agentId, model: S.engine?.chatModelName || modelName(S.settings.chatModel) });
+  thread.messages.push({ role: 'user', text }, { role: 'assistant', startedAt: Date.now(), blocks: [], agentId: thread.agentId, model: S.engine?.chatModelName || modelName(S.settings.chatModel) });
   S.running.add(thread.id);
   if (orb) renderInteract();
   else { $('#input').value = ''; autosize(); renderSlashMenu(); renderThreads(); renderModelSwitch(); renderMessages(); }
@@ -2156,6 +2182,8 @@ function wire() {
   appUpdatesUi = initAppUpdates({ $, api, S, toast, errText });
   clockUi = initClockSettings({ $, api, toast, errText });
   buildDock = initBuildDock({ $, api, S, toast, errText, setSetting });
+  // A web link opened from anywhere (a chat, the orb, the taskbar) shows in Scorpion's own browser: the chat view has its place.
+  api.onPreviewOpen?.(() => { if (S.view === 'chat') return; if (IX.open) orbSys?.place('home'); setView('chat'); });
   modelScanUi = initModelScan({ api, $, esc, toast, errText, refresh });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
   const onNav = ({ view, dir, select, signin, search, talk, query, section }) => {

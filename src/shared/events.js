@@ -14,11 +14,11 @@ export function applyEvent(blocks, ev) {
   switch (ev.type) {
     case 'text':
     case 'thought':
-      if (last?.type === ev.type) last.text += ev.delta;
-      else blocks.push({ type: ev.type, text: ev.delta });
+      if (last?.type === ev.type) { last.text += ev.delta; last.until = Date.now(); }
+      else blocks.push({ type: ev.type, text: ev.delta, at: Date.now(), until: Date.now() });
       break;
     case 'tool':
-      blocks.push({ type: 'tool', id: ev.id, name: ev.name, access: ev.access, summary: ev.summary, args: ev.args, agentIcon: ev.agentIcon, status: 'running' });
+      blocks.push({ type: 'tool', at: Date.now(), id: ev.id, name: ev.name, access: ev.access, summary: ev.summary, args: ev.args, agentIcon: ev.agentIcon, status: 'running' });
       break;
     case 'tool-result': {
       const b = blocks.find((x) => x.type === 'tool' && x.id === ev.id);

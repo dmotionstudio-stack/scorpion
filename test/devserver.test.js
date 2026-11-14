@@ -100,3 +100,16 @@ test('which server is meant: the only one, or one that is named', () => {
   assert.match(s.logs('a').output, /could not start: ENOENT/);
   assert.equal(s.logs().id, 'b', 'only b is still running');
 });
+
+test('the browser address bar: local, web, or a search', async () => {
+  const { webUrlFrom } = await import('../src/main/devserver.js');
+  assert.deepEqual(webUrlFrom('example.com'), { url: 'https://example.com/', search: false });
+  assert.deepEqual(webUrlFrom('docs.python.org/3/'), { url: 'https://docs.python.org/3/', search: false });
+  assert.deepEqual(webUrlFrom('https://example.com/a?b=1'), { url: 'https://example.com/a?b=1', search: false });
+  assert.deepEqual(webUrlFrom('3000'), { url: 'http://localhost:3000/', search: false });
+  assert.deepEqual(webUrlFrom('http://192.168.1.5:8080'), { url: 'http://192.168.1.5:8080/', search: false });
+  assert.deepEqual(webUrlFrom('best pizza near me'), { url: 'https://duckduckgo.com/?q=best%20pizza%20near%20me', search: true });
+  assert.equal(webUrlFrom('file:///C:/secret.txt'), null, 'no local files');
+  assert.equal(webUrlFrom('ftp://example.com'), null);
+  assert.equal(webUrlFrom(''), null);
+});

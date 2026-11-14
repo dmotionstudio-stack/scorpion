@@ -108,10 +108,11 @@ export function thinkingFor(setting, { mode, spoken, slow = false }) {
   return spoken || mode === 'chat' ? 'low' : 'medium';
 }
 
-// The orb's tools: the computer (apps, windows, settings, system controls), a calculator, the web when Online is on, and what it
-// is told to remember. No files, commands, other chats or outside servers: fewer tools to read every turn means a faster first
+// The orb's tools: the computer (apps, windows, settings, system controls), looking through files anywhere (find, list, read,
+// open; never changing them), a calculator, the web when Online is on, and what it is told to remember. No commands, no writing,
+// other chats or outside servers: fewer tools to read every turn means a faster first
 // word, and what is said in a chat stays out of the orb.
-export const ORB_TOOLS = new Set(['calculator', 'list_apps', 'open_app', 'list_windows', 'switch_window', 'close_app', 'windows_settings', 'system_control', 'system_info', 'web_search', 'read_webpage', 'remember']);
+export const ORB_TOOLS = new Set(['list_files', 'read_file', 'search_files', 'find_files', 'read_document', 'read_spreadsheet', 'open_path', 'search_library', 'calculator', 'list_apps', 'open_app', 'list_windows', 'switch_window', 'close_app', 'windows_settings', 'system_control', 'system_info', 'web_search', 'read_webpage', 'remember']);
 
 // A workspace inside a folder the person trusts (Settings, or the Trust chip in Build): file changes
 // and commands there run without asking. Never a system folder, and not what asks 'always'.
@@ -135,6 +136,8 @@ export function modeOf(settings) {
 }
 
 const CHAT_RULES = 'CHAT MODE: no file or command tools. To work on files, the user must switch to Build (below the message box).';
+const CHAT_RULES_FILES = 'CHAT MODE: you can look through the files on this computer (find_files, list_files, search_files, read_file, read_document, read_spreadsheet, open_path) but not change them or run commands. To change files, the user must switch to Build (below the message box).';
+const FILE_READ_TOOLS = new Set(['list_files', 'read_file', 'search_files', 'find_files', 'read_document', 'read_spreadsheet']);
 
 const PLAN_RULES = 'PLAN MODE (read only): investigate with read tools, then call update_plan with a complete step-by-step plan and explain it briefly. Tell the user they can press "Build this plan".';
 
@@ -149,7 +152,7 @@ const TEAM_RULES = 'ask_agent hands a self-contained subtask to a specialist (in
 // Spoken turns (microphone, conversation, Interact): answer the way a person talks.
 const SPOKEN_RULES = 'SPOKEN CONVERSATION: the user is talking to you out loud and hears your reply as speech. Answer like a person in conversation: one to three short sentences, plain words, no lists, headings, tables, code or links. Get straight to the point; if more detail would help, offer it in one short question.';
 
-export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent = null, isHelper = false, canAskForFolders = false, spoken = false, speaker = null, mood = null, orb = false }) {
+export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent = null, isHelper = false, canAskForFolders = false, spoken = false, speaker = null, mood = null, orb = false, folders = null }) {
   const windowsTools = (process.platform === 'win32' || process.platform === 'linux' || process.platform === 'darwin') && (!agent || agentAllows(agent, 'open_app'));
   const intro = agent?.instructions?.trim()
     ? `${agent.instructions.trim()}\nYou run fully offline on the user's own computer as part of Scorpion. Use Markdown, and fenced code blocks for code.`
@@ -164,8 +167,9 @@ export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent 
   if (spoken && !isHelper) parts.push(SPOKEN_RULES);
   if (speaker && !isHelper) parts.push(`The person talking to you right now is ${speaker} (Scorpion recognized their face on camera). Use their name naturally, not in every reply.`);
   const mode = modeOf(settings);
+  if (folders && !isHelper) parts.push(`THIS COMPUTER'S FOLDERS (use these exact paths; "my downloads", "my pictures" and the like mean them): ${Object.entries(folders).map(([k, v]) => `${k} = ${v}`).join('; ')}.`);
   if (mode === 'chat') {
-    parts.push(CHAT_RULES);
+    parts.push(settings.fileAccess === 'full' ? CHAT_RULES_FILES : CHAT_RULES);
   } else if (settings.fileAccess === 'full') {
     parts.push(`FULL FILE ACCESS: you may read, create, edit, move and run files anywhere on this computer. The user's home folder is ${os.homedir()}${settings.workspace ? `; relative paths start in ${settings.workspace}` : ''}. Use full paths. System folders are read-only.`);
     parts.push(AGENT_RULES);
@@ -182,7 +186,7 @@ export function buildSystemPrompt(settings, { docNames, memoryBlock = '', agent 
     parts.push('No workspace folder is set, so file and command tools are unavailable. If the user asks you to work on files, tell them to choose a workspace folder (the folder button in the top bar).');
     if (mode === 'plan') parts.push(PLAN_RULES);
   }
-  if (windowsTools && !isHelper && orb) parts.push('You can run this computer for the user with your tools: open, switch and close apps and windows, open settings, volume and the other system controls. Do it, then say what you did in one short sentence.');
+  if (windowsTools && !isHelper && orb) parts.push('You can run this computer for the user with your tools: open, switch and close apps and windows, open settings, volume and the other system controls. Look through files with find_files, list_files and read_file, and open them with open_path. Do it, then say what you did in one short sentence.');
   else if (windowsTools && !isHelper && process.platform === 'darwin') parts.push('THIS MAC: you can run it for the user: open, switch and close apps and windows (list_apps, open_app, list_windows, switch_window, close_app), open files and folders (open_path), copy them or move them to the Trash, open System Settings pages (windows_settings) and use system controls (system_control: volume, mute, dark mode, screenshot, lock, sleep). Do it rather than explaining how. Restart, shut down and emptying the Trash always ask the user first.');
   else if (windowsTools && !isHelper) parts.push(process.platform === 'linux'
     ? 'THIS COMPUTER (Scorpion OS, Linux): you can run it for the user: open, switch and close apps and windows (list_apps, open_app, list_windows, switch_window, close_app), open files and folders (open_path), copy them or move them to the Trash, open settings tools, control volume, media, brightness, dark mode, screenshots, lock, sleep, restart and shut down (system_control), check system_info, join Wi-Fi (wifi), pair Bluetooth devices (bluetooth), find and install apps (find_apps, install_app, remove_app), drivers, and snapshots. When something doesn\'t work (sound, network, Wi-Fi, Bluetooth, graphics, battery, storage), use diagnose first, then explain the cause plainly and offer the fix. Do it when asked; things that change something ask the user first.'
@@ -334,6 +338,8 @@ export function buildFunctions(ctx) {
     if (mode !== 'build' && (tool.access === 'write' || tool.access === 'exec')) return false;
     // Running Windows works in every mode (talk to it in Chat), but Plan stays read-only.
     if (tool.access === 'system') return !(mode === 'plan' && tool.changes);
+    // Looking at files (never changing them) works in Chat too, when the person gave Scorpion the whole computer.
+    if (mode === 'chat' && settings.fileAccess === 'full' && FILE_READ_TOOLS.has(name)) return true;
     if (mode === 'chat' && name !== 'calculator' && tool.access !== 'memory' && tool.access !== 'skill' && name !== 'search_past_chats' && name !== 'search_documents' && tool.requires !== 'library') return false;
     if (name === 'search_documents') return rag.hasDocuments();
     if (name === 'use_skill') return hasSkills();
@@ -446,7 +452,9 @@ export function buildFunctions(ctx) {
 …[cut: ${full.length - maxToolChars} more characters. Read a specific part (e.g. read_file with startLine) if you need it.]`
             : full) + note;
         } catch (err) {
-          const message = err?.message || String(err);
+          let message = err?.message || String(err);
+          // macOS asks before an app reads Downloads, Documents, Desktop or other disks: if it was refused, say how to allow it.
+          if (process.platform === 'darwin' && /EPERM|EACCES|operation not permitted|permission denied/i.test(message)) message += ' macOS blocked this folder for Scorpion. Tell the user: System Settings → Privacy & Security → Files and Folders (or Full Disk Access) → turn on Scorpion, then ask again.';
           const note = guard.after(name, args, false, message);
           emit({ type: 'tool-result', id, ok: false, output: message + note });
           return `Error: ${message}${note}`;

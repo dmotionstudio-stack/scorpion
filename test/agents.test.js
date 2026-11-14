@@ -170,7 +170,8 @@ test('chat, plan and build modes offer the right tools and instructions', () => 
   const base = { rag, memory: {}, emit() {}, requestApproval: async () => true, runHelper: async () => 'x', agent: agents.getAgent('scorpion') };
   const tools = (mode) => Object.keys(buildFunctions({ ...base, settings: { ...settings, mode } }));
 
-  const chat = tools('chat');
+  // Chat: no file tools unless the person gave Scorpion the whole computer (then it may look, never change: file-access.test.js).
+  const chat = Object.keys(buildFunctions({ ...base, settings: { ...settings, mode: 'chat', fileAccess: 'ask' } }));
   assert.ok(chat.includes('calculator') && chat.includes('remember'));
   assert.ok(!chat.some((n) => ['write_file', 'read_file', 'run_command', 'run_code', 'ask_agent', 'update_plan'].includes(n)));
 

@@ -1,7 +1,7 @@
-// The preview and browser for Build: a page of a server running on this
-// computer, shown inside Scorpion beside the chat (a view docked into the
-// window at the place the page asks for). It only ever shows localhost; a link
-// to anywhere else opens in the person's own browser. The agent can look at the
+// Scorpion's own browser and the preview for Build: a page of a server running on this computer, or any web page, shown
+// inside Scorpion beside the chat (a view docked into the window at the place the page asks for). Links and new windows
+// stay in it; only what a browser cannot show (mail links, other programs' addresses) goes outside. What the agent opens
+// by itself stays on localhost; the person's own clicks and typing can go anywhere on the web. The agent can look at the
 // page and its console errors to fix what it built (describe in agent-browser.js).
 import { isLocalUrl } from './devserver.js';
 
@@ -18,7 +18,7 @@ export function createPreview({ WebContentsView, session, getWindow, openExterna
   const wc = () => view?.webContents;
   const state = () => {
     const c = wc();
-    return { url: c && !c.isDestroyed() ? c.getURL() : '', title: c && !c.isDestroyed() ? c.getTitle() : '', loading: Boolean(c?.isLoading()), canBack: Boolean(c?.navigationHistory?.canGoBack()), canForward: Boolean(c?.navigationHistory?.canGoForward()), errors: consoleLog.filter((l) => l.level >= 3).length };
+    return { web: Boolean(c && !c.isDestroyed() && c.getURL() && !isLocalUrl(c.getURL())), url: c && !c.isDestroyed() ? c.getURL() : '', title: c && !c.isDestroyed() ? c.getTitle() : '', loading: Boolean(c?.isLoading()), canBack: Boolean(c?.navigationHistory?.canGoBack()), canForward: Boolean(c?.navigationHistory?.canGoForward()), errors: consoleLog.filter((l) => l.level >= 3).length };
   };
   const emit = () => onState(state());
 
@@ -26,9 +26,9 @@ export function createPreview({ WebContentsView, session, getWindow, openExterna
     if (view && !view.webContents.isDestroyed()) return view;
     view = new WebContentsView({ webPreferences: { session: session.fromPartition('persist:scorpion-preview'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
     const c = view.webContents;
-    // Nothing but this computer's own pages: a link elsewhere opens in the person's browser.
-    c.setWindowOpenHandler(({ url }) => { if (isLocalUrl(url)) load(url); else if (/^https?:/i.test(url)) openExternal(url); return { action: 'deny' }; });
-    c.on('will-navigate', (e, url) => { if (!isLocalUrl(url)) { e.preventDefault(); if (/^https?:/i.test(url)) openExternal(url); } });
+    // A link or a new window stays here (a web page's own pop-up becomes the page); mail and other programs' links go to their program.
+    c.setWindowOpenHandler(({ url }) => { if (/^https?:/i.test(url)) c.loadURL(url).catch(() => {}); else if (/^(mailto|tel):/i.test(url)) openExternal(url); return { action: 'deny' }; });
+    c.on('will-navigate', (e, url) => { if (!/^https?:/i.test(url) && url !== 'about:blank') { e.preventDefault(); if (/^(mailto|tel):/i.test(url)) openExternal(url); } });
     c.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
     for (const ev of ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading', 'page-title-updated']) c.on(ev, emit);
     // The page's own console (an error here is what the agent should fix). Electron's event shape changed between versions.
@@ -53,8 +53,9 @@ export function createPreview({ WebContentsView, session, getWindow, openExterna
     attached = false;
   }
 
-  function load(url) {
-    if (!isLocalUrl(url)) throw new Error('The preview shows pages on this computer only (localhost).');
+  // web: the person's own address (any http or https page); without it only this computer's own pages.
+  function load(url, { web = false } = {}) {
+    if (!isLocalUrl(url) && !(web && /^https?:\/\//i.test(url))) throw new Error('The preview shows pages on this computer only (localhost).');
     ensure();
     consoleLog.length = 0;
     if (wanted) attach();

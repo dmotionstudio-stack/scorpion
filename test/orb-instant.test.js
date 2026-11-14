@@ -54,3 +54,16 @@ test('open an app, take a screenshot, change the theme, read the battery: at onc
   assert.equal(bestApp('zzzz', apps), null);
   assert.equal(bestApp('a', apps), null, 'too short to guess');
 });
+
+test('streamed blocks remember when they began and last grew (for "Thought for 8 s")', async () => {
+  const { applyEvent } = await import('../src/shared/events.js');
+  const blocks = [];
+  applyEvent(blocks, { type: 'thought', delta: 'Let me ' });
+  const first = blocks[0].at;
+  applyEvent(blocks, { type: 'thought', delta: 'think.' });
+  applyEvent(blocks, { type: 'text', delta: 'Four.' });
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0].text, 'Let me think.');
+  assert.equal(blocks[0].at, first, 'it began once');
+  assert.ok(blocks[0].until >= first && blocks[1].at >= blocks[0].until);
+});

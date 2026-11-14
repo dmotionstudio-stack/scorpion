@@ -82,12 +82,12 @@
                 <button type="button" class="btn small" id="preview-back" aria-label="Back" disabled>←</button>
                 <button type="button" class="btn small" id="preview-forward" aria-label="Forward" disabled>→</button>
                 <button type="button" class="btn small" id="preview-reload" aria-label="Reload">↻</button>
-                <input type="text" id="preview-url" placeholder="localhost:3000" aria-label="Address (this computer only)" spellcheck="false">
-                <button type="button" class="btn small" id="preview-external" title="Open this page in your browser">Browser</button>
+                <input type="text" id="preview-url" placeholder="Search or type an address" aria-label="Address or search" spellcheck="false">
+                <button type="button" class="btn small" id="preview-external" title="Open this page outside Scorpion, in your own browser">Open outside</button>
                 <button type="button" class="btn small" id="preview-devtools" title="Inspect the page">Inspect</button>
               </div>
               <div class="dock-sub muted small"><span id="preview-title"></span><span id="preview-errors" class="error-text"></span></div>
-              <div class="preview-host" id="preview-host"><p class="muted">Ask Scorpion in Build mode to make something and start it, or type an address such as <code>localhost:3000</code>. Only pages on this computer open here.</p></div>
+              <div class="preview-host" id="preview-host"><p class="muted">Scorpion's own browser. Type a web address or a search above, or ask Scorpion in Build mode to make something and start it (<code>localhost:3000</code>). Web links in the chat open here too.</p></div>
             </div>
             <div class="dock-pane hidden" id="dock-terminal">
               <div class="dock-bar"><select id="dev-proc" aria-label="Running"></select><button type="button" class="btn small" id="dev-stop" disabled>Stop</button></div>

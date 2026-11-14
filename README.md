@@ -19,6 +19,7 @@ internet connection to chat.
   Ctrl+B). The header above the tools can be dragged smaller (the bar under it) to show more tools;
   double-click the bar to hide it or bring it back. Everything underneath is the same local AI.
 - **Chat** with local models (Qwen3.5 4B and Qwen3 1.7B come from the catalog; any GGUF file works), with streaming and Markdown. A **Thinking** switch in the chat turns a model's reasoning up, down or off, and the Models page estimates how fast each model will answer on your computer. Scorpion can pick the best model for your computer's speed by itself (and Scorpion OS does so at first start).
+  While an answer is being written, the chat shows what it is doing: the model's reasoning open and growing with a blinking bar and a running time ("Thinking… 12 s"), and under the answer a moving bar with what it is doing (Starting, Thinking, Working: a tool, Writing) and how long it has been. Afterwards the reasoning folds to "Thought for 46 s".
 - **Agent**: Scorpion reads, writes and edits files and runs terminal commands. On
   Windows and macOS it can reach every file on the computer (see *Full file access*
   below); where that is off (Scorpion OS, or if you turn it off) it works inside a
@@ -97,6 +98,7 @@ internet connection to chat.
 - **Online mode** (off by default): the agent can search the web (DuckDuckGo, with
   Wikipedia as a fallback) and read pages for current information, and names its
   sources. Turn it on in Settings or by clicking the Offline badge in the sidebar.
+- **Scorpion can look through your files** (with Full file access on): in Chat and in the orb it can find files by name anywhere ("find my tax return", "*.pdf"), list folders, search inside files and read them (PDF, Word, spreadsheets and text), and open any file or folder, without switching to Build; changing files and running commands still need Build. It is told where your Downloads, Pictures, Documents, Desktop, Music and Videos or Movies really are (even when moved to OneDrive), so "my downloads" just works; a file that is not text (a picture, a song, a video) is described and can be opened. On a Mac, macOS asks the first time for Downloads, Documents and other disks, and Scorpion says exactly what to switch on if it was refused.
 - **Full file access** (on by default on Windows and macOS): Settings → File access
   lets the agent read, create, edit and move files anywhere on the computer without
   asking which folder; choose *Ask before using folders outside the workspace* to
@@ -233,7 +235,12 @@ internet connection to chat.
   this chat* or *Always*, and everything it does in this mode is written to an activity log.
 - **Build** (the Build page): trusted folders where Scorpion writes files and runs
   commands without asking, local dev servers it starts and watches, a preview of the
-  page (localhost only) and a terminal beside the chat.
+  page and a terminal beside the chat.
+- **Scorpion's own browser**: the Preview panel beside the chat is a browser. Type a web address or a search in its address bar
+  (back, forward, reload, Inspect; **Open outside** sends the page to your own browser), and every web link you click in
+  Scorpion (in a chat, on the orb, on the taskbar) opens there instead of an outside browser. A page's own pop-ups and links
+  stay in it; mail links go to your mail program, and local files are never opened by address. What the agent opens by itself
+  stays on localhost.
 - **Taskbar groups and drives**: taskbar icons group under dropdowns (windows of one
   app, tray items, USB and external drives with eject, a Files and Desktop menu); right-click
   the desktop or a folder to create a new folder or document. Settings has a date and

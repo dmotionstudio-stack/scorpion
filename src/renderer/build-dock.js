@@ -48,7 +48,7 @@ export function initBuildDock({ $, api, S, toast, errText, setSetting }) {
   const go = async (text) => {
     const t = String(text || '').trim();
     if (!t) return;
-    try { await api.previewGo({ url: /^[a-z]+:\/\//i.test(t) || /^\d{2,5}$/.test(t) ? t : /^(localhost|127\.0\.0\.1|\[::1\])/i.test(t) ? t : `http://${t}` }); } catch (err) { toast(errText(err), 'error'); }
+    try { await api.previewGo({ url: t }); } catch (err) { toast(errText(err), 'error'); } // an address, a local port, or a search: the main process decides
   };
   $('#preview-url').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(e.target.value); } });
   $('#preview-back').onclick = () => api.previewNav({ action: 'back' });

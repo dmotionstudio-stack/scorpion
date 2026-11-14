@@ -130,7 +130,8 @@ export function isProtectedPath(p) {
 // Resolves a tool path inside the workspace or a folder the user allowed
 // (`allowed`). Relative paths are relative to the workspace.
 export function resolveInside(root, p, allowed = []) {
-  const target = p || '.';
+  // "~" is the home folder ("~/Downloads").
+  const target = typeof p === 'string' && /^~(?=$|[\\/])/.test(p) ? path.join(os.homedir(), p.slice(1)) : p || '.';
   if (!root && !path.isAbsolute(target)) throw new FolderAccessNeeded('No workspace folder is set. Ask the user to choose one in Settings.', null);
   const abs = root ? path.resolve(fs.realpathSync(root), target) : path.resolve(target);
   // Follow symlinks for the deepest existing ancestor so links can't escape.
@@ -156,6 +157,57 @@ function clip(text, max) {
 
 function isProbablyBinary(buf) {
   return buf.subarray(0, 8000).includes(0);
+}
+
+// A file that is not text: what it is, and what can be done with it (the model cannot see pictures or hear music).
+const KINDS = { image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic', 'tiff', 'svg', 'ico'], audio: ['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg'], video: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v'], archive: ['zip', 'rar', '7z', 'tar', 'gz', 'dmg', 'iso'], program: ['exe', 'msi', 'app', 'pkg', 'dll'], document: ['pdf', 'docx', 'doc', 'odt', 'pptx', 'xlsx', 'xls', 'ods'] };
+export function binaryAnswer(file, bytes) {
+  const ext = path.extname(file).slice(1).toLowerCase();
+  const kind = Object.entries(KINDS).find(([, list]) => list.includes(ext))?.[0] || 'binary';
+  const size = bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  const next = { document: 'Use read_document for its text (or read_spreadsheet for a spreadsheet).', image: 'It is a picture: open_path shows it to the user, and search_library knows photos Scorpion has tagged.', audio: 'It is sound: open_path plays it for the user.', video: 'It is a video: open_path plays it for the user.', archive: 'It is an archive: open_path opens it.', program: 'It is a program: open_path runs it (that always asks the user).' }[kind] || 'open_path opens it in its own program.';
+  return `${path.basename(file)}: a ${kind} file (.${ext || 'no extension'}, ${size}); it cannot be shown as text. ${next}`;
+}
+
+// Names matching a pattern ("*.pdf") or containing a word, under a folder, newest first. Capped in entries and in time.
+const AVOID_AT_HOME = new Set(['AppData', 'Library', 'node_modules', '$RECYCLE.BIN', 'System Volume Information']);
+export function findFiles(dir, name, type = 'any', { maxEntries = 80000, ms = 6000, limit = 40 } = {}) {
+  const q = String(name || '').trim();
+  if (!q) throw new Error('Say what to look for.');
+  const re = /[*?]/.test(q) ? new RegExp(`^${q.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`, 'i') : null;
+  const needle = q.toLowerCase();
+  const wantFiles = type !== 'folder';
+  const wantDirs = type !== 'file';
+  const hits = [];
+  const home = os.homedir();
+  const t0 = Date.now();
+  let seen = 0;
+  let cut = false;
+  const queue = [[dir, 0]];
+  while (queue.length) {
+    if (seen > maxEntries || Date.now() - t0 > ms) { cut = true; break; }
+    const [d, depth] = queue.shift();
+    let entries;
+    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      seen++;
+      if (e.name.startsWith('.') && !re) continue;
+      const full = path.join(d, e.name);
+      const isDir = e.isDirectory();
+      const match = re ? re.test(e.name) : e.name.toLowerCase().includes(needle);
+      if (match && ((isDir && wantDirs) || (!isDir && wantFiles))) {
+        let st = null;
+        try { st = fs.statSync(full); } catch { /* gone */ }
+        hits.push({ full: isDir ? full + path.sep : full, size: st && !isDir ? st.size : null, at: st ? st.mtimeMs : 0 });
+      }
+      if (isDir && depth < 10 && !SKIP_DIRS.has(e.name) && !(d === home && AVOID_AT_HOME.has(e.name)) && !e.name.startsWith('.')) queue.push([full, depth + 1]);
+    }
+  }
+  if (!hits.length) return `Nothing named like "${q}" under ${dir}${cut ? ' (the search stopped early: it is a big folder, try a narrower one)' : ''}.`;
+  hits.sort((a, b) => b.at - a.at);
+  const fmt = (n) => (n == null ? 'folder' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+  const lines = hits.slice(0, limit).map((h) => `${h.full}  (${fmt(h.size)}, ${h.at ? new Date(h.at).toISOString().slice(0, 10) : '?'})`);
+  return `${hits.length} match(es)${hits.length > limit ? `, the newest ${limit}` : ''}${cut ? ' (the search stopped early: try a narrower folder)' : ''}:\n${lines.join('\n')}`;
 }
 
 function walk(dir, depth, out, root, limit = 400) {
@@ -223,11 +275,21 @@ export const TOOLS = {
     run({ path: p, startLine }, { workspace, allowed }) {
       const file = resolveInside(workspace, p, allowed);
       const buf = fs.readFileSync(file);
-      if (isProbablyBinary(buf)) return 'This is a binary file and cannot be shown as text.';
+      if (isProbablyBinary(buf)) return binaryAnswer(file, buf.length);
       const lines = buf.toString('utf8').split(/\r?\n/);
       const start = Math.max((startLine || 1) - 1, 0);
       const numbered = lines.slice(start).map((l, i) => `${start + i + 1}| ${l}`).join('\n');
       return clip(numbered, MAX_READ_CHARS);
+    },
+  },
+
+  find_files: {
+    access: 'read',
+    description: 'Find files and folders by NAME anywhere under a folder (default: the workspace, which is the home folder with full access). name: part of a name or a pattern such as "*.pdf" or "tax*2025*"; type: "file", "folder" or "any". Newest first. Use it for "find my …" requests, then open_path, read_document, read_file or list_files.',
+    params: { type: 'object', properties: { name: { type: 'string' }, path: { type: 'string' }, type: { type: 'string' } } },
+    run({ name, path: p, type }, { workspace, allowed }) {
+      const dir = resolveInside(workspace, p || '.', allowed);
+      return findFiles(dir, name, type);
     },
   },
 

@@ -2,7 +2,7 @@ import { app, WebContentsView, BrowserWindow, screen, ipcMain, dialog, protocol,
 import { textMenuTemplate } from './text-menu.js';
 import { cleanGroups, groupOf, setGroup, freeGroupNames } from '../renderer/taskbar-core.js';
 import { createClock } from './clock.js';
-import { createDevServers, localUrlFrom, isLocalUrl } from './devserver.js';
+import { createDevServers, localUrlFrom, isLocalUrl, webUrlFrom } from './devserver.js';
 import { createPreview } from './preview.js';
 import { SCAN_SCRIPT, describe as describePage } from './agent-browser.js';
 import { createDrives, driveLabel } from './drives.js';
@@ -271,7 +271,7 @@ function createWindow() {
   // Scorpion is offline: never navigate the app window anywhere else; open
   // external links (e.g. in rendered Markdown) in the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/i.test(url)) shell.openExternal(url);
+    openLink(url); // Scorpion's own browser
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e, url) => {
@@ -283,7 +283,7 @@ function createWindow() {
   win.webContents.on('context-menu', (_e, params) => {
     const wc = win.webContents;
     const template = textMenuTemplate(params, {
-      openLink: (url) => { if (/^(https?|mailto):/i.test(url)) shell.openExternal(url); },
+      openLink: (url) => { openLink(url); },
       copyText: (t) => clipboard.writeText(t),
       replaceWord: (w) => wc.replaceMisspelling(w),
       addWord: (w) => wc.session.addWordToSpellCheckerDictionary(w),
@@ -950,9 +950,18 @@ function turnSettings(base, { workspace, mode, thread } = {}) {
   const own = thread?.workspace && fs.existsSync(thread.workspace) ? thread.workspace : null;
   return { ...base, workspace: workspace ?? own ?? base.workspace ?? (full ? os.homedir() : null), mode: mode || thread?.mode || 'build' };
 }
+// The folders people mean by "my downloads", "my pictures": where this computer really keeps them (they can be moved, e.g. to OneDrive).
+function knownFolders() {
+  const out = {};
+  for (const [label, key] of [['Home', 'home'], ['Desktop', 'desktop'], ['Documents', 'documents'], ['Downloads', 'downloads'], ['Pictures', 'pictures'], ['Music', 'music'], [process.platform === 'darwin' ? 'Movies' : 'Videos', 'videos']]) {
+    try { out[label] = app.getPath(key); } catch { /* this system has no such folder */ }
+  }
+  return out;
+}
 function promptFor(settings, agent, { canAskForFolders, spoken = false, speaker = null, mood = null, orb = false }) {
   return buildSystemPrompt(settings, {
     orb,
+    folders: settings.fileAccess === 'full' || orb ? knownFolders() : null,
     docNames: rag.listDocuments().map((d) => d.name),
     memoryBlock: settings.memoryEnabled ? memory.memoryPromptBlock() : '',
     agent,
@@ -1050,13 +1059,21 @@ let previewPane = null;
 const preview = () => (previewPane ??= createPreview({
   WebContentsView, session, getWindow: () => win, openExternal: (u) => shell.openExternal(u), onState: (s) => send('preview:state', s),
 }));
-// Open a page in the preview; the chat's pane opens too.
-function showPreview(url) {
-  const target = localUrlFrom(url);
-  if (!target) throw new Error('The preview shows pages on this computer only (localhost).');
+// Open a page in the preview; the chat's pane opens too. web: the person's own click or typing (any web page or a search);
+// without it (the agent, a server's address) only this computer's pages.
+function showPreview(url, { web = false } = {}) {
+  const found = web ? webUrlFrom(url) : null;
+  const target = web ? found?.url : localUrlFrom(url);
+  if (!target) throw new Error(web ? 'That is not an address Scorpion can open.' : 'The preview shows pages on this computer only (localhost).');
   send('preview:open', { url: target });
-  setTimeout(() => preview().load(target).catch(() => {}), 150); // once the pane has its place
+  setTimeout(() => preview().load(target, { web }).catch(() => {}), 150); // once the pane has its place
   return target;
+}
+// Web links open in Scorpion's own browser (the pane beside the chat); a mail link goes to the mail program.
+function openLink(url) {
+  if (/^https?:/i.test(url)) { showPreview(url, { web: true }); return true; }
+  if (/^mailto:/i.test(url)) { shell.openExternal(url); return true; }
+  return false;
 }
 function agentServices(settings, signal) {
   return {
@@ -2348,7 +2365,7 @@ function registerIpc() {
   h('dev:stop', ({ name } = {}) => devServers.stop(name));
   h('dev:input', ({ name, text } = {}) => { devServers.write(name, String(text ?? '')); return true; });
   h('preview:bounds', (rect = {}) => { preview().setBounds(rect); return true; });
-  h('preview:go', ({ url } = {}) => showPreview(url));
+  h('preview:go', ({ url } = {}) => showPreview(url, { web: true }));
   h('preview:nav', ({ action } = {}) => preview().nav(action));
   h('preview:state', () => preview().state());
   // Unrestricted mode's activity log: opened in the default text program.
@@ -2671,7 +2688,8 @@ function registerIpc() {
   h('link:open', (url) => {
     const u = new URL(String(url));
     if (!/^https?:$/.test(u.protocol)) throw new Error('Only web addresses can be opened');
-    return shell.openExternal(u.href);
+    showPreview(u.href, { web: true }); // Scorpion's own browser
+    return true;
   });
   h('files:newFolder', ({ dir, name }) => { const p = path.join(dir, String(name || 'New folder').replace(/[\\/:*?"<>|]/g, '').trim() || 'New folder'); if (fs.existsSync(p)) throw new Error(`${path.basename(p)} already exists`); fs.mkdirSync(p); return p; });
   h('files:rename', ({ from, name }) => {
@@ -2823,7 +2841,7 @@ app.whenReady().then(async () => {
   // Scorpion's window; Windows wants physical screen pixels.
   appIcons.initAppIcons({ app, nativeImage, dataDir: app.getPath('userData') });
   constellations.initConstellations({
-    app, shell, nativeImage, desktopCapturer, dialog, dataDir: app.getPath('userData'), getWindow: () => win,
+    app, shell: { ...shell, openExternal: (u) => (openLink(u) ? Promise.resolve() : shell.openExternal(u)) }, nativeImage, desktopCapturer, dialog, dataDir: app.getPath('userData'), getWindow: () => win,
     launchApp: (a) => winctl.launchApp(a, { viaExplorer: desktop.shellMode() !== 'shell' }),
   });
   registerSummon();

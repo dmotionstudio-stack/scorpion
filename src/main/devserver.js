@@ -31,6 +31,22 @@ export function localUrlFrom(input) {
   return isLocalUrl(withScheme) ? new URL(withScheme).href : null;
 }
 
+// What to type into the browser's address bar: a local address, a web address ("example.com", "https://example.com/a"),
+// or anything else, which is a web search. Returns { url, search } (search: it was a search).
+export function webUrlFrom(input) {
+  const s = String(input || '').trim();
+  if (!s) return null;
+  const local = localUrlFrom(s);
+  if (local) return { url: local, search: false };
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) {
+    try { const u = new URL(s); return /^https?:$/.test(u.protocol) ? { url: u.href, search: false } : null; } catch { return null; }
+  }
+  if (!/\s/.test(s) && /^[^\s/]+\.[a-z]{2,}(?::\d+)?(?:[/?#]\S*)?$/i.test(s)) {
+    try { return { url: new URL(`https://${s}`).href, search: false }; } catch { /* a search then */ }
+  }
+  return { url: `https://duckduckgo.com/?q=${encodeURIComponent(s)}`, search: true };
+}
+
 // The last lines of output, as text, capped.
 export function createLog(maxLines = 400) {
   const lines = [];

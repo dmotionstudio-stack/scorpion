@@ -108,7 +108,15 @@ code, pre { font-family: var(--mono); }
 
 .thought { border-left: 2px solid var(--border); padding-left: 10px; margin: 6px 0 10px; color: var(--muted); font-size: 13px; }
 .thought summary { cursor: pointer; }
-.thought .body { white-space: pre-wrap; }
+.thought .body { white-space: pre-wrap; max-height: 240px; overflow: auto; }
+.thought.thinking summary { color: var(--accent); }
+/* The line under an answer being written: a moving bar, what it is doing, how long. */
+.live-status { display: flex; align-items: center; gap: 10px; margin: 8px 0 2px; color: var(--muted); font-size: 12px; }
+.live-bar { position: relative; width: 44px; height: 3px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--accent) 22%, transparent); flex: none; }
+.live-bar::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; border-radius: 2px; background: var(--accent); animation: live-bar 1.1s ease-in-out infinite; }
+.live-status .live-t { font-variant-numeric: tabular-nums; opacity: .8; }
+@keyframes live-bar { from { left: -40%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .live-bar::after { animation: none; left: 0; width: 100%; opacity: .6; } }
 
 .tool { border: 1px solid var(--border); border-radius: var(--radius); margin: 8px 0; background: var(--panel); overflow: hidden; }
 .tool summary { display: flex; gap: 8px; align-items: center; padding: 7px 12px; cursor: pointer; list-style: none; }
