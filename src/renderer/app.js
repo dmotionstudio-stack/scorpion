@@ -192,8 +192,9 @@ function renderModelSwitch() {
   let banner = document.getElementById('unrestricted-banner');
   if (!banner) { banner = document.createElement('div'); banner.id = 'unrestricted-banner'; banner.className = 'unrestricted-banner hidden'; document.body.append(banner); }
   const chatOnly = S.settings.unrestricted !== true && S.thread?.unrestricted === true;
-  banner.classList.toggle('hidden', S.settings.unrestricted !== true && !chatOnly);
-  banner.textContent = chatOnly ? 'Unrestricted for this chat: Scorpion downloads and runs things without asking. Click here to stop.' : 'Unrestricted mode is on: Scorpion downloads and runs things without asking (Settings → Privacy turns it off)';
+  // The sidebar's blinking red dot says Unrestricted mode is on; the strip across the top is only for a single chat made unrestricted.
+  banner.classList.toggle('hidden', !chatOnly);
+  banner.textContent = 'Unrestricted for this chat: Scorpion downloads and runs things without asking. Click here to stop.';
   banner.style.cursor = chatOnly ? 'pointer' : '';
   banner.onclick = chatOnly ? async () => { await api.threadUnrestricted({ threadId: S.thread.id, on: false }); S.thread.unrestricted = false; renderModelSwitch(); toast('This chat asks again.'); } : null;
   buildDock?.renderTrust();
@@ -1849,7 +1850,8 @@ function renderOnlineBadge() {
   // Unrestricted mode, one click below it.
   const free = S.settings.unrestricted === true;
   const u = $('#unrestricted-badge');
-  u.textContent = free ? '● Unrestricted: on' : '● Unrestricted: off';
+  // On: a big red dot that blinks, so it is never overlooked; off: the small quiet dot.
+  u.innerHTML = free ? '<span class="ur-dot" aria-hidden="true"></span>Unrestricted: ON' : '● Unrestricted: off';
   u.classList.toggle('unrestricted', free);
   u.title = free ? 'Scorpion downloads and runs things without asking, in chats you start. Click to turn it off.' : 'Click to let Scorpion use the internet freely and download and run things without asking (you confirm first).';
 }

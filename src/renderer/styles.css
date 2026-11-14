@@ -60,6 +60,12 @@ code, pre { font-family: var(--mono); }
 .offline-badge:hover { background: var(--panel-2); }
 .offline-badge.online { color: #4cc38a; }
 .offline-badge.unrestricted { color: #e5534b; font-weight: 600; }
+/* Unrestricted mode on: a big red dot that blinks next to "Unrestricted: ON". */
+.offline-badge.unrestricted { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+#unrestricted-badge.unrestricted { color: #ff5a52; }
+.ur-dot { flex: none; width: 16px; height: 16px; border-radius: 50%; background: #ff2b2b; box-shadow: 0 0 0 0 rgba(255,43,43,.7), 0 0 10px 2px rgba(255,43,43,.65); animation: ur-blink .9s ease-in-out infinite; }
+@keyframes ur-blink { 0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(255,43,43,.7), 0 0 12px 3px rgba(255,43,43,.7); } 50% { opacity: .25; transform: scale(.8); box-shadow: 0 0 0 6px rgba(255,43,43,0), 0 0 0 0 rgba(255,43,43,0); } }
+@media (prefers-reduced-motion: reduce) { .ur-dot { animation: none; } }
 
 /* buttons */
 .btn { background: var(--panel-2); border: 1px solid var(--border); padding: 7px 14px; border-radius: 8px; cursor: pointer; }
