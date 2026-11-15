@@ -46,6 +46,7 @@ function flashSaved() {
 document.addEventListener('settings-saved', flashSaved);
 const $ = (sel) => document.querySelector(sel);
 const S = {
+  closedThoughts: new Set(), // reasoning blocks the person closed (they stay closed; the others are always open)
   settings: {}, models: [], catalog: [], threads: [], documents: [], memories: [], agents: [], tools: [], schedules: [], engine: {},
   thread: null, running: new Set(), pending: new Map(), downloads: {}, modelStatus: null, view: 'chat',
   newChatAgent: 'scorpion', newChatMode: savedMode(), editingAgent: null, editingSchedule: null,
@@ -342,9 +343,9 @@ function toolHtml(b, live) {
   const summary = b.name === 'ask_agent' ? b.args?.task : b.summary;
   // A helper agent's own steps and answer render nested inside its card.
   const inner = b.children?.length
-    ? `<div class="helper">${renderBlockList(b.children, live && b.status === 'running')}</div>`
-    : b.output ? `<pre>${esc(b.output)}</pre>` : '';
-  const open = b.name === 'ask_agent' && (b.status === 'running' || hasPending(b.children)) ? ' open' : '';
+    ? `<div class="helper">${renderBlockList(b.children, live && b.status === 'running', `h${b.id}`)}</div>`
+    : b.output ? `<pre>${esc(b.output)}</pre>` : b.status === 'running' ? `<div class="tool-doing muted small">Working on it: ${esc(JSON.stringify(b.args || {}).slice(0, 240))}</div>` : '';
+  const open = b.status === 'running' || (b.name === 'ask_agent' && hasPending(b.children)) ? ' open' : '';
   return `<details class="tool ${b.status} ${b.name === 'ask_agent' ? 'delegate' : ''}"${open}><summary><span class="name">${label}</span><span class="sum">${esc(summary)}</span><span class="st">${approval ? 'waiting' : STATUS[b.status] || ''}</span></summary>${inner}</details>${approval ? approvalHtml(b) : ''}`;
 }
 
@@ -355,10 +356,12 @@ function hasPending(blocks) {
 // How long, in words: 8 s, 1 min 05 s.
 const fmtSecs = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`; };
 // The reasoning: open and growing with a blinking bar and a running timer while the model thinks; "Thought for 8 s" after.
-function thoughtHtml(b, thinkingNow) {
+function thoughtHtml(b, thinkingNow, key = '') {
   const took = b.at && b.until && b.until - b.at >= 1000 ? fmtSecs(b.until - b.at) : '';
   const label = thinkingNow ? `Thinking… <span class="live-t" data-live-since="${b.at || Date.now()}">${b.at ? fmtSecs(Date.now() - b.at) : ''}</span>` : took ? `Thought for ${took}` : 'Thinking';
-  return `<details class="thought${thinkingNow ? ' thinking' : ''}"${thinkingNow ? ' open' : ''}><summary>${label}</summary><div class="body${thinkingNow ? ' cursor' : ''}">${esc(b.text)}</div></details>`;
+  // The reasoning is shown, never folded away: open while it grows and open after the answer (a click on its title closes it, and it stays closed).
+  const open = thinkingNow || !S.closedThoughts.has(key);
+  return `<details class="thought${thinkingNow ? ' thinking' : ''}" data-key="${esc(key)}"${open ? ' open' : ''}><summary>${label}</summary><div class="body${thinkingNow ? ' cursor' : ''}">${esc(b.text)}</div></details>`;
 }
 // The line under a live answer: a moving bar, what it is doing, and for how long.
 function liveStatus(msg) {
@@ -366,16 +369,16 @@ function liveStatus(msg) {
   const last = blocks.at(-1);
   const waiting = last?.type === 'tool' && S.pending.has(last.id);
   const what = waiting ? 'Waiting for your OK'
-    : last?.type === 'tool' && last.status === 'running' ? `Working: ${TOOL_LABEL[last.name] || last.name}`
+    : last?.type === 'tool' && last.status === 'running' ? `Working: ${TOOL_LABEL[last.name] || last.name}${last.summary ? ` — ${String(last.summary).slice(0, 80)}` : ''}`
       : last?.type === 'text' && last.text?.trim() ? 'Writing'
-        : blocks.length ? 'Thinking' : 'Starting';
+        : blocks.length ? 'Thinking' : msg.status || 'Getting ready';
   const since = msg.startedAt || blocks[0]?.at || Date.now();
   return `<div class="live-status" aria-live="polite"><span class="live-bar" aria-hidden="true"></span><span class="what">${esc(what)}</span><span class="live-t" data-live-since="${since}">${fmtSecs(Date.now() - since)}</span></div>`;
 }
-function renderBlockList(blocks, live) {
+function renderBlockList(blocks, live, keyPrefix = '') {
   return blocks.map((b, i, arr) => {
     if (b.type === 'text') return `<div class="md">${md(b.text)}</div>`;
-    if (b.type === 'thought') return thoughtHtml(b, live && i === arr.length - 1);
+    if (b.type === 'thought') return thoughtHtml(b, live && i === arr.length - 1, `${keyPrefix}:${i}`);
     if (b.type === 'plan') return `<div class="plan-block"><div class="title">PLAN</div>${renderPlanSteps(b.steps)}</div>`;
     if (b.type === 'tool') return toolHtml(b, live);
     return '';
@@ -387,9 +390,9 @@ function renderPlanSteps(steps) {
   return `<ol>${(steps || []).map((s) => `<li class="step ${esc(s.status)}"><span class="mark">${mark[s.status] || '○'}</span><span>${esc(s.title)}</span></li>`).join('')}</ol>`;
 }
 
-function renderBlocks(msg, live) {
+function renderBlocks(msg, live, index = 0) {
   const blocks = msg.blocks || [];
-  let html = renderBlockList(blocks, live);
+  let html = renderBlockList(blocks, live, `${S.thread?.id || ''}:${index}`);
   if (live && !blocks.length) html += '<div class="md cursor muted"></div>';
   else if (live && blocks.at(-1)?.type === 'text') html = html.replace(/<div class="md">(?![\s\S]*<div class="md">)/, '<div class="md cursor">');
   if (live && !msg.error) html += liveStatus(msg);
@@ -405,7 +408,7 @@ function messageHtml(m, i, msgs) {
   const modeTag = m.mode && m.mode !== 'build' ? ` <span class="mode-tag">${m.mode === 'plan' ? 'plan' : 'chat'}</span>` : '';
   // After a plan is written in Plan mode, offer to build it in one click.
   const offerBuild = !live && i === msgs.length - 1 && m.mode === 'plan' && (m.blocks || []).some((b) => b.type === 'plan');
-  return `<div class="msg assistant"><div class="meta">${esc(a.name)}${m.model ? ` · ${esc(m.model)}` : ''}${modeTag}</div>${renderBlocks(m, live)}${offerBuild ? '<div class="build-plan"><button class="btn primary small" data-build-plan="1">Build this plan</button></div>' : ''}</div>`;
+  return `<div class="msg assistant"><div class="meta">${esc(a.name)}${m.model ? ` · ${esc(m.model)}` : ''}${modeTag}</div>${renderBlocks(m, live, i)}${offerBuild ? '<div class="build-plan"><button class="btn primary small" data-build-plan="1">Build this plan</button></div>' : ''}</div>`;
 }
 
 const SUGGESTIONS = [
@@ -2069,6 +2072,7 @@ function applyChatEvent(ev) {
   if (S.thread?.id !== ev.threadId) return;
   const msg = S.thread.messages.at(-1);
   if (!msg || msg.role !== 'assistant') return;
+  if (ev.type === 'status') { msg.status = ev.text; scheduleRender(); return; } // what Scorpion is busy with (loading, remembering, reading)
   if (ev.type === 'done') {
     if (ev.error) msg.error = ev.error;
     if (ev.stopped) msg.stopped = true;
@@ -2119,6 +2123,8 @@ function wire() {
   $('#open-settings').onclick = () => (MAIN_VIEWS.includes(S.view) ? setView(S.lastSettingsView || 'settings') : setView(S.lastMainView || 'home'));
   $('#back-to-chat').onclick = () => setView(S.lastMainView || 'home');
   $('#open-home').onclick = () => setView('home');
+  // A click on a reasoning block's title closes or opens it, and that is remembered across redraws.
+  $('#messages').addEventListener('toggle', (e) => { const d = e.target; if (d?.matches?.('details.thought') && d.dataset.key && !d.classList.contains('thinking')) { if (d.open) S.closedThoughts.delete(d.dataset.key); else S.closedThoughts.add(d.dataset.key); } }, true);
   for (const id of ['#topbar-home', '#settings-home', '#homebar-home']) $(id).onclick = () => setView('home');
   document.addEventListener('keydown', (e) => { if (e.altKey && e.key === 'Home') { e.preventDefault(); setView('home'); } });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !MAIN_VIEWS.includes(S.view)) setView(S.lastMainView || 'home'); });

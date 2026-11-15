@@ -1142,8 +1142,10 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
   // Spoken turns use the fast voice model when the chat model is slow here.
   const voicePath = (spoken || orb) && !source.remote ? await voiceModelPath({ orb }) : null;
   const slot = voicePath ? 'voice' : 'main';
-  if (voicePath) await loadVoiceModel(voicePath);
-  else if (!source.remote && (!engine.isChatReady() || (!running.size && (await engine.engineInfo()).chatModel !== (await effectiveChatModel())))) await loadChat();
+  // What Scorpion is busy with, said in the chat while it happens (the chat's line under the answer).
+  const status = (text) => send('chat:event', { threadId, type: 'status', text });
+  if (voicePath) { if (!engine.isChatReady('voice')) status('Loading the quick model…'); await loadVoiceModel(voicePath); }
+  else if (!source.remote && (!engine.isChatReady() || (!running.size && (await engine.engineInfo()).chatModel !== (await effectiveChatModel())))) { status('Loading the model (the first answer after starting takes a little longer)…'); await loadChat(); }
 
   const assistant = { role: 'assistant', blocks: [], model: voicePath ? engine.chatModelName('voice') : sourceLabel(source), agentId: agent.id, mode: settings.mode, createdAt: Date.now() };
   thread.messages.push({ role: 'user', text: displayText, createdAt: Date.now() }, assistant);
@@ -1187,14 +1189,17 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
   const baseTemperature = agent.temperature ?? settings.temperature;
   const temperature = settings.preciseAnswers !== false && isFactualQuestion(text) ? Math.min(baseTemperature, 0.2) : baseTemperature;
   try {
+    if (settings.memoryEnabled && settings.recallEnabled && !orb) status('Remembering earlier chats…');
     const recall = settings.memoryEnabled && settings.recallEnabled && !orb ? withConversationRecall(text, memory, threadId) : text;
     // Standing intents: "when X comes up, do Y" (only for messages from a person).
     const due = intents && settings.memoryEnabled ? memory.fireIntents(text) : [];
     if (due.length) send('memory:changed');
     // A long chat: summarize its older turns instead of letting them fall off.
+    if ((thread.history?.length || 0) > 12) status('Summarizing the earlier conversation…');
     try {
       thread.history = await summarizeIfLong(thread.history, info.contextSize, (req) => completeWith(source, { ...req, slot }));
     } catch { /* keep the full history; the engine trims it as before */ }
+    if (rag.listDocuments().length && !orb) status('Searching your documents…');
     const turn = {
       threadId,
       slot,
@@ -1222,6 +1227,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
       onText: (delta) => { streamed += delta; emit({ type: 'text', delta }); },
       onThought: (delta) => emit({ type: 'thought', delta }),
     };
+    status('Reading your message and its tools…'); // before the first word the model reads everything it was given
     try {
       thread.history = await runTurnWith(source, turn);
     } catch (err) {
