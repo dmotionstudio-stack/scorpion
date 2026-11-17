@@ -414,6 +414,11 @@ function messageHtml(m, i, msgs) {
   return `<div class="msg assistant"><div class="meta">${esc(a.name)}${m.model ? ` · ${esc(m.model)}` : ''}${modeTag}</div>${renderBlocks(m, live, i)}${offerBuild ? '<div class="build-plan"><button class="btn primary small" data-build-plan="1">Build this plan</button></div>' : ''}</div>`;
 }
 
+// One click: Build mode, and the start of the request in the message box for the person to finish.
+const STARTERS = [
+  { id: 'webpage', label: 'Build a webpage', title: 'Switches to Build and starts the request: Scorpion writes the page and shows it in the preview', text: 'Build a webpage for ' },
+  { id: 'app', label: 'Build an app', title: 'Switches to Build and starts the request: Scorpion writes, installs, runs and fixes it', text: 'Build an app that ' },
+];
 const SUGGESTIONS = [
   'Explain how a neural network learns, simply.',
   'List the files in my workspace and summarize the project.',
@@ -426,7 +431,8 @@ function renderMessages(keepScroll) {
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
   if (!S.thread || !S.thread.messages.length) {
     box.innerHTML = `<div class="empty"><h2>What should we work on?</h2>
-      <div>Everything runs on your computer. No internet, no API key.</div>
+      <div>Everything runs on your computer. The internet is used only when you allow it.</div>
+      <div class="starters">${STARTERS.map((s) => `<button class="starter" data-starter="${esc(s.id)}" title="${esc(s.title)}">${esc(s.label)}</button>`).join('')}</div>
       <div class="suggestions">${SUGGESTIONS.map((s) => `<button class="suggestion">${esc(s)}</button>`).join('')}</div></div>`;
   } else {
     box.innerHTML = S.thread.messages.map(messageHtml).join('');
@@ -2292,6 +2298,12 @@ function wire() {
   document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'b' && !IX.open) { e.preventDefault(); $('#sidebar-toggle').click(); } });
 
   $('#messages').onclick = (e) => {
+    const st = e.target.closest('[data-starter]');
+    if (st) {
+      const starter = STARTERS.find((x) => x.id === st.dataset.starter);
+      if (starter) setMode('build').then(() => { const box = $('#input'); box.value = starter.text; box.focus(); box.setSelectionRange(box.value.length, box.value.length); box.dispatchEvent(new Event('input', { bubbles: true })); });
+      return;
+    }
     const s = e.target.closest('.suggestion');
     if (s) return sendMessage(s.textContent);
     if (e.target.closest('[data-build-plan]')) {
