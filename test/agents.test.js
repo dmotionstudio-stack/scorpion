@@ -393,3 +393,16 @@ test('a direct-link catalog model is downloaded, checked against its SHA-256 and
     assert.deepEqual(fs.readFileSync(file), good);
   } finally { globalThis.fetch = realFetch; models.CATALOG.pop(); }
 });
+
+test('the built-in agents only list tools that exist, and the builders can install, serve and preview', async () => {
+  const { BUILTIN_AGENTS } = await import('../src/main/agents.js');
+  const { TOOLS } = await import('../src/main/tools.js');
+  const known = new Set([...Object.keys(TOOLS), 'ask_agent', 'ask_agent', '*']);
+  for (const a of BUILTIN_AGENTS) for (const t of a.tools) assert.ok(known.has(t), `${a.name} lists a tool that does not exist: ${t}`);
+  const ids = BUILTIN_AGENTS.map((a) => a.id);
+  assert.equal(new Set(ids).size, ids.length, 'ids are unique');
+  for (const id of ['builder', 'webdev', 'installer', 'webresearcher', 'selfdev']) assert.ok(ids.includes(id), id);
+  const builder = BUILTIN_AGENTS.find((a) => a.id === 'builder');
+  for (const t of ['install_package', 'start_server', 'check_preview', 'run_command', 'write_file']) assert.ok(builder.tools.includes(t), t);
+  assert.ok(BUILTIN_AGENTS.find((a) => a.id === 'selfdev').tools.includes('restart_scorpion'));
+});

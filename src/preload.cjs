@@ -118,6 +118,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellPinned: invoke('shell:pinned'),
   shellLinks: invoke('shell:links'),
   shellLinkOpen: invoke('shell:linkOpen'),
+  shellAddLinks: invoke('shell:addLinks'),
   filesList: invoke('files:list'),
   desktopItems: invoke('desktop:items'),
   filesNew: invoke('files:new'),

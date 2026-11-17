@@ -24,6 +24,7 @@ const ICON = {
   chat: ico('<path d="M12 4c4.7 0 8.5 3.1 8.5 7s-3.8 7-8.5 7c-1 0-2-.1-2.9-.4L5 19.5l1.2-3.6C4.5 14.6 3.5 12.9 3.5 11 3.5 7.1 7.3 4 12 4z"/>'),
   volume: ico('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a9 9 0 0 1 0 12"/>'),
   power: ico('<path d="M12 3v9"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/>'),
+  edit: ico('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
   settings: ico('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>'),
   logo: '<svg class="itb-logo" viewBox="0 0 100 100" aria-hidden="true"><g transform="rotate(-45 50 53) translate(50 53) scale(1.18) translate(-50 -53)"><polygon points="43.7,47 38.5,36.6 50,10 61.5,36.6 56.3,47" fill="var(--accent)"/><rect x="46.4" y="46" width="7.2" height="34" fill="var(--accent-2, var(--accent))"/><circle cx="50" cy="86.5" r="5.9" fill="none" stroke="var(--accent)" stroke-width="3.4"/></g></svg>',
 };
@@ -71,6 +72,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
       <button class="itb-btn itb-item" data-glance="chat" title="Chat with Scorpion">${ICON.chat}</button>
       <button class="itb-btn itb-item" id="itb-volume" title="Volume: click to mute, scroll to change">${ICON.volume}</button>
       <button class="itb-btn itb-clock" id="itb-clock" title="Calendar"><span id="itb-time"></span><span id="itb-date"></span></button>
+      <button class="itb-btn" id="itb-edit" title="Customize the taskbar: show, hide, add or remove icons" aria-label="Customize the taskbar">${ICON.edit}</button>
       <button class="itb-btn" id="itb-settings" title="Orb settings (General → Orb)">${ICON.settings}</button>
       <button class="itb-btn" id="itb-power" title="Power">${ICON.power}</button>
     </div>`;
@@ -241,6 +243,99 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
     if (!e.target.closest('button')) api.shellMenu({ kind: 'bar' }); // an empty part: customize
   });
 
+  // ---- Customize: a panel in the orb to show or hide any icon, remove the apps, folders and files on the bar, and add more.
+  const SHOW = [['home', 'Scorpion button'], ['apps', 'Apps button'], ['files', 'Files button'], ['power', 'Power button'], ['network', 'Network'], ['battery', 'Battery'], ['volume', 'Volume'], ['clock', 'Clock'], ['notifications', 'Notifications'], ['mail', 'Mail'], ['chat', 'Chat with Scorpion'], ['drives', 'USB and external drives'], ['settings', 'Orb settings button']];
+  const panel = document.createElement('div');
+  panel.className = 'itb-edit';
+  panel.hidden = true;
+  host.appendChild(panel);
+  let editing = false;
+  let allApps = null; // every installed app, for "Add an app"
+  let adding = false;
+  let appQuery = '';
+  const moved = (list, i, d) => { const next = [...list]; const j = i + d; if (j < 0 || j >= next.length) return next; [next[i], next[j]] = [next[j], next[i]]; return next; };
+  const editRow = (kind, i, n, name, iconHtml) => `<div class="itb-edit-row"><span class="itb-edit-icon">${iconHtml}</span><span class="itb-edit-name" title="${esc(name)}">${esc(name)}</span>`
+    + `<button type="button" data-edit="left" data-kind="${kind}" data-i="${i}" ${i === 0 ? 'disabled' : ''} title="Move earlier" aria-label="Move ${esc(name)} earlier">‹</button>`
+    + `<button type="button" data-edit="right" data-kind="${kind}" data-i="${i}" ${i === n - 1 ? 'disabled' : ''} title="Move later" aria-label="Move ${esc(name)} later">›</button>`
+    + `<button type="button" class="itb-edit-x" data-edit="remove" data-kind="${kind}" data-i="${i}" title="Remove from the bar" aria-label="Remove ${esc(name)} from the bar">✕</button></div>`;
+  function pickerHtml() {
+    const have = new Set(pinned.map((p) => String(p.id).toLowerCase()));
+    const list = (allApps || []).filter((a) => !have.has(String(a.id).toLowerCase()) && a.name.toLowerCase().includes(appQuery.toLowerCase())).slice(0, 40);
+    return list.length ? list.map((a) => `<button type="button" class="itb-edit-pick" data-pick="${esc(a.id)}" data-name="${esc(a.name)}">${esc(a.name)}</button>`).join('') : `<p class="itb-edit-none">${allApps ? 'No app matches.' : 'Loading the apps…'}</p>`;
+  }
+  function renderEdit() {
+    if (!editing) return;
+    panel.dataset.edge = edgeOf(look);
+    panel.innerHTML = `<div class="itb-edit-head"><strong>Customize the taskbar</strong><button type="button" class="itb-edit-done" data-edit="close">Done</button></div>
+      <h4>Show on the bar</h4>
+      <div class="itb-edit-show">${SHOW.map(([k, label]) => `<label><input type="checkbox" data-show="${k}" ${look.show[k] === false ? '' : 'checked'}> ${esc(label)}</label>`).join('')}</div>
+      <h4>Apps on the bar</h4>
+      ${pinned.length ? pinned.map((p, i) => editRow('pins', i, pinned.length, p.name, icon(p.icon, p.name))).join('') : '<p class="itb-edit-none">No apps are kept on the bar.</p>'}
+      <button type="button" class="itb-edit-add" data-edit="add-app">${adding ? 'Close the list' : '+ Add an app'}</button>
+      ${adding ? `<input type="search" class="itb-edit-search" placeholder="Find an app" value="${esc(appQuery)}" aria-label="Find an app"><div class="itb-edit-picker">${pickerHtml()}</div>` : ''}
+      <h4>Folders and files</h4>
+      ${links.length ? links.map((l, i) => editRow('links', i, links.length, l.name, l.dir ? ICON.files : icon(l.icon, l.name))).join('') : '<p class="itb-edit-none">No folders or files are kept on the bar.</p>'}
+      <button type="button" class="itb-edit-add" data-edit="add-link">+ Add a folder or file…</button>
+      <p class="itb-edit-tip">Right-click an empty part of the bar for its position, size and look.</p>`;
+  }
+  const afterChange = async () => { await new Promise((r) => setTimeout(r, 120)); await loadItems(); apply(); renderEdit(); };
+  function openEdit() {
+    editing = true;
+    hold(10 * 60_000);
+    panel.hidden = false;
+    renderEdit();
+    q('#itb-edit').classList.add('on');
+  }
+  function closeEdit() {
+    editing = false;
+    holdUntil = 0;
+    panel.hidden = true;
+    adding = false;
+    q('#itb-edit').classList.remove('on');
+  }
+  q('#itb-edit').onclick = () => (editing ? closeEdit() : openEdit());
+  panel.addEventListener('change', async (e) => {
+    const k = e.target.dataset?.show;
+    if (!k) return;
+    await save?.({ show: { ...look.show, [k]: e.target.checked } });
+    apply();
+    renderEdit();
+  });
+  panel.addEventListener('input', (e) => {
+    if (!e.target.classList.contains('itb-edit-search')) return;
+    appQuery = e.target.value;
+    panel.querySelector('.itb-edit-picker').innerHTML = pickerHtml();
+  });
+  panel.addEventListener('click', async (e) => {
+    const pick = e.target.closest('[data-pick]');
+    if (pick) { await api.shellPin({ id: pick.dataset.pick, name: pick.dataset.name, on: true }); await afterChange(); return; }
+    const b = e.target.closest('[data-edit]');
+    if (!b || b.disabled) return;
+    const act = b.dataset.edit;
+    if (act === 'close') { closeEdit(); return; }
+    if (act === 'add-app') {
+      adding = !adding;
+      renderEdit();
+      if (adding && !allApps) { allApps = await api.shellApps().catch(() => []); if (editing && adding) { renderEdit(); panel.querySelector('.itb-edit-search')?.focus(); } }
+      else if (adding) panel.querySelector('.itb-edit-search')?.focus();
+      return;
+    }
+    if (act === 'add-link') { hold(10 * 60_000); await api.shellAddLinks().catch(() => {}); await afterChange(); return; }
+    const kind = b.dataset.kind;
+    const i = Number(b.dataset.i);
+    if (kind === 'pins') {
+      const keep = pinned.map(({ id, name }) => ({ id, name }));
+      if (act === 'remove') await api.shellPin({ id: pinned[i].id, name: pinned[i].name, on: false });
+      else await save?.({ pinned: moved(keep, i, act === 'left' ? -1 : 1) });
+    } else if (kind === 'links') {
+      const keep = links.map(({ path, name }) => ({ path, name }));
+      await save?.({ links: act === 'remove' ? keep.filter((_, j) => j !== i) : moved(keep, i, act === 'left' ? -1 : 1) });
+    }
+    await afterChange();
+  });
+  document.addEventListener('keydown', (e) => { if (editing && e.key === 'Escape') closeEdit(); });
+  document.addEventListener('pointerdown', (e) => { if (editing && !e.target.closest('.itb-edit, #itb-edit')) closeEdit(); });
+
   // Hiding by itself: it slides away (a thin line stays) and the pointer at its edge brings it back.
   const showBar = () => { clearTimeout(hideTimer); if (look.autoHide === true && !revealed) { revealed = true; root.classList.remove('itb-hidden'); } };
   const hideSoon = () => {
@@ -311,6 +406,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
   async function sync() {
     const want = visible();
     root.hidden = !want;
+    if (!want && editing) closeEdit();
     if (want !== on) {
       on = want;
       for (const t of timers) clearInterval(t);

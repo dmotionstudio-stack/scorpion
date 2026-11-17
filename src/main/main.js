@@ -2692,6 +2692,17 @@ function registerIpc() {
   })));
   // Open one: a folder in Scorpion's Files (while Scorpion is the desktop) or the system's file manager, a file in its program.
   h('shell:linkOpen', (p) => { const target = String(p || ''); return fs.existsSync(target) && fs.statSync(target).isDirectory() ? openFolder(target) : winctl.openPath(target); });
+  // Add a folder or file to the taskbar (the Customize panel in the orb's bar): the system's chooser, then they are kept on the bar.
+  h('shell:addLinks', async () => {
+    const owner = BrowserWindow.getFocusedWindow() || undefined;
+    desktop.holdRail(true);
+    const r = await dialog.showOpenDialog(owner, { title: 'Add to the taskbar', properties: ['openFile', 'openDirectory', 'multiSelections'] }).finally(() => desktop.holdRail(false));
+    if (r.canceled || !r.filePaths.length) return false;
+    const t = taskbarSettings();
+    const known = new Set(t.links.map((l) => l.path));
+    setTaskbarLook({ ...t, links: [...t.links, ...r.filePaths.filter((p) => !known.has(p)).map((p) => ({ path: p, name: path.basename(p) || p }))].slice(0, 24) });
+    return true;
+  });
   h('shell:apps', async (fresh) => (await winctl.listApps({ fresh: Boolean(fresh) })).map((a) => ({ id: a.id, name: a.name })));
   h('shell:launch', async ({ id, name }) => winctl.launchApp({ id, name }, { viaExplorer: desktop.shellMode() !== 'shell' }));
   h('files:list', (dir) => listFolder(dir));

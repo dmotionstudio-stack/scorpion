@@ -1090,6 +1090,32 @@ body.ix-voice-only .ix-ask, body.ix-voice-only .ix-facecam, body.ix-voice-only .
 .itb-dragging { cursor: grabbing; }
 .itb-snap { position: absolute; z-index: 29; pointer-events: none; border: 2px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .itb-snap[hidden] { display: none; }
+/* The Customize panel beside the orb's taskbar */
+.itb-edit { position: absolute; z-index: 40; box-sizing: border-box; width: min(380px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto; padding: 12px 14px 14px; border-radius: 12px; color: var(--text); background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55); backdrop-filter: blur(14px); font-size: 13px; }
+.itb-edit[hidden] { display: none; }
+.itb-edit[data-edge="right"] { right: calc(var(--itb, 64px) + 14px); bottom: 12px; }
+.itb-edit[data-edge="left"] { left: calc(var(--itb, 64px) + 14px); bottom: 12px; }
+.itb-edit[data-edge="bottom"] { bottom: calc(var(--itb, 48px) + 14px); right: 12px; }
+.itb-edit[data-edge="top"] { top: calc(var(--itb, 48px) + 14px); right: 12px; }
+.itb-edit-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.itb-edit h4 { margin: 12px 0 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.itb-edit-show { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.itb-edit-show label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.itb-edit-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+.itb-edit-icon { flex: none; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
+.itb-edit-icon img { width: 20px; height: 20px; object-fit: contain; }
+.itb-edit-icon .itb-ico { width: 18px; height: 18px; }
+.itb-edit-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itb-edit button { font: inherit; color: inherit; cursor: pointer; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-2); padding: 2px 8px; }
+.itb-edit button:hover:not(:disabled) { border-color: var(--accent); }
+.itb-edit button:disabled { opacity: 0.35; cursor: default; }
+.itb-edit .itb-edit-x { color: var(--danger); }
+.itb-edit .itb-edit-done { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.itb-edit .itb-edit-add { margin-top: 6px; width: 100%; text-align: left; }
+.itb-edit-search { box-sizing: border-box; width: 100%; margin-top: 6px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+.itb-edit-picker { max-height: 160px; overflow: auto; margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+.itb-edit .itb-edit-pick { text-align: left; border-color: transparent; background: transparent; }
+.itb-edit-none, .itb-edit-tip { margin: 4px 0; color: var(--muted); font-size: 12px; }
 .itb-snap[data-edge="bottom"] { left: 6px; right: 6px; bottom: 6px; height: var(--itb, 48px); }
 .itb-snap[data-edge="top"] { left: 6px; right: 6px; top: 6px; height: var(--itb, 48px); }
 .itb-snap[data-edge="left"] { top: 6px; bottom: 6px; left: 6px; width: var(--itb, 64px); }
