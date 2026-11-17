@@ -193,6 +193,13 @@ export function whyNotFramed(info, { selfPid = process.pid, skip = new Set() } =
 }
 export const frameable = (info, opts) => whyNotFramed(info, opts) === null;
 // Whether a window draws its own title bar (no Windows one): its own minimize, maximize and close buttons are inside it.
+// A Store app's folder carries its version (claude_5.11492.5.0_x64__id), which changes with every update and would forget the person's trim: the key leaves it out.
+export const clipKey = (exe) => String(exe || '').toLowerCase().replace(/(\\windowsapps\\[^\\_]+)_[\d.]+_/, '$1_');
+export function savedClip(clips, exe) {
+  const key = clipKey(exe);
+  for (const [k, v] of Object.entries(clips || {})) if (clipKey(k) === key) return v;
+  return undefined;
+}
 export const drawsOwnTitleBar = (info) => (((info?.style ?? 0) >>> 0) & WS_CAPTION) !== WS_CAPTION;
 
 let deps = null; // { dataDir, panelToScreen(rect) -> physical rect, notify(views|null) }
@@ -267,7 +274,7 @@ async function frame(hwnd) {
   const store = info.cls === UWP_FRAME; // Store apps: the whole strip, with the title Windows draws for them
   const own = store || drawsOwnTitleBar(info) || ncTop < 20 * scale;
   const exe = String(await run(`(Get-Process -Id ${info.pid} -ErrorAction SilentlyContinue).Path`).catch(() => '')).trim().toLowerCase();
-  const saved = deps.clips?.()?.[exe];
+  const saved = savedClip(deps.clips?.(), exe);
   const clipDip = [0, 1, 32, 40, 48].includes(saved) ? saved : store ? 32 : own ? 1 : 0;
   const clip = clipDip >= 32 ? Math.round(clipDip * scale) : 0;
   if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', hwnd, 'own title bar:', own, '| content starts', ncTop, 'px down | program:', exe, '| saved:', saved, '| trim:', clipDip, '| style 0x' + (info.style >>> 0).toString(16));
@@ -390,7 +397,7 @@ export async function action(what, { hwnd = null, dip = 0 } = {}) {
     t.min = { w: t.min?.w || 0, h: Math.max(0, (t.rawMinH || 0) - t.clip) };
     if (!t.clip) await run(`[ScorpionFrame]::Unclip(${ptr(h)})`).catch(() => {});
     await run(placeScript(t)).catch(() => {});
-    if (t.exe) deps.setClip?.(t.exe, v);
+    if (t.exe) deps.setClip?.(clipKey(t.exe), v);
     tell();
     return true;
   }
