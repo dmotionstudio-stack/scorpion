@@ -74,3 +74,32 @@ test('the website orb is an exact copy of the app orb', async () => {
   ]);
   assert.equal(site, app, 'copy src/renderer/orb.js to website/assets/orb/orb.js');
 });
+
+test('every page link and image on the website points at a file that exists', async () => {
+  const { readdir, readFile, access } = await import('node:fs/promises');
+  const root = new URL('../website/', import.meta.url);
+  const pages = (await readdir(root)).filter((f) => f.endsWith('.html'));
+  const missing = [];
+  for (const page of pages) {
+    const html = await readFile(new URL(page, root), 'utf8');
+    for (const [, ref] of html.matchAll(/(?:href|src)="([^"#?]+)(?:[#?][^"]*)?"/g)) {
+      if (/^(https?:|mailto:|data:)/.test(ref) || ref.includes('${')) continue; // placeholders filled in by scripts
+      await access(new URL(ref, root)).catch(() => missing.push(`${page} -> ${ref}`));
+    }
+  }
+  assert.deepEqual(missing, []);
+});
+
+test('every USB stick on sale has a product image', async () => {
+  const { access } = await import('node:fs/promises');
+  for (const stick of USB_STICKS) {
+    await access(new URL(`../website/assets/${stick.id}.svg`, import.meta.url));
+  }
+});
+
+test('every USB stick on sale has a white-background listing image too', async () => {
+  const { access } = await import('node:fs/promises');
+  for (const stick of USB_STICKS) {
+    await access(new URL(`../website/assets/${stick.id}-listing.svg`, import.meta.url));
+  }
+});

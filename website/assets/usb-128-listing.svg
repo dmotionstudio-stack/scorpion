@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 380" width="1280" height="760" role="img" aria-label="Scorpion USB 128 GB">
+  <title>Scorpion USB 128 GB</title>
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7d24a"/><stop offset="1" stop-color="#b98600"/></linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2f3f5"/><stop offset=".45" stop-color="#b9bcc2"/><stop offset="1" stop-color="#7b7f87"/></linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".34"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#f4c51c" stop-opacity=".30"/><stop offset="1" stop-color="#f4c51c" stop-opacity="0"/></radialGradient>
+    <filter id="blur" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="12"/></filter>
+  </defs>
+  <rect width="640" height="380" fill="#ffffff"/>
+  
+  <ellipse cx="330" cy="318" rx="250" ry="20" fill="#000" opacity="0.28" filter="url(#blur)"/>
+  <g transform="rotate(-7 320 190)">
+    <!-- the plug -->
+    <rect x="34" y="142" width="194" height="86" rx="6" fill="url(#metal)"/>
+    <rect x="48" y="154" width="170" height="62" rx="3" fill="#6f737b" opacity=".45"/>
+    <rect x="66" y="170" width="44" height="30" rx="2" fill="#2b2d31"/>
+    <rect x="124" y="170" width="44" height="30" rx="2" fill="#2b2d31"/>
+    <!-- the body -->
+    <rect x="208" y="112" width="364" height="156" rx="40" fill="url(#body)" stroke="#fff" stroke-opacity=".12" stroke-width="2"/>
+    <rect x="208" y="124" width="14" height="132" rx="7" fill="#1a1405" opacity=".9"/>
+    <rect x="214" y="116" width="352" height="64" rx="36" fill="url(#gloss)"/>
+    <circle cx="550" cy="190" r="14" fill="#ffffff" stroke="#1a1405" stroke-width="4"/>
+    <!-- the kunai mark -->
+    <g transform="translate(252 148)">
+      <polygon points="4,4 44,18 52,34 38,42 16,36" fill="#1a1405"/>
+      <polygon points="4,4 44,18 52,34" fill="#fff" opacity=".28"/>
+      <line x1="40" y1="40" x2="70" y2="70" stroke="#1a1405" stroke-width="9" stroke-linecap="butt"/>
+      <line x1="40" y1="40" x2="70" y2="70" stroke="#1a1405" stroke-width="9" stroke-dasharray="5 6"/>
+      <circle cx="74" cy="74" r="10" fill="none" stroke="#1a1405" stroke-width="5"/>
+    </g>
+    <text x="346" y="184" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="24" letter-spacing="4" fill="#1a1405">SCORPION</text>
+    <text x="348" y="208" font-family="Arial, Helvetica, sans-serif" font-size="12" letter-spacing="3" fill="#4a3a0a">OFFLINE AI</text>
+    <text x="348" y="248" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="26" fill="#1a1405">128 GB</text>
+  </g>
+</svg>

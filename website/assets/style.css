@@ -476,3 +476,62 @@ details.faq p { color: var(--muted); margin: 12px 0 0; }
 .explore h3 { margin: 12px 0 8px; font-size: 1.3rem; }
 .explore p { color: var(--muted); flex: 1; margin-bottom: 18px; }
 .explore-go { color: var(--gold); font-weight: 600; font-size: .95rem; }
+
+/* The USB stick product page */
+.product-hero { position: relative; overflow: hidden; padding: 64px 0 40px; }
+.product-hero::before {
+  content: ""; position: absolute; right: -10%; top: -20%; width: 760px; height: 760px; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(244, 197, 28, .16), transparent 70%);
+}
+.product-grid { position: relative; display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 40px; align-items: center; }
+.product-copy h1 { font-size: clamp(2.3rem, 5vw, 3.8rem); }
+.product-copy h1 span { color: var(--gold); }
+.product-price { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 6px 0 22px; }
+.product-price strong { font: 700 2.6rem/1 var(--display); }
+.product-price .from { color: var(--muted); font-size: .95rem; }
+.mini-checks { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 6px; color: var(--muted); font-size: .95rem; }
+.mini-checks li::before { content: "\2713"; color: var(--gold); margin-right: 8px; font-weight: 700; }
+.product-shot { position: relative; min-height: 380px; }
+.product-shot img { display: block; height: auto; border-radius: 22px; border: 1px solid var(--line); box-shadow: 0 30px 70px rgba(0, 0, 0, .55); }
+.shot-main { position: relative; z-index: 1; width: 86%; animation: float 8s ease-in-out infinite; }
+.shot-second { position: absolute; z-index: 2; width: 56%; right: 0; bottom: -8%; transform: rotate(5deg); }
+@media (prefers-reduced-motion: reduce) { .shot-main { animation: none; } }
+@media (max-width: 900px) {
+  .product-grid { grid-template-columns: 1fr; }
+  .product-shot { min-height: 0; margin-bottom: 40px; }
+  .shot-main { width: 100%; }
+  .shot-second { width: 50%; bottom: -34px; right: 6px; }
+}
+.product-card { display: flex; flex-direction: column; position: relative; }
+.product-card img { width: 100%; height: auto; border-radius: 12px; margin-bottom: 18px; border: 1px solid var(--line); }
+.product-card.featured { border-color: var(--gold-2); }
+.product-card .checks { flex: 1; font-size: .95rem; }
+.product-card .badge {
+  position: absolute; top: -12px; left: 26px; background: var(--gold); color: var(--gold-ink);
+  font: 700 .72rem/1 var(--font); letter-spacing: .08em; text-transform: uppercase; padding: 6px 10px; border-radius: 99px;
+}
+.ship-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 26px; }
+.ship-strip div { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; background: var(--panel); }
+.ship-strip b { display: block; font-size: .95rem; }
+.ship-strip span { color: var(--muted); font-size: .85rem; }
+@media (max-width: 760px) { .ship-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* What's on the stick: a picture of its folders */
+.files { background: #0b0a09; border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: 0 30px 80px rgba(0, 0, 0, .5); overflow: hidden; }
+.files-bar { display: flex; align-items: center; gap: 7px; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: .85rem; color: var(--muted); }
+.files-bar b { margin-left: 8px; font-weight: 600; letter-spacing: .06em; }
+.files-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--line-2); }
+.files ul { list-style: none; margin: 0; padding: 10px; }
+.files li { display: flex; justify-content: space-between; gap: 14px; padding: 11px 12px; border-radius: 8px; font-family: var(--mono); font-size: .92rem; }
+.files li:nth-child(odd) { background: rgba(255, 255, 255, .03); }
+.files li.dir::before { content: "\25B8"; color: var(--gold); margin-right: 8px; }
+.files li.file::before { content: "\00B7"; color: var(--dim); margin-right: 8px; }
+.files li.sub { padding-left: 34px; }
+.files li { align-items: baseline; }
+.files small { margin-left: auto; color: var(--dim); font-family: var(--font); font-size: .78rem; text-align: right; }
+
+/* USB page: the side-by-side table */
+.compare-usb td, .compare-usb th { text-align: center; }
+.compare-usb td:first-child, .compare-usb th:first-child { text-align: left; }
+.compare-usb .y { color: var(--gold); font-weight: 700; }
+.compare-usb .n { color: var(--dim); }

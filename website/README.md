@@ -10,6 +10,7 @@ go through Stripe Checkout, so card details never touch this site.
 |---|---|
 | `index.html` | Home: features, privacy, pricing, latest updates |
 | `download.html` | Editions, comparison, USB sticks, checkout dialog |
+| `usb.html` | The USB stick product page: images, both sizes side by side, what is on it, ordering. `assets/usb-*.svg` are the product images; `usb-*-listing.svg` are the same on white for marketplace listings |
 | `updates.html` | News and release notes, filterable |
 | `guide.html` | Install steps (Windows, Mac, USB), requirements, FAQ |
 | `success.html` | Where Stripe sends buyers back: their download links and USB status |

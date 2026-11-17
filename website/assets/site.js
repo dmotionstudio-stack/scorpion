@@ -22,12 +22,12 @@ function header() {
       <nav class="nav" id="site-nav" aria-label="Main">
         ${links}
         <span class="nav-mobile-actions">
-          <a class="btn btn-sm btn-outline-gold" href="download.html#usb">Order USB</a>
+          <a class="btn btn-sm btn-outline-gold" href="usb.html">Order USB</a>
           <a class="btn btn-gold btn-sm" href="download.html">Download</a>
         </span>
       </nav>
       <div class="header-actions">
-        <a class="btn btn-sm btn-outline-gold" href="download.html#usb">Order USB</a>
+        <a class="btn btn-sm btn-outline-gold" href="usb.html">Order USB</a>
         <a class="btn btn-gold btn-sm" href="download.html">Download</a>
       </div>
       <button class="menu-btn" aria-expanded="false" aria-controls="site-nav">Menu</button>
@@ -50,7 +50,7 @@ function footer() {
             <li><a href="orb.html">The ORB</a></li>
             <li><a href="os.html">Scorpion OS</a></li>
             <li><a href="download.html">Pricing and download</a></li>
-            <li><a href="download.html#usb">Order a USB stick</a></li>
+            <li><a href="usb.html">The USB stick</a></li>
           </ul>
         </div>
         <div>

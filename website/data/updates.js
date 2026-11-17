@@ -212,7 +212,7 @@ export const UPDATES = [
     points: [
       'No install and no internet needed',
       'Windows and Mac share the same data folder on the stick',
-      'Order a ready-made stick from the Download page',
+      'Order a ready-made stick from the USB page',
     ],
   },
   {

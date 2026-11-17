@@ -8,10 +8,12 @@ import {
 import { escapeHtml } from './site.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
+// Pages show only the parts they have (the USB page has no editions table).
+const fill = (sel, html) => { const el = $(sel); if (el) el.innerHTML = html; };
 const minShipping = Math.min(...SHIPPING.map((s) => s.price));
 
 // Editions
-$('[data-plans]').innerHTML = EDITIONS.map((e) => `
+fill('[data-plans]', EDITIONS.map((e) => `
   <div class="card plan${e.featured ? ' featured' : ''}">
     ${e.featured ? '<span class="badge">Most popular</span>' : ''}
     <h3>${escapeHtml(e.name)}</h3>
@@ -20,7 +22,7 @@ $('[data-plans]').innerHTML = EDITIONS.map((e) => `
     <div class="once">${e.lifetime ? 'Every version, forever' : `Version ${CURRENT_VERSION}, forever yours`}</div>
     <ul class="checks">${e.features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
     <button class="btn ${e.featured ? 'btn-gold' : ''} btn-block" data-buy-edition="${e.id}">Buy ${escapeHtml(e.name)}</button>
-  </div>`).join('');
+  </div>`).join(''));
 
 // Comparison table
 const yes = '<span style="color:var(--gold)">&#10003;</span>';
@@ -36,13 +38,13 @@ const rows = [
   ['Future versions', (e) => (e.lifetime ? 'All, free' : no)],
   ['Priority support', (e) => (e.lifetime ? yes : no)],
 ];
-$('[data-compare]').innerHTML = `
+fill('[data-compare]', `
   <thead><tr><th></th>${EDITIONS.map((e) => `<th>${escapeHtml(e.name)}</th>`).join('')}</tr></thead>
-  <tbody>${rows.map(([label, cell]) => `<tr><td>${escapeHtml(label)}</td>${EDITIONS.map((e) => `<td>${cell(e)}</td>`).join('')}</tr>`).join('')}</tbody>`;
+  <tbody>${rows.map(([label, cell]) => `<tr><td>${escapeHtml(label)}</td>${EDITIONS.map((e) => `<td>${cell(e)}</td>`).join('')}</tr>`).join('')}</tbody>`);
 
 // USB sticks
 const usbArt = `<svg viewBox="0 0 80 40" fill="none"><rect x="1" y="6" width="56" height="28" rx="6" fill="#2b2615" stroke="#c49000" stroke-width="2"/><rect x="57" y="11" width="21" height="18" rx="2" fill="#3b362d" stroke="#7a7468" stroke-width="2"/><rect x="63" y="15" width="4" height="4" fill="#7a7468"/><rect x="70" y="15" width="4" height="4" fill="#7a7468"/><path d="M14 13 l10 7 -10 7" stroke="#f4c51c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-$('[data-usb]').innerHTML = USB_STICKS.map((s) => `
+fill('[data-usb]', USB_STICKS.map((s) => `
   <div class="card usb-card">
     <div class="usb-art">${usbArt}</div>
     <div>
@@ -52,7 +54,7 @@ $('[data-usb]').innerHTML = USB_STICKS.map((s) => `
       <ul class="checks" style="font-size:.95rem">${s.features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
       <button class="btn btn-block" data-buy-usb="${s.id}">Order this stick</button>
     </div>
-  </div>`).join('');
+  </div>`).join(''));
 
 // Checkout dialog
 const dialog = $('[data-checkout]');
@@ -178,7 +180,7 @@ document.addEventListener('click', (e) => {
 
 // Links like download.html?edition=complete open that edition straight away.
 const params = new URLSearchParams(location.search);
-if (params.get('cancelled')) $('[data-cancelled]').hidden = false;
+if (params.get('cancelled')) $('[data-cancelled]')?.removeAttribute('hidden');
 // The cards above render after load, so jump to #usb again now they're in.
 if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'instant' });
 if (findEdition(params.get('edition'))) open({ edition: params.get('edition') });
