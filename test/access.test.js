@@ -57,6 +57,56 @@ test('online tools exist only in Online mode, in every mode', () => {
   assert.match(buildSystemPrompt({ ...store.getSettings(), mode: 'chat', online: true }, { docNames: [] }), /ONLINE/);
 });
 
+test('internet off: use_internet asks once, a yes covers the task, a no stops it; the prompt never says "offline"', async () => {
+  const mk = (settings, answer, asked) => buildFunctions({
+    settings: { ...store.getSettings(), ...settings }, agent: agents.getAgent('scorpion'), rag: { hasDocuments: () => false }, emit() {}, streamedText: () => '',
+    requestApproval: async (i) => { asked.push(i.name); return answer; },
+  });
+  const asked = [];
+  assert.ok('use_internet' in mk({ mode: 'chat' }, false, asked), 'offered in Chat while offline');
+  assert.ok(!('use_internet' in mk({ mode: 'chat', online: true }, false, asked)), 'not needed once online');
+  const no = await mk({ mode: 'chat', autoApprove: true }, false, asked).use_internet.handler({ query: 'weather', url: '' });
+  assert.match(no, /denied/i);
+  assert.deepEqual(asked, ['use_internet'], 'asks even with Auto-approve');
+  const p = buildSystemPrompt({ ...store.getSettings(), mode: 'chat', online: false }, { docNames: [] });
+  assert.match(p, /use_internet/);
+  assert.doesNotMatch(p, /fully offline/);
+});
+
+test('install_package: names are checked, managers map to commands, and it asks like any command', async () => {
+  const { installCommand } = await import('../src/main/tools.js');
+  assert.equal(installCommand({ manager: 'npm', name: 'left-pad' }), 'npm install left-pad');
+  assert.equal(installCommand({ manager: 'npm', name: '@scope/pkg', scope: 'user' }), 'npm install -g @scope/pkg');
+  assert.equal(installCommand({ manager: 'pip', name: 'requests' }, ['py', ['-3']]), 'py -3 -m pip install --user requests');
+  for (const bad of ['x; rm -rf /', 'a b', '$(whoami)', '', '-g evil', 'a`b`']) assert.throws(() => installCommand({ manager: 'npm', name: bad }), /not a package name/, bad);
+  assert.throws(() => installCommand({ manager: 'cargo', name: 'x' }), /Unknown package manager/);
+  const asked = [];
+  const fns = buildFunctions({
+    settings: { ...store.getSettings(), mode: 'build', workspace: os.tmpdir(), autoApprove: false }, agent: agents.getAgent('scorpion'),
+    rag: { hasDocuments: () => false }, emit() {}, streamedText: () => '', requestApproval: async (i) => { asked.push(i.name); return false; },
+  });
+  assert.match(await fns.install_package.handler({ manager: 'npm', name: 'left-pad', scope: 'project' }), /denied/i);
+  assert.deepEqual(asked, ['install_package']);
+  assert.ok(!('install_package' in buildFunctions({ settings: { ...store.getSettings(), mode: 'chat' }, agent: agents.getAgent('scorpion'), rag: { hasDocuments: () => false }, emit() {}, requestApproval: async () => true })), 'Build only');
+});
+
+test('own code: Build only, the restart always asks, and the prompt tells the model how', async () => {
+  const asked = [];
+  const calls = [];
+  const fns = buildFunctions({
+    settings: { ...store.getSettings(), mode: 'build', workspace: os.tmpdir(), autoApprove: true }, agent: agents.getAgent('scorpion'),
+    rag: { hasDocuments: () => false }, emit() {}, streamedText: () => '', requestApproval: async (i) => { asked.push(i.name); return true; },
+    services: { sourceInfo: () => 'SRC', restartApp: () => { calls.push('restart'); return 'ok'; } },
+  });
+  assert.equal(await fns.own_code.handler({}), 'SRC');
+  assert.equal(await fns.restart_scorpion.handler({}), 'ok');
+  assert.deepEqual(asked, ['restart_scorpion'], 'even with Auto-approve');
+  assert.deepEqual(calls, ['restart']);
+  const chat = Object.keys(buildFunctions({ settings: { ...store.getSettings(), mode: 'chat' }, agent: agents.getAgent('scorpion'), rag: { hasDocuments: () => false }, emit() {}, requestApproval: async () => true }));
+  assert.ok(!chat.includes('restart_scorpion') && !chat.includes('own_code'));
+  assert.match(buildSystemPrompt({ ...store.getSettings(), mode: 'build', workspace: os.tmpdir() }, { docNames: [] }), /YOUR OWN CODE[\s\S]*restart_scorpion/);
+});
+
 test('web: local network addresses are refused and pages become plain text', () => {
   for (const ip of ['127.0.0.1', '10.0.0.5', '192.168.1.1', '172.20.3.4', '169.254.1.1', '::1', 'fd00::1', '::ffff:192.168.0.1']) assert.ok(isPrivateAddress(ip), ip);
   for (const ip of ['8.8.8.8', '1.1.1.1', '2606:4700::1111']) assert.ok(!isPrivateAddress(ip), ip);

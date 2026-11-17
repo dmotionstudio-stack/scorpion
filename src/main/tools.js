@@ -224,14 +224,36 @@ function walk(dir, depth, out, root, limit = 400) {
   }
 }
 
-export function runCommand(command, cwd, signal) {
+export function runCommand(command, cwd, signal, timeoutMs) {
   const isWin = process.platform === 'win32';
   return isWin
-    ? runProcess('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { cwd }, signal)
-    : runProcess(process.env.SHELL || '/bin/bash', ['-lc', command], { cwd }, signal);
+    ? runProcess('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { cwd, timeoutMs }, signal)
+    : runProcess(process.env.SHELL || '/bin/bash', ['-lc', command], { cwd, timeoutMs }, signal);
 }
 
-export function runProcess(file, args, options, signal) {
+// What installing a package runs. The name is checked first: it goes into a shell command line.
+export const PACKAGE_MANAGERS = ['npm', 'pip', 'winget', 'brew', 'apt'];
+const PACKAGE_NAME = /^[A-Za-z0-9@][A-Za-z0-9@._/+=:~-]{0,100}$/;
+export function installCommand({ manager, name, scope = 'project' }, python = ['python3', []]) {
+  const pkg = String(name || '').trim();
+  if (!PACKAGE_NAME.test(pkg)) throw new Error(`"${pkg.slice(0, 60)}" is not a package name (letters, digits and . _ - / @ only).`);
+  switch (manager) {
+    case 'npm': return `npm install ${scope === 'user' ? '-g ' : ''}${pkg}`;
+    case 'pip': return `${[python[0], ...python[1]].join(' ')} -m pip install --user ${pkg}`;
+    case 'winget':
+      if (process.platform !== 'win32') throw new Error('winget only exists on Windows.');
+      return `winget install --id ${pkg} -e --accept-package-agreements --accept-source-agreements`;
+    case 'brew':
+      if (process.platform !== 'darwin' && process.platform !== 'linux') throw new Error('brew is for macOS and Linux.');
+      return `brew install ${pkg}`;
+    case 'apt':
+      if (process.platform !== 'linux') throw new Error('apt is for Linux.');
+      return `sudo -n apt-get install -y ${pkg}`;
+    default: throw new Error(`Unknown package manager "${manager}". Use one of: ${PACKAGE_MANAGERS.join(', ')}.`);
+  }
+}
+
+export function runProcess(file, args, { timeoutMs = COMMAND_TIMEOUT_MS, ...options } = {}, signal) {
   return new Promise((resolve) => {
     const child = spawn(file, args, { windowsHide: true, ...options });
     let output = '';
@@ -239,7 +261,7 @@ export function runProcess(file, args, options, signal) {
     child.stdout.on('data', add);
     child.stderr.on('data', add);
     const kill = () => child.kill();
-    const timer = setTimeout(() => { output += '\n[timed out after 120s]'; kill(); }, COMMAND_TIMEOUT_MS);
+    const timer = setTimeout(() => { output += `\n[timed out after ${Math.round(timeoutMs / 1000)}s]`; kill(); }, timeoutMs);
     signal?.addEventListener('abort', kill, { once: true });
     child.on('error', (err) => { clearTimeout(timer); resolve({ exitCode: -1, output: String(err) }); });
     child.on('close', (code) => {
@@ -382,6 +404,55 @@ export const TOOLS = {
       const { exitCode, output } = await runCommand(command, cwd, signal);
       return `exit code ${exitCode}\n${output}`;
     },
+  },
+
+  // Install software for the user's project or account. Asks first (it is a command that changes the computer).
+  install_package: {
+    access: 'exec', noWorkspace: true,
+    describeAction: ({ manager, name, scope }) => `install ${name} with ${manager}${scope === 'user' ? ' (for your account)' : ''}`,
+    description: `Install a package with a package manager (${PACKAGE_MANAGERS.join(', ')}) and return the output. Use it when a program needs a library or tool that is missing. scope "project" installs in the workspace (npm) and "user" for the user's account. It uses the internet and may take several minutes.`,
+    params: { type: 'object', properties: { manager: { enum: PACKAGE_MANAGERS }, name: { type: 'string' }, scope: { enum: ['project', 'user'] } } },
+    async run({ manager, name, scope }, { workspace, allowed, signal }) {
+      const command = installCommand({ manager, name, scope }, manager === 'pip' ? (findPython() || ['python', []]) : undefined);
+      if (manager === 'npm' && scope !== 'user' && !workspace) throw new Error('Choose a workspace folder first (the folder button in the top bar), or install with scope "user".');
+      const cwd = workspace ? resolveInside(workspace, '.', allowed) : os.homedir();
+      const { exitCode, output } = await runCommand(command, cwd, signal, 600_000);
+      return `${command}\nexit code ${exitCode}\n${output}`;
+    },
+  },
+
+  // The internet is off (Online mode is the person's privacy switch). The model can still ask for one search or page;
+  // Scorpion asks the person, and a yes covers the rest of this task.
+  use_internet: {
+    access: 'ask-web', approve: () => 'always',
+    describeAction: ({ query, url }) => (url ? `use the internet to read ${String(url).slice(0, 200)}` : `use the internet to search "${String(query || '').slice(0, 200)}"`),
+    description: 'The internet is OFF. Call this when you need the web: give a "query" to search, or a "url" to read a page (the other one ""). Scorpion asks the user for permission first. Do not say you cannot browse the internet: call this.',
+    params: { type: 'object', properties: { query: { type: 'string' }, url: { type: 'string' } } },
+    async run({ query, url }) {
+      const link = String(url || '').trim();
+      if (link) {
+        const page = await readWebpage(link);
+        return `${UNTRUSTED}\n\n${page.title ? `${page.title}\n` : ''}${page.url}\n\n${page.text || '(no readable text)'}`;
+      }
+      const results = await webSearch(String(query || '').slice(0, 300));
+      if (!results.length) return 'No results.';
+      return `${UNTRUSTED}\n\n${results.map((r, i) => `[${i + 1}] ${r.title}\n${r.url}\n${r.snippet}`).join('\n\n')}`;
+    },
+  },
+
+  // Scorpion's own code (Build). Where it is, and how to change it; the edits themselves use the normal file tools.
+  own_code: {
+    access: 'read', noWorkspace: true,
+    description: 'Where Scorpion\'s own source code is on this computer, and how to change yourself. Call it when the user asks you to change, fix or add a feature to Scorpion itself.',
+    params: { type: 'object', properties: {} },
+    async run(_args, { services }) { return services.sourceInfo(); },
+  },
+  restart_scorpion: {
+    access: 'exec', noWorkspace: true, approve: () => 'always',
+    describeAction: () => 'restart Scorpion to load the changes',
+    description: 'Restart Scorpion so changes to its own code take effect. Run the tests first. Scorpion closes and reopens a moment later, so tell the user what you changed before you call it, and call it last.',
+    params: { type: 'object', properties: {} },
+    async run(_args, { services }) { return services.restartApp(); },
   },
 
   search_documents: {

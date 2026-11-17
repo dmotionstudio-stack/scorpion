@@ -1092,6 +1092,19 @@ function agentServices(settings, signal) {
       return `Opened ${target} in the preview.`;
     },
     checkPreview: () => preview().snapshot(describePage, SCAN_SCRIPT),
+    // Scorpion's own code: the folder this copy runs from (a development copy), or a source folder the person points to.
+    sourceInfo() {
+      if (app.isPackaged) {
+        return 'This installed copy of Scorpion runs from sealed program files that cannot be edited. To change Scorpion, the user needs its source folder (the folder with package.json and src/). Ask them for its path, edit the files there, run npm test with run_command in that folder, and start the changed copy with start_server "npm start". Changes never alter the installed copy.';
+      }
+      return `Scorpion's source folder: ${APP_ROOT}\nCode is in src/main (the engine, tools and agent), src/renderer (the screens) and test/. Read a file before editing it. After editing, run npm test with run_command (subdir "."), then call restart_scorpion. The files are outside the workspace, so Scorpion asks the user to allow that folder first.`;
+    },
+    restartApp() {
+      if (app.isPackaged) throw new Error('A restart reloads the same sealed program. Start the changed source with start_server "npm start" instead.');
+      logUnrestricted({ name: 'restart', summary: 'Scorpion restarts to load its own changes', args: {} });
+      setTimeout(() => { app.relaunch(); app.exit(0); }, 1500);
+      return 'Restarting now. The chat is kept.';
+    },
     async downloadFile({ url, name }) {
       const dir = settings.workspace && fs.existsSync(settings.workspace) ? settings.workspace : app.getPath('downloads');
       const r = await downloadFile(url, dir, { signal, name });

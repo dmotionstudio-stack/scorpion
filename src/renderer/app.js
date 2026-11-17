@@ -314,7 +314,7 @@ const STATUS = { running: 'running', ok: '✓ done', error: '✕ failed' };
 const TOOL_LABEL = {
   remember: 'remembered', forget: 'forgot', search_past_chats: 'past chats', search_documents: 'documents',
   run_code: 'run code', calculator: 'calculator', read_spreadsheet: 'spreadsheet', read_document: 'document', move_file: 'move',
-  web_search: 'web search', read_webpage: 'web page',
+  web_search: 'web search', read_webpage: 'web page', use_internet: 'internet', install_package: 'install', own_code: 'own code', restart_scorpion: 'restart',
   list_apps: 'apps', open_app: 'open app', list_windows: 'windows', switch_window: 'switch window', close_app: 'close app',
   open_path: 'open', recycle_path: 'Recycle Bin', copy_path: 'copy', windows_settings: 'Windows Settings', system_control: 'PC control', system_info: 'PC info',
 };
@@ -328,6 +328,9 @@ function approvalHtml(b) {
   const mcpServer = /^mcp_/.test(b.name) ? b.name.split('_')[1] : null;
   const q = mcpServer ? `Let the ${mcpServer} server do this?`
     : b.name.startsWith('browser_') ? 'Let Scorpion do this in its browser?'
+      : b.name === 'use_internet' ? 'Allow Scorpion to use the internet for this?'
+      : b.name === 'install_package' ? 'Install this package?'
+      : b.name === 'restart_scorpion' ? 'Restart Scorpion now?'
       : ['close_app', 'open_path', 'recycle_path', 'copy_path', 'system_control'].includes(b.name) ? 'Let Scorpion do this on your PC?'
       : b.access === 'exec' ? (b.name === 'run_code' ? 'Run this program?' : 'Run this command?') : 'Allow this change?';
   return `<div class="approval"><strong>${q}</strong>
