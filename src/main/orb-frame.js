@@ -275,12 +275,13 @@ async function frame(hwnd) {
   const own = store || drawsOwnTitleBar(info) || ncTop < 20 * scale;
   const exe = String(await run(`(Get-Process -Id ${info.pid} -ErrorAction SilentlyContinue).Path`).catch(() => '')).trim().toLowerCase();
   const saved = savedClip(deps.clips?.(), exe);
-  const clipDip = [0, 1, 32, 40, 48].includes(saved) ? saved : store ? 32 : own ? 1 : 0;
+  // An app's own minimize, maximize and close buttons are never shown in a tile: its trim is at least the corner (an old saved 0 counts as the corner).
+  const clipDip = (own ? [1, 32, 40, 48] : [0, 1, 32, 40, 48]).includes(saved) ? saved : store ? 32 : own ? 1 : 0;
   const clip = clipDip >= 32 ? Math.round(clipDip * scale) : 0;
   if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', hwnd, 'own title bar:', own, '| content starts', ncTop, 'px down | program:', exe, '| saved:', saved, '| trim:', clipDip, '| style 0x' + (info.style >>> 0).toString(16));
   const [mw, mh] = String(await run(`[ScorpionFrame]::MinSize(${ptr(hwnd)})`).catch(() => '0 0')).trim().split(' ').map(Number);
   const min = { w: Math.max(0, mw || 0), h: Math.max(0, (mh || 0) - clip) };
-  tiles.set(hwnd, { hwnd, title: info.title, pid: info.pid, style: info.style, top: Boolean(info.ex & WS_EX_TOPMOST), rect: r, clip, clipDip, scale, exe, rawMinH: mh || 0, min, at: { x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top } });
+  tiles.set(hwnd, { hwnd, own, title: info.title, pid: info.pid, style: info.style, top: Boolean(info.ex & WS_EX_TOPMOST), rect: r, clip, clipDip, scale, exe, rawMinH: mh || 0, min, at: { x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top } });
   focus = hwnd;
   save();
   tell();
@@ -391,7 +392,7 @@ export async function action(what, { hwnd = null, dip = 0 } = {}) {
   if (what === 'clip') { // the trim of the app's own title bar: 0 none, 1 its caption buttons, 32 / 40 / 48 the top strip (points)
     const t = tiles.get(h);
     if (!t) return false;
-    const v = [0, 1, 32, 40, 48].includes(Number(dip)) ? Number(dip) : 0;
+    const v = (t.own ? [1, 32, 40, 48] : [0, 1, 32, 40, 48]).includes(Number(dip)) ? Number(dip) : (t.own ? 1 : 0);
     t.clipDip = v;
     t.clip = v >= 32 ? Math.round(v * (t.scale || 1)) : 0;
     t.min = { w: t.min?.w || 0, h: Math.max(0, (t.rawMinH || 0) - t.clip) };

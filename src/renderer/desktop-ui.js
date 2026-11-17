@@ -210,7 +210,10 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     } catch (err) { toast(errText(err), 'error'); }
   }
 
+  let openedAt = 0;
   async function open(item) {
+    if (Date.now() - openedAt < 600) return; // the double-click arrives as a click and as a dblclick (hand control sends only the second)
+    openedAt = Date.now();
     if (item.dir) return go(item.path);
     try { await api.filesOpen(item.path); } catch (err) { toast(errText(err), 'error'); }
   }
@@ -270,9 +273,20 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       const row = e.target.closest('.files-row');
       if (!row || e.target.closest('.files-rename')) return;
       const p = row.dataset.path;
+      // The second click of a double-click opens it. (A "dblclick" event never arrives here: the first click redraws the list,
+      // and the row the person is pointing at is a new element by the time of the second.)
+      const item = F.items.find((i) => i.path === p);
+      if (e.detail >= 2 && !e.ctrlKey && !e.shiftKey && item) { open(item); return; }
       if (e.ctrlKey) { if (F.selected.has(p)) F.selected.delete(p); else F.selected.add(p); }
       else F.selected = new Set([p]);
       renderFiles();
+      list.focus({ preventScroll: true }); // the list was redrawn: keep the keyboard (Enter) working
+    });
+    // Enter opens the selected folder or file.
+    list.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.target.closest('.files-rename')) return;
+      const item = selectedItems()[0];
+      if (item) { e.preventDefault(); open(item); }
     });
     // Right-click: an item (its own menu) or empty space (New ▸ folder, documents). The menu is native;
     // what it makes comes back as files:changed (below).
