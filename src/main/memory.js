@@ -160,7 +160,7 @@ export function recallBlock(query, threadId) {
   const hits = searchConversations(query, { k: 3, excludeThreadId: threadId })
     .filter((h) => h.coverage >= MIN_RECALL_COVERAGE && h.matched >= needed);
   if (!hits.length) return '';
-  return `From my earlier conversations with you (may be relevant):\n\n${hits
+  return `From my OTHER conversations with you, not this chat (use them only if the message below is really about them; this chat's own conversation always comes first):\n\n${hits
     .map((h) => `[chat "${h.title}" · ${h.role === 'user' ? 'you said' : 'I said'}]\n${h.text}${h.reply ? `\n[I replied]\n${h.reply}` : ''}`)
     .join('\n\n')}`;
 }

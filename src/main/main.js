@@ -1222,7 +1222,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
   const temperature = settings.preciseAnswers !== false && isFactualQuestion(text) ? Math.min(baseTemperature, 0.2) : baseTemperature;
   try {
     if (settings.memoryEnabled && settings.recallEnabled && !orb) status('Remembering earlier chats…');
-    const recall = settings.memoryEnabled && settings.recallEnabled && !orb ? withConversationRecall(text, memory, threadId) : text;
+    const recall = settings.memoryEnabled && settings.recallEnabled && !orb ? withConversationRecall(text, memory, threadId, { hasHistory: thread.messages.length > 2 }) : text;
     // Standing intents: "when X comes up, do Y" (only for messages from a person).
     const due = intents && settings.memoryEnabled ? memory.fireIntents(text) : [];
     if (due.length) send('memory:changed');

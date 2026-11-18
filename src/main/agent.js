@@ -243,8 +243,20 @@ export async function withDocumentContext(text, rag) {
 const FORGET_RE = /\b(forget|don'?t remember|stop remembering|remove (that|it) from (your )?memory|no longer true)\b/i;
 const REMEMBER_RE = /\b(remember (that|this|my|i)|keep in mind|note that|don'?t forget)\b/i;
 
-export function withConversationRecall(text, memory, threadId) {
-  const block = memory?.recallBlock(text, threadId);
+// When pieces of OTHER chats are attached to a message. In a chat that already has turns, this chat is the context: nothing is attached
+// unless the person points at the past ("last time", "you said", "the other chat"). In a new chat, a bare "continue" or "yes" has nothing
+// to match, so no stranger's old chat is pulled in either ("continue where we left off" does look back).
+const PAST_RE = /\b(earlier|last time|previous(ly)?|other chat|another chat|old chat|we (talked|discussed|spoke|did)|you (said|told|mentioned|wrote)|remember when|a while ago|yesterday|last (week|month|night)|left off|where we (were|stopped))\b/i;
+const CONTINUE_RE = /^\s*(please\s+)?(continue|go on|go ahead|keep going|carry on|next|more|and|ok(ay)?|yes|yeah|yep|sure|do it|proceed|finish( it)?|resume|thanks?|thank you)[\s.!?]*$/i;
+export function wantsRecall(text, hasHistory = false) {
+  const t = String(text || '');
+  if (PAST_RE.test(t)) return true;
+  if (hasHistory) return false;
+  return !CONTINUE_RE.test(t);
+}
+
+export function withConversationRecall(text, memory, threadId, { hasHistory = false } = {}) {
+  const block = wantsRecall(text, hasHistory) ? memory?.recallBlock(text, threadId) : '';
   let out = block ? `${block}\n\n---\n\n${text}` : text;
   if (FORGET_RE.test(text) && !/don'?t forget/i.test(text)) out += '\n\n(Scorpion note: to forget, you must call the forget tool now.)';
   else if (REMEMBER_RE.test(text)) out += '\n\n(Scorpion note: to remember this, you must call the remember tool now.)';
