@@ -3,6 +3,7 @@ import { textMenuTemplate } from './text-menu.js';
 import { cleanGroups, groupOf, setGroup, freeGroupNames } from '../renderer/taskbar-core.js';
 import { createClock } from './clock.js';
 import { createDevServers, localUrlFrom, isLocalUrl, webUrlFrom } from './devserver.js';
+import * as siteServer from './site-server.js';
 import { createPreview } from './preview.js';
 import { SCAN_SCRIPT, describe as describePage } from './agent-browser.js';
 import { createDrives, driveLabel } from './drives.js';
@@ -1096,6 +1097,15 @@ function agentServices(settings, signal) {
       return `Opened ${target} in the preview.`;
     },
     checkPreview: () => preview().snapshot(describePage, SCAN_SCRIPT),
+    // A page the model just wrote: serve its folder, open it in the preview, and say what it shows and what the console says.
+    async previewPage({ file }) {
+      const root = settings.workspace && path.resolve(file).startsWith(path.resolve(settings.workspace) + path.sep) ? settings.workspace : path.dirname(file);
+      const url = await siteServer.urlFor(root, file);
+      showPreview(url);
+      await new Promise((r) => setTimeout(r, 2200)); // the pane opens and the page loads
+      const seen = await preview().snapshot(describePage, SCAN_SCRIPT).catch(() => '');
+      return `Opened in the preview: ${url}\n${seen}`;
+    },
     // Scorpion's own code: the folder this copy runs from (a development copy), or a source folder the person points to.
     sourceInfo() {
       if (app.isPackaged) {
@@ -3006,7 +3016,7 @@ app.on('second-instance', (e, argv) => {
   if (argv.includes('--orb')) { if (navReady) send('nav:view', { view: 'orb', search: true }); else pendingNav = { view: 'orb', search: true }; }
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' && !keepsRunning() && !desktop.shellMode()) app.quit(); });
-app.on('will-quit', () => { stopKeyWatch(); globalShortcut.unregisterAll(); winHelper.stopHelper(); });
+app.on('will-quit', () => { siteServer.stopAll().catch(() => {}); stopKeyWatch(); globalShortcut.unregisterAll(); winHelper.stopHelper(); });
 app.on('before-quit', (e) => {
   // Leaving the desktop: put the screen area back (and the Windows desktop,
   // when Scorpion was it) before quitting.

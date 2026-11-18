@@ -86,7 +86,7 @@ export function createPreview({ WebContentsView, session, getWindow, openExterna
       const c = wc();
       if (!c || c.isDestroyed() || !c.getURL()) throw new Error('Nothing is open in the preview. Start the server and open it first.');
       const page = await c.executeJavaScript(scan);
-      const errors = consoleLog.filter((l) => l.level >= 2).slice(-15).map((l) => `${l.level >= 3 ? 'error' : 'warning'}: ${l.message}${l.source ? ` (${l.source}${l.line ? `:${l.line}` : ''})` : ''}`);
+      const errors = consoleLog.filter((l) => l.level >= 2 && !String(l.message).includes('Electron Security Warning')).slice(-15).map((l) => `${l.level >= 3 ? 'error' : 'warning'}: ${l.message}${l.source ? ` (${l.source}${l.line ? `:${l.line}` : ''})` : ''}`);
       return `${describe(page, { maxText: 3000 })}\n\nConsole: ${errors.length ? `\n${errors.join('\n')}` : 'no errors or warnings'}`;
     },
     destroy() { detach(); if (view && !view.webContents.isDestroyed()) view.webContents.close(); view = null; },

@@ -224,6 +224,15 @@ function walk(dir, depth, out, root, limit = 400) {
   }
 }
 
+// A page that was just written or changed: Scorpion opens it in the preview itself and tells the model what the page shows and what its
+// console says, so the model does not spend several slow steps on starting a server, finding the address and looking at it.
+const PAGE_EXT = ['.html', '.htm'];
+// (Plain text for any other file, so those stay synchronous; a promise only for a page.)
+function withPage(message, file, services) {
+  if (!PAGE_EXT.includes(path.extname(file).toLowerCase()) || !services?.previewPage) return message;
+  return services.previewPage({ file }).then((note) => (note ? `${message}\n\n${note}` : message)).catch(() => message);
+}
+
 export function runCommand(command, cwd, signal, timeoutMs) {
   const isWin = process.platform === 'win32';
   return isWin
@@ -370,12 +379,12 @@ export const TOOLS = {
       }
       return { ...args, content };
     },
-    run({ path: p, content }, { workspace, allowed }) {
+    run({ path: p, content }, { workspace, allowed, services }) {
       const file = resolveInside(workspace, p, allowed);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       const existed = fs.existsSync(file);
       fs.writeFileSync(file, content ?? '');
-      return `${existed ? 'Overwrote' : 'Created'} ${p} (${Buffer.byteLength(content ?? '')} bytes)`;
+      return withPage(`${existed ? 'Overwrote' : 'Created'} ${p} (${Buffer.byteLength(content ?? '')} bytes)`, file, services);
     },
   },
 
@@ -383,7 +392,7 @@ export const TOOLS = {
     access: 'write',
     description: 'Replace one exact, unique snippet of text in a workspace file. "find" must match exactly once.',
     params: { type: 'object', properties: { path: { type: 'string' }, find: { type: 'string' }, replace: { type: 'string' } } },
-    run({ path: p, find, replace }, { workspace, allowed }) {
+    run({ path: p, find, replace }, { workspace, allowed, services }) {
       const file = resolveInside(workspace, p, allowed);
       if (!fs.existsSync(file)) throw new Error(`${p} does not exist. Use write_file to create a new file.`);
       const text = fs.readFileSync(file, 'utf8');
@@ -391,7 +400,7 @@ export const TOOLS = {
       if (count === 0) throw new Error('The "find" text was not found. Read the file first and copy the text exactly.');
       if (count > 1) throw new Error(`The "find" text matches ${count} places. Include more surrounding lines so it is unique.`);
       fs.writeFileSync(file, text.replace(find, () => replace ?? ''));
-      return `Edited ${p}`;
+      return withPage(`Edited ${p}`, file, services);
     },
   },
 
