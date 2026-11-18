@@ -36,6 +36,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+        env:
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip # the CUDA add-on is not used here, and its download is gone (404)
       - name: Tests (on Linux)
         run: npm test
         continue-on-error: true
