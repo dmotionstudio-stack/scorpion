@@ -157,6 +157,9 @@ function setLoginStart(mode) {
 // --shell: Scorpion is the desktop (Windows' Winlogon shell, or Scorpion OS's session).
 const shellLaunch = process.argv.includes('--shell') && (process.platform === 'win32' || process.platform === 'linux');
 const running = new Map(); // threadId -> AbortController
+// The chats being answered right now, as they are in memory: the answer so far is not in the saved file yet, so opening such a chat
+// again (after Home or another chat) must read this one, or the answer would seem to vanish.
+const liveThreads = new Map();
 const approvals = new Map(); // approval id -> resolve(true, false, 'always', 'chat' or 'unrestricted')
 const approvalThreads = new Map(); // approval id -> the chat it was asked in
 
@@ -759,6 +762,7 @@ async function loadChat() {
     const info = await engine.loadChatModel(file, {
       contextSize: s.contextSize,
       gpuLayers: s.gpuLayers,
+      parallel: s.parallelChats,
       name: entry?.name,
       onProgress: (p) => send('model:status', { loading: true, progress: p, name: display, bytes }),
     });
@@ -1152,25 +1156,40 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
   else settings.unrestricted = false;
   const agent = agents.getAgent(thread.agentId || 'scorpion');
   let source = activeSource();
-  // Spoken turns use the fast voice model when the chat model is slow here.
-  const voicePath = (spoken || orb) && !source.remote ? await voiceModelPath({ orb }) : null;
-  const slot = voicePath ? 'voice' : 'main';
-  // What Scorpion is busy with, said in the chat while it happens (the chat's line under the answer).
-  const status = (text) => send('chat:event', { threadId, type: 'status', text });
-  if (voicePath) { if (!engine.isChatReady('voice')) status('Loading the quick model…'); await loadVoiceModel(voicePath); }
-  else if (!source.remote && (!engine.isChatReady() || (!running.size && (await engine.engineInfo()).chatModel !== (await effectiveChatModel())))) { status('Loading the model (the first answer after starting takes a little longer)…'); await loadChat(); }
-
-  const assistant = { role: 'assistant', blocks: [], model: voicePath ? engine.chatModelName('voice') : sourceLabel(source), agentId: agent.id, mode: settings.mode, createdAt: Date.now() };
+  // The message is part of the chat from the moment it is sent (saved at once, and the chat opens with it while a model loads),
+  // not after the model is ready: leaving for Home or another chat during a load used to bring the chat back empty.
+  const assistant = { role: 'assistant', blocks: [], model: sourceLabel(source), agentId: agent.id, mode: settings.mode, createdAt: Date.now() };
   thread.messages.push({ role: 'user', text: displayText, createdAt: Date.now() }, assistant);
   if (thread.title === 'New chat') thread.title = displayText.replace(/\s+/g, ' ').slice(0, 60);
   store.saveThread(thread);
+  liveThreads.set(threadId, thread);
   send('chat:event', { threadId, type: 'start', agentId: agent.id });
+  let savedAt = Date.now();
+  // What Scorpion is busy with, said in the chat while it happens (the chat's line under the answer).
+  const status = (text) => send('chat:event', { threadId, type: 'status', text });
+  let voicePath = null;
+  try {
+    // Spoken turns use the fast voice model when the chat model is slow here.
+    voicePath = (spoken || orb) && !source.remote ? await voiceModelPath({ orb }) : null;
+    if (voicePath) { if (!engine.isChatReady('voice')) status('Loading the quick model…'); await loadVoiceModel(voicePath); assistant.model = engine.chatModelName('voice'); }
+    else if (!source.remote && (!engine.isChatReady() || (!running.size && (await engine.engineInfo()).chatModel !== (await effectiveChatModel())))) { status('Loading the model (the first answer after starting takes a little longer)…'); await loadChat(); }
+  } catch (err) {
+    // The model would not load: the message stays in the chat with the reason, and the caller still hears about it.
+    assistant.error = err?.message || String(err);
+    liveThreads.delete(threadId);
+    store.saveThread(thread);
+    send('chat:event', { threadId, type: 'done', error: assistant.error, title: thread.title });
+    throw err;
+  }
+  const slot = voicePath ? 'voice' : 'main';
 
   const controller = new AbortController();
   running.set(threadId, controller);
   const emit = (ev) => {
     applyEvent(assistant.blocks, ev);
     send('chat:event', { threadId, ...ev });
+    // Keep the saved chat close to what is on screen, so a crash or a quit does not lose a long answer.
+    if (Date.now() - savedAt > 3000) { savedAt = Date.now(); try { store.saveThread(thread); } catch { /* the final save below tries again */ } }
   };
   // "Allow for this chat" and "Always" turn Unrestricted mode on from here (the rest of this answer too), after asking once.
   const goUnrestricted = () => Object.assign(settings, { unrestricted: true, online: true, autoApprove: true });
@@ -1217,6 +1236,8 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
       threadId,
       slot,
       effort,
+      // All the model's lanes are busy with other chats: this one waits its turn, and says so.
+      onQueued: (n) => status(`Waiting for another chat to finish (this computer answers ${n} at a time)…`),
       history: thread.history,
       systemPrompt: promptFor(settings, agent, { canAskForFolders: Boolean(requestFolderAccess), spoken: spoken || orb, speaker, mood, orb }),
       text: [await withDocumentContext(recall, searcher), memory.intentsNote(due)].filter(Boolean).join('\n\n'),
@@ -1229,7 +1250,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
         orb, settings, agent, rag: searcher, memory, threadId, emit, requestApproval, requestFolderAccess, allowedFolders, ...toolFlags(),
         services: agentServices(settings, controller.signal), onUnrestricted: logUnrestricted,
         signal: controller.signal, streamedText: () => streamed,
-        runHelper: (opts) => (source.remote ? remote.runRemoteHelper({ ...opts, provider: source, apiKey: providerKey(source) }) : engine.runHelperTurn({ ...opts, slot })),
+        runHelper: (opts) => (source.remote ? remote.runRemoteHelper({ ...opts, provider: source, apiKey: providerKey(source) }) : engine.runHelperTurn({ ...opts, slot, threadId })),
         maxToolChars: info.maxToolChars ?? undefined,
         onAllowCommand: (command) => {
           const list = store.getSettings().commandAllowlist || [];
@@ -1257,6 +1278,7 @@ async function runAgentTurn({ thread, text, displayText = text, approve, workspa
     assistant.error = err?.message || String(err);
   } finally {
     running.delete(threadId);
+    liveThreads.delete(threadId);
     store.saveThread(thread);
     memory.invalidateRecall();
     send('chat:event', { threadId, type: 'done', error: assistant.error, stopped: assistant.stopped, title: thread.title });
@@ -2058,7 +2080,7 @@ function registerIpc() {
     if (patch.modelAuto === true && next.chatModel && next.chatModel !== before.chatModel) loadChat().catch(() => {});
     if ((patch.glass !== undefined && patch.glass !== before.glass) || (patch.theme && patch.theme !== before.theme)) applyGlass();
     if (patch.chatModel && patch.chatModel !== before.chatModel) loadChat().catch(() => {});
-    else if (((patch.contextSize && patch.contextSize !== before.contextSize) || (patch.gpuLayers !== undefined && patch.gpuLayers !== before.gpuLayers)) && engine.isChatReady()) {
+    else if (((patch.contextSize && patch.contextSize !== before.contextSize) || (patch.gpuLayers !== undefined && patch.gpuLayers !== before.gpuLayers) || (patch.parallelChats !== undefined && patch.parallelChats !== before.parallelChats)) && engine.isChatReady()) {
       await engine.unloadChatModel();
       loadChat().catch(() => {});
     }
@@ -2786,7 +2808,7 @@ function registerIpc() {
     return r.canceled ? null : r.filePaths[0];
   });
   h('app:setLoginStart', (mode) => setLoginStart(['tray', 'orb'].includes(mode) ? mode : 'off'));
-  h('thread:get', (id) => store.getThread(id));
+  h('thread:get', (id) => liveThreads.get(id) || store.getThread(id));
   h('thread:delete', (id) => { running.get(id)?.abort(); store.deleteThread(id); memory.invalidateRecall(); });
   h('thread:rename', ({ id, title }) => { const t = store.getThread(id); if (t) { t.title = String(title).slice(0, 80); store.saveThread(t); } });
 

@@ -12,14 +12,17 @@ let llama = null;
 // Two model slots: "main" answers chats; "voice" is an optional fast model kept
 // loaded beside it for spoken turns (voice and Interact), so talking stays
 // quick even when the main model is a big one that runs on the processor.
-const newSlot = () => ({ path: null, model: null, context: null, session: null, threadId: null, systemPrompt: null, effort: null, harmony: false });
+// A slot is one loaded model. It has lanes: each lane is a chat's own place in it (its own sequence of the working memory, its own session
+// and what that holds), so as many chats as there are lanes can be answered at the same time.
+const newSlot = () => ({ path: null, model: null, context: null, lanes: [], waiters: [], harmony: false });
 const slots = { main: newSlot(), voice: newSlot() };
 const chat = slots.main;
 
 // gpt-oss speaks the Harmony format, which carries a reasoning effort (how
 // long it thinks). Sessions on it get the wrapper with the chosen effort.
-const wrapperFor = (slot) => (slot.harmony ? { chatWrapper: new HarmonyChatWrapper({ reasoningEffort: slot.effort || 'medium' }) } : {});
-const newSession = (slot, contextSequence, systemPrompt) => new LlamaChatSession({ contextSequence, ...(systemPrompt ? { systemPrompt } : {}), ...wrapperFor(slot) });
+const wrapperFor = (harmony, effort) => (harmony ? { chatWrapper: new HarmonyChatWrapper({ reasoningEffort: effort || 'medium' }) } : {});
+const newSession = (slot, contextSequence, systemPrompt, effort = null) => new LlamaChatSession({ contextSequence, ...(systemPrompt ? { systemPrompt } : {}), ...wrapperFor(slot.harmony, effort) });
+const newLane = (slot, sequence) => ({ sequence, session: newSession(slot, sequence), threadId: null, systemPrompt: null, effort: null, busy: false, usedAt: 0 });
 
 // Changing the effort rebuilds the session on the same sequence: what was
 // already read stays, and only the part from the change on is read again.
@@ -27,14 +30,13 @@ const newSession = (slot, contextSequence, systemPrompt) => new LlamaChatSession
 // can't be told to skip thinking in its own format, so Off is its lowest effort plus a
 // budget of no thinking at all (below); other models only get the budget.
 const effortFor = (level) => (level === 'off' ? 'low' : level);
-function setEffort(slot, level) {
+function setEffort(slot, lane, level) {
   const effort = effortFor(level);
-  if (!slot.harmony || !effort || effort === (slot.effort || 'medium')) return;
-  const sequence = slot.session.sequence;
-  try { slot.session.dispose({ disposeSequence: false }); } catch { /* already gone */ }
-  slot.effort = effort;
-  slot.session = newSession(slot, sequence);
-  slot.threadId = null;
+  if (!slot.harmony || !effort || effort === (lane.effort || 'medium')) return;
+  try { lane.session.dispose({ disposeSequence: false }); } catch { /* already gone */ }
+  lane.effort = effort;
+  lane.session = newSession(slot, lane.sequence, null, effort);
+  lane.threadId = null;
 }
 
 export const usesReasoningEffort = (slot = 'main') => slots[slot].harmony;
@@ -143,6 +145,8 @@ export async function engineInfo() {
     gpuLayers: chat.model ? chat.model.gpuLayers : null,
     totalLayers: chat.model ? chat.model.fileInsights.totalLayers : null,
     parallelHelpers: chat.context ? chat.context.totalSequences > 1 : null,
+    // How many chats the loaded model can answer at the same time (each has its own working memory).
+    parallelChats: chat.lanes.length || null,
     chatModel: chat.path,
     voiceModel: slots.voice.path,
     chatModelName: chatModelName(),
@@ -151,9 +155,12 @@ export async function engineInfo() {
 }
 
 async function disposeChat(chat = slots.main) {
-  try { chat.session?.dispose({ disposeSequence: true }); } catch { /* already disposed */ }
-  await chat.context?.dispose().catch(() => {});
-  await chat.model?.dispose().catch(() => {});
+  for (const lane of chat.lanes) { try { lane.session.dispose({ disposeSequence: true }); } catch { /* already disposed */ } }
+  chat.waiters.splice(0).forEach((wake) => wake());
+  // (A time limit: after a failed allocation on a small card, disposing can wait for ever, and the next model must still be able to load.)
+  const within = (p) => Promise.race([Promise.resolve(p).catch(() => {}), new Promise((done) => setTimeout(done, 8000))]);
+  await within(chat.context?.dispose());
+  await within(chat.model?.dispose());
   Object.assign(chat, newSlot());
 }
 
@@ -173,7 +180,8 @@ export function loadChatModel(modelPath, options = {}) {
 // The working memory (context) for a model that is loaded, as big as fits:
 // the size asked for, then half of it, down to 2048. Throws when even that
 // doesn't fit (loadChatModelNow then tries fewer layers on the graphics card).
-async function makeContext(chat, hw, contextSize) {
+const noFit = new Set();
+async function makeContext(chat, hw, contextSize, parallel = 1) {
   // A second sequence lets a helper agent run while the main chat waits on it,
   // but each sequence costs a full context of memory. The main chat's context
   // matters more, so keep 2 sequences only if the main one still gets (almost)
@@ -183,14 +191,23 @@ async function makeContext(chat, hw, contextSize) {
   // Flash attention measured 15-20% faster prompt reading and ~7% faster
   // generation here, with less memory; it's dropped if a context won't build.
   let fa = chat.model.flashAttentionSupported && !process.env.SCORPION_NO_FLASH_ATTENTION;
-  // Two full contexts never fit on small cards; trying costs seconds of
-  // failed allocations, so only try with 8 GB or more of video memory.
-  if (hw.dedicatedVram >= 8 * 1024 ** 3) {
-    try {
-      const two = await chat.model.createContext({ sequences: 2, contextSize: { min: 2048, max: contextSize }, flashAttention: fa });
-      if (two.contextSize >= contextSize * 0.9) chat.context = two;
-      else await two.dispose();
-    } catch { /* fall through to a single sequence */ }
+  // Several chats at once: one sequence for each, as many as the memory left allows (up to what Settings asks). Each sequence costs a
+  // full context, so the estimate is checked against what is free before anything is allocated (a failed attempt costs seconds).
+  if (parallel > 1) {
+    const vram = chat.llama?.gpu ? await chat.llama.getVramState().catch(() => null) : null;
+    for (let s = parallel; s >= 2 && !chat.context; s--) {
+      const key = `${chat.path || chat.model.filePath}|${chat.model.gpuLayers}|${contextSize}|${s}`;
+      if (noFit.has(key)) continue; // it did not fit before: not tried again (a failed try costs seconds)
+      try {
+        const need = await chat.model.fileInsights.estimateContextResourceRequirementsV2({ contextSize, modelGpuLayers: chat.model.gpuLayers, sequences: s, flashAttention: fa });
+        // (The estimate leaves out the compute buffers, about 0.5 GB per sequence: keep room for them, because a failed allocation can leave the card in a state that makes unloading hang.)
+        const gpuOk = !need.gpuVram || (vram && need.gpuVram + s * 700 * 1024 ** 2 <= vram.free);
+        const ramOk = !need.cpuRam || need.cpuRam <= os.freemem() * 0.7;
+        if (!gpuOk || !ramOk) continue;
+        // The full size, once: a range makes it retry smaller sizes, each a failed allocation.
+        chat.context = await chat.model.createContext({ sequences: s, contextSize, flashAttention: fa });
+      } catch { noFit.add(key); /* fewer sequences */ }
+    }
   }
   for (let size = contextSize; !chat.context; size = Math.floor(size / 2)) {
     try {
@@ -202,9 +219,10 @@ async function makeContext(chat, hw, contextSize) {
   }
 }
 
-async function loadChatModelNow(modelPath, { contextSize = 8192, gpuLayers: requested = 'auto', name = null, onProgress, slot = 'main' } = {}) {
+async function loadChatModelNow(modelPath, { contextSize = 8192, gpuLayers: requested = 'auto', name = null, onProgress, slot = 'main', parallel = 1 } = {}) {
   const chat = slots[slot];
-  if (chat.path === modelPath && chat.model && chat.requestedGpuLayers === requested) return engineInfo();
+  const lanesWanted = slot === 'main' ? Math.max(1, Math.min(4, Math.round(Number(parallel)) || 1)) : 1;
+  if (chat.path === modelPath && chat.model && chat.requestedGpuLayers === requested && chat.lanesWanted === lanesWanted) return engineInfo();
   await disposeChat(chat);
   // The automatic GPU-offload estimate can overshoot on shared-memory GPUs. If
   // it fails, fall back conservatively (generation needs memory beyond what
@@ -221,11 +239,12 @@ async function loadChatModelNow(modelPath, { contextSize = 8192, gpuLayers: requ
     try {
       const l = gpuLayers === 0 ? await ensureCpuLlama() : await ensureLlama();
       chat.model = await l.loadModel({ modelPath, gpuLayers, onLoadProgress: (p) => onProgress?.(p) });
+      chat.llama = l;
       chat.backend = gpuLayers === 0 ? 'cpu' : (l.gpu || 'cpu');
       // The model fitting isn't enough: its working memory (the context) has to fit
       // in what the card has left too. If it doesn't, this split is given up, and
       // the next one (fewer layers on the card) is tried from a clean start.
-      await makeContext(chat, hw, contextSize);
+      await makeContext(chat, hw, contextSize, lanesWanted);
       break;
     } catch (err) {
       loadErr = err;
@@ -243,8 +262,9 @@ async function loadChatModelNow(modelPath, { contextSize = 8192, gpuLayers: requ
   }
   chat.name = name;
   chat.requestedGpuLayers = requested;
+  chat.lanesWanted = lanesWanted;
   chat.harmony = chat.model.fileInfo?.metadata?.general?.architecture === 'gpt-oss';
-  chat.session = newSession(chat, chat.context.getSequence());
+  chat.lanes = Array.from({ length: chat.context.totalSequences }, () => newLane(chat, chat.context.getSequence()));
   chat.path = modelPath;
   return engineInfo();
 }
@@ -271,13 +291,13 @@ export function unloadChatModel(slot = 'main') {
 }
 
 export function isChatReady(slot = 'main') {
-  return Boolean(slots[slot].session);
+  return slots[slot].lanes.length > 0;
 }
 
 // A chat answered elsewhere (another model source) changed its history:
 // make the next local turn reload it instead of trusting the loaded context.
 export function forgetLoadedThread() {
-  for (const slot of Object.values(slots)) slot.threadId = null;
+  for (const slot of Object.values(slots)) for (const lane of slot.lanes) lane.threadId = null;
 }
 
 // Callers pass the display name shown in the model list when loading.
@@ -290,35 +310,58 @@ export function chatModelName(slot = 'main') {
  * Run one user turn on a thread. `history` is the thread's saved node-llama-cpp
  * chat history (or null for a fresh thread). Returns the updated history.
  */
-// One loaded model serves every chat, scheduled run and helper, so main turns
-// take turns. (Helpers run *inside* a main turn, on their own sequence, and
-// don't take the lock.)
-let queue = Promise.resolve();
-function withLock(fn) {
-  const run = queue.then(fn, fn);
-  queue = run.catch(() => {});
-  return run;
+// One loaded model serves every chat, scheduled run and helper. A turn takes a lane: the one that already holds its chat (nothing to re-read),
+// else one with nothing in it, else the one used longest ago. When every lane is busy the turn waits for one (onQueued tells the person), and
+// a chat is never in two lanes. (Helpers run *inside* a main turn, on its lane's sequence, and don't take a lane.)
+async function acquireLane(slotName, threadId, onQueued) {
+  const chat = slots[slotName];
+  let told = false;
+  for (;;) {
+    if (!chat.lanes.length) throw new Error('No chat model loaded. Pick one in Models.');
+    if (!(threadId && chat.lanes.some((l) => l.busy && l.threadId === threadId))) {
+      const free = chat.lanes.filter((l) => !l.busy);
+      const lane = free.find((l) => threadId && l.threadId === threadId) || free.find((l) => l.threadId === '(warm)') || free.find((l) => !l.threadId) || free.sort((a, b) => a.usedAt - b.usedAt)[0];
+      if (lane) { lane.busy = true; lane.usedAt = Date.now(); return lane; }
+    }
+    if (!told) { told = true; try { onQueued?.(chat.lanes.length); } catch { /* only a message */ } }
+    await new Promise((wake) => chat.waiters.push(wake));
+  }
+}
+function releaseLane(chat, lane) {
+  lane.busy = false;
+  lane.usedAt = Date.now();
+  chat.waiters.splice(0).forEach((wake) => wake());
 }
 
-export function runTurn(opts) {
-  return withLock(() => runTurnUnlocked(opts));
+export async function runTurn(opts) {
+  const slot = opts.slot || 'main';
+  const lane = await acquireLane(slot, opts.threadId, opts.onQueued);
+  try {
+    return await runTurnUnlocked({ ...opts, lane });
+  } finally {
+    releaseLane(slots[slot], lane);
+  }
 }
 
 // Warm-up: read a new chat's system prompt and tool list ahead of time, so the
 // first message only has to read itself (on a big model on the processor that
 // is most of the wait). Only while nothing else is loaded in the slot: after
 // a chat ran, its prompt is already there and reused.
-export function warmUp({ systemPrompt, functions, effort = null, slot = 'main' }) {
-  return withLock(async () => {
-    const chat = slots[slot];
-    if (!chat.session || chat.threadId) return false;
-    setEffort(chat, effort);
-    chat.session.setChatHistory([{ type: 'system', text: systemPrompt }]);
-    await chat.session.preloadPrompt('', { functions });
-    chat.threadId = '(warm)';
-    chat.systemPrompt = systemPrompt;
+export async function warmUp({ systemPrompt, functions, effort = null, slot = 'main' }) {
+  const chat = slots[slot];
+  const lane = chat.lanes.find((l) => !l.busy && !l.threadId);
+  if (!lane) return false;
+  lane.busy = true;
+  try {
+    setEffort(chat, lane, effort);
+    lane.session.setChatHistory([{ type: 'system', text: systemPrompt }]);
+    await lane.session.preloadPrompt('', { functions });
+    lane.threadId = '(warm)';
+    lane.systemPrompt = systemPrompt;
     return true;
-  });
+  } finally {
+    releaseLane(chat, lane);
+  }
 }
 
 function promptOptions({ functions, temperature, signal, onText, onThought, maxTokens = 3072, effort = null }) {
@@ -343,17 +386,19 @@ function promptOptions({ functions, temperature, signal, onText, onThought, maxT
 }
 
 /** Run a helper agent on a fresh, separate session. Returns its final answer. */
-export async function runHelperTurn({ systemPrompt, text, functions, temperature, signal, onText, slot = 'main' }) {
+export async function runHelperTurn({ systemPrompt, text, functions, temperature, signal, onText, slot = 'main', threadId = null }) {
   const chat = slots[slot];
   if (!chat.model) throw new Error('No chat model loaded');
+  // The lane of the turn that asked for this helper (it is paused, waiting for the answer).
+  const parent = chat.lanes.find((l) => l.busy && l.threadId === threadId) || chat.lanes.find((l) => l.busy) || chat.lanes[0];
   // Prefer a spare sequence (runs without disturbing the main chat's cache).
   // Without one, borrow the main chat's own sequence: the main turn is paused
   // waiting for this helper anyway, and node-llama-cpp re-aligns a sequence to
   // the full chat history when generation resumes, so the main chat just
   // re-reads its history afterwards. Slower, but needs no extra memory.
   const spare = chat.context.sequencesLeft > 0;
-  const sequence = spare ? chat.context.getSequence() : chat.session.sequence;
-  const session = newSession(chat, sequence, systemPrompt);
+  const sequence = spare ? chat.context.getSequence() : parent.sequence;
+  const session = newSession(chat, sequence, systemPrompt, parent.effort);
   try {
     return await session.prompt(text, promptOptions({ functions, temperature, signal, onText }));
   } finally {
@@ -365,20 +410,21 @@ export async function runHelperTurn({ systemPrompt, text, functions, temperature
 // and memory consolidation. Takes the same lock as chat turns, so it never
 // runs in the middle of one. Borrowing the main sequence means the next chat
 // turn reloads its history first.
-export function complete({ systemPrompt, text, maxTokens = 700, temperature = 0.2, signal, slot = 'main' }) {
-  return withLock(async () => {
-    const chat = slots[slot];
-    if (!chat.model) throw new Error('No chat model loaded');
-    const spare = chat.context.sequencesLeft > 0;
-    const sequence = spare ? chat.context.getSequence() : chat.session.sequence;
-    const session = newSession(chat, sequence, systemPrompt);
+export async function complete({ systemPrompt, text, maxTokens = 700, temperature = 0.2, signal, slot = 'main' }) {
+  const chat = slots[slot];
+  if (!chat.model) throw new Error('No chat model loaded');
+  const lane = await acquireLane(slot, null);
+  try {
+    const session = newSession(chat, lane.sequence, systemPrompt, lane.effort);
     try {
       return await session.prompt(text, { maxTokens, temperature, signal, stopOnAbortSignal: true });
     } finally {
-      try { session.dispose({ disposeSequence: spare }); } catch { /* already gone */ }
-      if (!spare) chat.threadId = null;
+      try { session.dispose({ disposeSequence: false }); } catch { /* already gone */ }
+      lane.threadId = null; // the sequence was borrowed: the lane's chat is read again next time
     }
-  });
+  } finally {
+    releaseLane(chat, lane);
+  }
 }
 
 // Compaction: shrink everything except the most recent tool results, so a
@@ -443,11 +489,11 @@ export function parseTextToolCalls(text, functions) {
 const SEGMENT_GROWTH = 0.3;
 const SEGMENT_FULL = 0.85;
 
-async function runTurnUnlocked({ threadId, history, systemPrompt, text, functions, temperature, signal, onText, onThought, maxTokens, continuation, slot = 'main', effort = null }) {
+async function runTurnUnlocked({ threadId, history, systemPrompt, text, functions, temperature, signal, onText, onThought, maxTokens, continuation, slot = 'main', effort = null, lane }) {
   const chat = slots[slot];
-  if (!chat.session) throw new Error('No chat model loaded. Pick one in Models.');
-  setEffort(chat, effort);
-  const session = chat.session;
+  if (!lane?.session) throw new Error('No chat model loaded. Pick one in Models.');
+  setEffort(chat, lane, effort);
+  const session = lane.session;
 
   // Switching threads (or changing the system prompt) means restoring that
   // thread's history into the single context sequence we keep loaded.
@@ -455,10 +501,10 @@ async function runTurnUnlocked({ threadId, history, systemPrompt, text, function
   if (desired[0]?.type === 'system') desired[0] = { type: 'system', text: systemPrompt };
   else desired.unshift({ type: 'system', text: systemPrompt });
 
-  if (chat.threadId !== threadId || chat.systemPrompt !== systemPrompt) {
+  if (lane.threadId !== threadId || lane.systemPrompt !== systemPrompt) {
     session.setChatHistory(desired);
-    chat.threadId = threadId;
-    chat.systemPrompt = systemPrompt;
+    lane.threadId = threadId;
+    lane.systemPrompt = systemPrompt;
   }
 
   try {
@@ -551,7 +597,7 @@ async function runTurnUnlocked({ threadId, history, systemPrompt, text, function
     }
   } catch (err) {
     // Force a history reload next turn — the session may be mid-turn.
-    chat.threadId = null;
+    lane.threadId = null;
     throw err;
   }
   return session.getChatHistory();

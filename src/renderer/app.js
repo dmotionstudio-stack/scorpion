@@ -1925,6 +1925,8 @@ function renderSettings() {
     ? (mainSlow ? (fastOne ? `Your chat model is slow on this computer, so voice and Interact use ${fastOne.name} for quick replies.` : 'Your chat model is slow on this computer. Install a smaller model (Models) for quicker spoken replies.') : 'Voice and Interact use your chat model, which runs fast here.')
     : 'Voice and Interact replies come from this model; typed chats keep the chat model.';
   $('#ctx-size').value = String(S.settings.contextSize);
+  $('#parallel-chats').value = String(S.settings.parallelChats ?? 2);
+  $('#parallel-note').textContent = S.engine?.parallelChats ? `This model answers ${S.engine.parallelChats} chat${S.engine.parallelChats === 1 ? '' : 's'} at once on this computer. Each needs its own working memory; the others wait their turn. Changing it reloads the model.` : 'Each chat answering needs its own working memory. Scorpion uses as many as fit and the others wait their turn. Changing it reloads the model.';
   $('#gpu-layers').value = String(S.settings.gpuLayers ?? 'auto');
   $('#glass').value = S.settings.glass === 'off' ? 'off' : 'auto';
   $('#glass-hint').textContent = S.nativeGlass
@@ -2444,6 +2446,7 @@ function wire() {
   $('#recall-enabled').onchange = (e) => setSetting({ recallEnabled: e.target.checked });
 
   $('#ctx-size').onchange = (e) => setSetting({ contextSize: Number(e.target.value) });
+  $('#parallel-chats').onchange = (e) => setSetting({ parallelChats: Number(e.target.value) });
   $('#theme-grid').onclick = async (e) => {
     const card = e.target.closest('[data-theme-id]');
     if (!card) return;

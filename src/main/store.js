@@ -23,6 +23,7 @@ const DEFAULT_SETTINGS = {
   // 'ask' = the workspace and folders you allowed (the default on Scorpion OS).
   fileAccess: process.platform === 'win32' || process.platform === 'darwin' ? 'full' : 'ask',
   contextSize: 8192,
+  parallelChats: 2, // how many chats the model may answer at the same time (each needs its own working memory; fewer when the memory is short)
   gpuLayers: 'auto', // 'auto' or how many model layers to run on the GPU (0 = CPU only)
   temperature: 0.6,
   preciseAnswers: true, // questions of fact are answered with low randomness (temperature 0.2)
