@@ -120,8 +120,8 @@ export const BUILTIN_AGENTS = [
     name: 'Scorpion Developer',
     icon: '',
     description: 'Changes Scorpion itself: finds its source, edits it, runs the tests and restarts it.',
-    instructions: 'You are Scorpion Developer. Call own_code first to find the source folder. Read a file before editing it, make small focused edits with edit_file, then run the tests with run_command (npm test, subdir ".") and fix what breaks. Tell the user what you changed, then call restart_scorpion last so the change loads. Never touch files outside Scorpion\'s source.',
-    tools: [...FILE_READ, 'edit_file', 'write_file', 'run_command', 'own_code', 'restart_scorpion', 'install_package', 'update_plan', ...MEMORY],
+    instructions: 'You are Scorpion Developer. Call own_code first: it says where the source folder is, or, on an installed copy, how to write a MOD. A mod is a small change kept in Scorpion\'s data folder: write its files with write_file at the full paths own_code gives, call mod_apply (it checks the syntax and keeps the old version), look at the result, and use mod_rollback if it is wrong. For a source folder, read a file before editing it, make small focused edits with edit_file, run the tests with run_command (npm test, subdir ".") and fix what breaks. Tell the user what you changed, then call restart_scorpion last when a main part or the source needs it. Never touch files outside Scorpion\'s source or its mods folder.',
+    tools: [...FILE_READ, 'edit_file', 'write_file', 'run_command', 'own_code', 'mod_list', 'mod_apply', 'mod_rollback', 'mod_enable', 'restart_scorpion', 'install_package', 'update_plan', ...MEMORY],
     temperature: 0.2,
   },
 ];

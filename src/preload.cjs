@@ -119,6 +119,18 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellLinks: invoke('shell:links'),
   shellLinkOpen: invoke('shell:linkOpen'),
   shellAddLinks: invoke('shell:addLinks'),
+  // Mods (mods.js): the list, what the screens load, and the changes the person makes in Settings.
+  modsState: invoke('mods:state'),
+  modsPayload: invoke('mods:payload'),
+  modsError: invoke('mods:error'),
+  modsSet: invoke('mods:set'),
+  modsRollback: invoke('mods:rollback'),
+  modsOpen: invoke('mods:open'),
+  modsDismissNotice: invoke('mods:dismissNotice'),
+  modsSafeMode: invoke('mods:safeMode'),
+  // For a mod's own renderer.js: talk to its main.mjs (api.ipc.handle / api.ipc.send).
+  modInvoke: (name, channel, arg) => ipcRenderer.invoke(`mod:${String(name)}:${String(channel)}`, arg),
+  onMod: (name, channel, fn) => { const c = `mod:${String(name)}:${String(channel)}`; const l = (_e, p) => fn(p); ipcRenderer.on(c, l); return () => ipcRenderer.removeListener(c, l); },
   filesList: invoke('files:list'),
   desktopItems: invoke('desktop:items'),
   filesNew: invoke('files:new'),

@@ -31,6 +31,9 @@ jobs:
           - os: macos-15-intel
             target: --mac --x64
     runs-on: ${{ matrix.os }}
+    env:
+      # True when a Windows signing account is set up (docs/signing-windows.md): Azure Trusted Signing, or a certificate file.
+      WINDOWS_SIGNING: ${{ (secrets.AZURE_CLIENT_SECRET != '' && vars.AZURE_SIGNING_ENDPOINT != '') || secrets.WIN_CSC_LINK != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,9 +47,44 @@ jobs:
         run: node scripts/fetch-models.mjs resources/models ${{ github.event.inputs.bundle_model }}
       - name: Build installer
         # macOS output is unsigned unless you add CSC_LINK / CSC_KEY_PASSWORD / APPLE_ID secrets.
+        # Windows is signed when docs/signing-windows.md has been followed: Azure Trusted Signing (AZURE_* secrets and AZURE_SIGNING_* variables)
+        # or a certificate file (WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD). With neither, the installer is unsigned, as before.
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: npx electron-builder ${{ matrix.target }} --publish never
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          SIGN_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          SIGN_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          SIGN_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          SIGN_PUBLISHER: ${{ vars.SIGNING_PUBLISHER_NAME }}
+        shell: bash
+        run: |
+          extra=""
+          if [ "$RUNNER_OS" = "Windows" ] && [ -n "$AZURE_CLIENT_SECRET" ] && [ -n "$SIGN_ENDPOINT" ]; then
+            extra="-c.win.azureSignOptions.endpoint=$SIGN_ENDPOINT -c.win.azureSignOptions.codeSigningAccountName=$SIGN_ACCOUNT -c.win.azureSignOptions.certificateProfileName=$SIGN_PROFILE -c.win.azureSignOptions.publisherName=$SIGN_PUBLISHER"
+            echo "Signing the Windows installer with Azure Trusted Signing"
+          elif [ "$RUNNER_OS" = "Windows" ] && [ -n "$WIN_CSC_LINK" ]; then
+            echo "Signing the Windows installer with the certificate file"
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            echo "::warning::The Windows installer is NOT signed (no signing account is set up: see docs/signing-windows.md)."
+          fi
+          npx electron-builder ${{ matrix.target }} --publish never $extra
+      # A signed release must really be signed: a certificate or account that was set up wrongly stops the release instead of shipping an
+      # installer that Windows warns about (and that the updater would refuse).
+      - name: Check the Windows signature
+        if: ${{ runner.os == 'Windows' && env.WINDOWS_SIGNING == 'true' }}
+        shell: pwsh
+        run: |
+          $bad = @()
+          foreach ($f in Get-ChildItem release/*.exe) {
+            $sig = Get-AuthenticodeSignature $f.FullName
+            Write-Host "$($f.Name): $($sig.Status) | $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid') { $bad += $f.Name }
+          }
+          if ($bad.Count) { throw "Not validly signed: $($bad -join ', ')" }
       # The app as people get it: it starts, its model engine runs in a process
       # of its own, the Windows helper builds, older settings are brought up to
       # date (scripts/smoke-test.mjs). A failure here stops the release.

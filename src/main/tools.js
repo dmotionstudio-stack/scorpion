@@ -449,6 +449,35 @@ export const TOOLS = {
     },
   },
 
+  // Mods: changes to this copy of Scorpion kept in the data folder. The files are written with write_file; these check, apply and undo them.
+  mod_list: {
+    access: 'read', noWorkspace: true,
+    description: 'List the mods (changes to Scorpion kept in its data folder): on or off, what each has, how many earlier versions. Call own_code first for how to write one.',
+    params: { type: 'object', properties: {} },
+    async run(_args, { services }) { return services.modsList(); },
+  },
+  mod_apply: {
+    access: 'exec', noWorkspace: true,
+    describeAction: ({ name }) => `apply the mod "${name}" to Scorpion`,
+    description: 'After writing a mod\'s files, check its syntax, keep the version before, and turn it on. The screens reload; a main.mjs loads at the next restart. Fix the error and call again if it is refused.',
+    params: { type: 'object', properties: { name: { type: 'string' } } },
+    async run({ name }, { services }) { return services.modsApply({ name }); },
+  },
+  mod_rollback: {
+    access: 'exec', noWorkspace: true,
+    describeAction: ({ name }) => `roll the mod "${name}" back one version`,
+    description: 'Put a mod back to the version before the last mod_apply (one version each call). Use it when a change broke something.',
+    params: { type: 'object', properties: { name: { type: 'string' } } },
+    async run({ name }, { services }) { return services.modsRollback({ name }); },
+  },
+  mod_enable: {
+    access: 'exec', noWorkspace: true,
+    describeAction: ({ name, enabled }) => `turn the mod "${name}" ${enabled ? 'on' : 'off'}`,
+    description: 'Turn a mod on (enabled true) or off (false) without deleting it.',
+    params: { type: 'object', properties: { name: { type: 'string' }, enabled: { type: 'boolean' } } },
+    async run({ name, enabled }, { services }) { return services.modsEnable({ name, enabled: enabled !== false }); },
+  },
+
   // Scorpion's own code (Build). Where it is, and how to change it; the edits themselves use the normal file tools.
   own_code: {
     access: 'read', noWorkspace: true,

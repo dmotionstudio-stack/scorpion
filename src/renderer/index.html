@@ -515,6 +515,16 @@
             <select id="ctx-size"><option>4096</option><option>8192</option><option>16384</option><option>32768</option></select>
             <p class="muted small">Larger remembers more but uses more memory. Scorpion lowers it automatically if it doesn't fit.</p>
           </div>
+          <div class="field" data-sec="system" id="mods-field">
+            <label>Mods</label>
+            <div class="mods-notice hidden" id="mods-notice" role="status"></div>
+            <div class="mods-list" id="mods-list"></div>
+            <div class="mods-actions">
+              <button class="btn small" id="mods-open" type="button">Open the mods folder</button>
+              <button class="btn small ghost" id="mods-safe" type="button" title="Restart Scorpion once with every mod off">Restart in safe mode</button>
+            </div>
+            <p class="muted small">A mod is a small change to Scorpion kept in its data folder (the agent can write one). Each version is kept, so you can roll one back. If Scorpion fails to start twice in a row, it starts in safe mode with mods off and puts them back as they were at the last good start.</p>
+          </div>
           <div class="field" data-sec="system">
             <label for="parallel-chats">Chats answered at once</label>
             <select id="parallel-chats"><option value="1">1 (one at a time)</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>

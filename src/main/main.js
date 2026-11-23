@@ -4,6 +4,7 @@ import { cleanGroups, groupOf, setGroup, freeGroupNames } from '../renderer/task
 import { createClock } from './clock.js';
 import { createDevServers, localUrlFrom, isLocalUrl, webUrlFrom } from './devserver.js';
 import * as siteServer from './site-server.js';
+import { createMods } from './mods.js';
 import { createPreview } from './preview.js';
 import { SCAN_SCRIPT, describe as describePage } from './agent-browser.js';
 import { createDrives, driveLabel } from './drives.js';
@@ -192,6 +193,10 @@ function serveApp() {
       return thumb && fs.existsSync(thumb) ? net.fetch(pathToFileURL(thumb).toString()) : new Response('Not found', { status: 404 });
     }
     if (rel.startsWith('media/')) return serveMedia(request, rel.split('/')[1]);
+    if (rel.startsWith('mods/') && rel.endsWith('.js')) { // a mod's renderer.js (mods.js)
+      const code = mods?.script(rel.slice('mods/'.length, -'.js'.length));
+      return code ? new Response(code, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' } }) : new Response('Not found', { status: 404 });
+    }
     if (rel.startsWith('vendor/three/')) {
       // Three.js is a set of ES modules: its build, plus the add-ons the orb uses.
       const sub = rel.slice('vendor/three/'.length);
@@ -1080,6 +1085,33 @@ function openLink(url) {
   if (/^mailto:/i.test(url)) { shell.openExternal(url); return true; }
   return false;
 }
+// Mods whose main part runs inside Scorpion. A mod that throws is turned off by itself (mods.recordError) so it cannot break every start.
+function modApi(name) {
+  const channel = (c) => `mod:${name}:${c}`;
+  return {
+    name,
+    dir: path.join(mods.dir, name),
+    log: (...args) => console.log(`[mod ${name}]`, ...args),
+    app, BrowserWindow, shell,
+    getSettings: () => store.getSettings(),
+    // Messages between a mod's main part and its renderer.js (scorpion.modInvoke(name, channel, arg) / scorpion.onMod(name, channel, fn)).
+    ipc: { handle: (c, fn) => ipcMain.handle(channel(c), (_e, arg) => fn(arg)), send: (c, data) => send(channel(c), data) },
+    onQuit: (fn) => app.on('will-quit', () => { try { fn(); } catch { /* a mod must not stop Scorpion quitting */ } }),
+  };
+}
+async function loadMainMods() {
+  for (const m of mods.mainEntries()) {
+    try {
+      const loaded = await import(`${pathToFileURL(m.file).href}?v=${fs.statSync(m.file).mtimeMs}`);
+      await Promise.race([Promise.resolve(loaded.default?.(modApi(m.name))), new Promise((_, no) => setTimeout(() => no(new Error('took longer than 10 seconds to start')), 10_000))]);
+    } catch (err) {
+      console.error(`[mods] ${m.name} failed:`, err.message);
+      mods.recordError(m.name, err.message);
+    }
+  }
+}
+function reloadScreens() { setTimeout(() => { if (win && !win.isDestroyed()) win.webContents.reload(); }, 600); } // after the tool's answer is on its way
+
 function agentServices(settings, signal) {
   return {
     startServer({ command, name, cwd }) {
@@ -1107,14 +1139,18 @@ function agentServices(settings, signal) {
       return `Opened in the preview: ${url}\n${seen}`;
     },
     // Scorpion's own code: the folder this copy runs from (a development copy), or a source folder the person points to.
+    // Mods: changes to this copy of Scorpion that live in the data folder (kept, checked, and undone one version at a time).
+    modsList: () => mods.list().map((m) => `${m.name}: ${m.enabled ? 'on' : 'OFF'}${m.error ? ` (turned off after an error: ${m.error})` : ''}${m.description ? ` · ${m.description}` : ''} · ${['main', 'renderer', 'css'].filter((p) => m.parts[p]).join(', ')} · ${m.versions} earlier version${m.versions === 1 ? '' : 's'}`).join('\n') || 'No mods yet.',
+    modsApply({ name }) { const r = mods.apply(name); if (r.reload) reloadScreens(); return `Applied "${r.name}". ${r.reload ? 'The screens reload now. ' : ''}${r.needsRestart ? 'Its main.mjs loads when Scorpion restarts: call restart_scorpion (last, after telling the user). ' : ''}${mods.safe ? 'NOTE: this is a safe-mode start, so no mod runs until the next normal start. ' : ''}If it breaks Scorpion, two failed starts in a row start safe mode and put the mods back as they were; mod_rollback goes back one version.`; },
+    modsRollback({ name }) { const r = mods.rollback(name); if (r.reload) reloadScreens(); return `Rolled "${r.name}" back one version (${r.versions} earlier left). ${r.needsRestart ? 'Restart Scorpion to load its main part.' : ''}`; },
+    modsEnable({ name, enabled }) { const r = mods.setEnabled(name, enabled); if (r.reload) reloadScreens(); return `"${r.name}" is ${r.enabled ? 'on' : 'off'}. ${r.needsRestart ? 'A main part changes at the next restart.' : ''}`; },
     sourceInfo() {
       if (app.isPackaged) {
-        return 'This installed copy of Scorpion runs from sealed program files that cannot be edited. To change Scorpion, the user needs its source folder (the folder with package.json and src/). Ask them for its path, edit the files there, run npm test with run_command in that folder, and start the changed copy with start_server "npm start". Changes never alter the installed copy.';
+        return `This installed copy of Scorpion runs from sealed program files that cannot be edited, but it can be changed with MODS, kept in ${mods.dir}. A mod is a folder there, ${mods.dir}${path.sep}<name>${path.sep}, with any of: main.mjs (runs inside Scorpion at start-up: export default function (api) { api.log(...); api.ipc.handle('name', fn) }), renderer.js (the body of a function that runs in the screens, with \`scorpion\` (the app's API) and \`mod\`), style.css (added to the screens), and an optional mod.json { "description": "..." }. Write the files with write_file at those full paths, then call mod_apply with the name: it checks the syntax, keeps the version before, and turns it on (the screens reload; a main.mjs loads at the next restart). mod_rollback goes back one version; mod_list shows them. If a change makes Scorpion fail to start twice, it starts in safe mode and puts the mods back as they were. For deeper changes the user can give you Scorpion's source folder instead (edit it, run npm test, start the copy with start_server "npm start").`;
       }
       return `Scorpion's source folder: ${APP_ROOT}\nCode is in src/main (the engine, tools and agent), src/renderer (the screens) and test/. Read a file before editing it. After editing, run npm test with run_command (subdir "."), then call restart_scorpion. The files are outside the workspace, so Scorpion asks the user to allow that folder first.`;
     },
     restartApp() {
-      if (app.isPackaged) throw new Error('A restart reloads the same sealed program. Start the changed source with start_server "npm start" instead.');
       logUnrestricted({ name: 'restart', summary: 'Scorpion restarts to load its own changes', args: {} });
       setTimeout(() => { app.relaunch(); app.exit(0); }, 1500);
       return 'Restarting now. The chat is kept.';
@@ -1668,6 +1704,8 @@ async function runNamedIntent(id) {
 // When each open window was last in front (the taskbar asks every 1.5 s), for
 // the wheel's recent windows.
 const lastUsed = new Map();
+let mods = null; // changes to Scorpion kept in the data folder (mods.js)
+let modsUnhealthy = false; // the screens crashed during start-up: this start is not marked healthy
 let updates = null; // Scorpion OS's updates (updates.js)
 let appUpdates = null; // Scorpion's own, on Windows and macOS (app-updates.js)
 const ACCESS_FEATURES = ['bigText', 'screenReader', 'keyboard'];
@@ -2819,6 +2857,15 @@ function registerIpc() {
   });
   h('app:setLoginStart', (mode) => setLoginStart(['tray', 'orb'].includes(mode) ? mode : 'off'));
   h('thread:get', (id) => liveThreads.get(id) || store.getThread(id));
+  // ---- mods
+  h('mods:state', () => ({ folder: mods.dir, safe: mods.safe, notice: mods.notice(), mods: mods.list() }));
+  h('mods:payload', () => mods.payload());
+  h('mods:error', ({ name, message } = {}) => { mods.recordError(name, message); return true; });
+  h('mods:set', ({ name, enabled } = {}) => { const r = mods.setEnabled(name, enabled); if (r.reload) reloadScreens(); return r; });
+  h('mods:rollback', ({ name } = {}) => { const r = mods.rollback(name); if (r.reload) reloadScreens(); return r; });
+  h('mods:open', () => shell.openPath(mods.dir));
+  h('mods:dismissNotice', () => { mods.dismissNotice(); return true; });
+  h('mods:safeMode', () => { app.relaunch({ args: [...process.argv.slice(1).filter((a) => a !== '--safe-mode'), '--safe-mode'] }); app.exit(0); });
   h('thread:delete', (id) => { running.get(id)?.abort(); store.deleteThread(id); memory.invalidateRecall(); });
   h('thread:rename', ({ id, title }) => { const t = store.getThread(id); if (t) { t.title = String(title).slice(0, 80); store.saveThread(t); } });
 
@@ -2945,6 +2992,10 @@ app.whenReady().then(async () => {
   library.watchFolders(true); // new, changed and deleted files are picked up live
   lock.initLock(app.getPath('userData'));
   skills.initSkills(path.join(APP_ROOT, 'src', 'skills'), app.getPath('userData'));
+  // Mods: is this a safe-mode start (two unhealthy starts in a row, --safe-mode, or SCORPION_SAFE_MODE=1)? Then no mod loads.
+  mods = createMods(path.join(app.getPath('userData'), 'mods'));
+  const modsBoot = mods.boot({ forceSafe: process.argv.includes('--safe-mode') || process.env.SCORPION_SAFE_MODE === '1' });
+  if (modsBoot.safe) console.error('[mods] safe mode:', modsBoot.recovered.join('; ') || 'mods are off');
   persona.initPersona(app.getPath('userData'));
   setInterval(() => runHeartbeat().catch(() => {}), 60_000); // check-ins, when due
   setInterval(() => runDream().catch(() => {}), 10 * 60_000); // dreaming, once a day when idle
@@ -2959,6 +3010,10 @@ app.whenReady().then(async () => {
     startShellApi({ handlers, roots: [path.join(__dirname, '..', 'renderer'), path.join(__dirname, '..', 'shared')], gone: () => { desktop.useHost(false); sendTaskbarInset(); } }).catch((err) => console.error('shell API:', err));
   }
   createWindow();
+  win.webContents.on('render-process-gone', () => { modsUnhealthy = true; });
+  loadMainMods().catch((err) => console.error('[mods]', err.message));
+  // A start counts as healthy once it has run for a while without the screens crashing (or the person quit normally after a moment).
+  setTimeout(() => { if (!modsUnhealthy) mods.markHealthy(); }, 25_000);
   if (asDesktop) await desktop.startShell('shell').catch((err) => { console.error(err); return winctl.startExplorer(); });
   else if (process.platform === 'win32' && store.getSettings().taskbarAlwaysOn !== false) desktop.startShell('bar').then(() => { desktop.raiseTaskbar(); sendTaskbarInset(); }).catch((err) => console.error(err));
   scheduler.startScheduler(runScheduled);
@@ -3018,6 +3073,7 @@ app.on('second-instance', (e, argv) => {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' && !keepsRunning() && !desktop.shellMode()) app.quit(); });
 app.on('will-quit', () => { siteServer.stopAll().catch(() => {}); stopKeyWatch(); globalShortcut.unregisterAll(); winHelper.stopHelper(); });
 app.on('before-quit', (e) => {
+  if (!modsUnhealthy && process.uptime() > 8) mods?.markHealthy();
   // Leaving the desktop: put the screen area back (and the Windows desktop,
   // when Scorpion was it) before quitting.
   if (appFrame.framed()) { e.preventDefault(); appFrame.setPanel(null).finally(() => app.quit()); return; }

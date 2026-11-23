@@ -1926,6 +1926,7 @@ function renderSettings() {
     : 'Voice and Interact replies come from this model; typed chats keep the chat model.';
   $('#ctx-size').value = String(S.settings.contextSize);
   $('#parallel-chats').value = String(S.settings.parallelChats ?? 2);
+  renderMods();
   $('#parallel-note').textContent = S.engine?.parallelChats ? `This model answers ${S.engine.parallelChats} chat${S.engine.parallelChats === 1 ? '' : 's'} at once on this computer. Each needs its own working memory; the others wait their turn. Changing it reloads the model.` : 'Each chat answering needs its own working memory. Scorpion uses as many as fit and the others wait their turn. Changing it reloads the model.';
   $('#gpu-layers').value = String(S.settings.gpuLayers ?? 'auto');
   $('#glass').value = S.settings.glass === 'off' ? 'off' : 'auto';
@@ -1979,6 +1980,23 @@ function renderAll() {
 }
 
 // ---------- actions ----------
+// The mods list in Settings → System (and the notice after a safe-mode start).
+async function renderMods() {
+  let m;
+  try { m = await api.modsState(); } catch { return; }
+  $('#mods-notice').classList.toggle('hidden', !m.notice && !m.safe);
+  $('#mods-notice').innerHTML = m.notice
+    ? `<strong>Scorpion started in safe mode.</strong> ${esc(m.notice.reason)}${m.notice.recovered?.length ? ` Changed back: ${esc(m.notice.recovered.join('; '))}.` : ''} <button class="btn small" data-dismiss type="button">Got it</button>`
+    : m.safe ? '<strong>Safe mode:</strong> no mod is loaded in this start.' : '';
+  $('#mods-list').innerHTML = m.mods.length ? m.mods.map((x) => `<div class="mod-row">
+      <div class="mod-main"><strong>${esc(x.name)}</strong> <span class="muted small">${['main', 'renderer', 'css'].filter((p) => x.parts[p]).map((p) => ({ main: 'main part', renderer: 'screens', css: 'style' })[p]).join(', ')}${x.versions ? ` · ${x.versions} earlier version${x.versions === 1 ? '' : 's'}` : ''}</span>
+        ${x.description ? `<div class="muted small">${esc(x.description)}</div>` : ''}${x.error ? `<div class="err small">Turned off after an error: ${esc(x.error)}</div>` : ''}</div>
+      <div class="mod-buttons">
+        <button class="btn small" type="button" data-mod="${esc(x.name)}" data-act="${x.enabled ? 'off' : 'on'}">${x.enabled ? 'Turn off' : 'Turn on'}</button>
+        ${x.versions ? `<button class="btn small ghost" type="button" data-mod="${esc(x.name)}" data-act="rollback" title="Back to the version before the last change">Roll back</button>` : ''}
+      </div></div>`).join('') : '<p class="muted small">No mods yet. Ask the Scorpion Developer agent for one, for example a different look for the sidebar.</p>';
+}
+
 async function openThread(id) {
   S.thread = await api.getThread(id);
   renderPlanPanel.shown = false;
@@ -2447,6 +2465,19 @@ function wire() {
 
   $('#ctx-size').onchange = (e) => setSetting({ contextSize: Number(e.target.value) });
   $('#parallel-chats').onchange = (e) => setSetting({ parallelChats: Number(e.target.value) });
+  // Mods (Settings → System): turn one off, roll it back a version, open the folder, restart in safe mode.
+  $('#mods-open').onclick = () => api.modsOpen();
+  $('#mods-safe').onclick = () => { if (confirm('Restart Scorpion once with every mod off?')) api.modsSafeMode(); };
+  $('#mods-notice').onclick = async (e) => { if (e.target.closest('[data-dismiss]')) { await api.modsDismissNotice(); renderMods(); } };
+  $('#mods-list').onclick = async (e) => {
+    const b = e.target.closest('[data-mod]');
+    if (!b) return;
+    try {
+      const r = b.dataset.act === 'rollback' ? await api.modsRollback({ name: b.dataset.mod }) : await api.modsSet({ name: b.dataset.mod, enabled: b.dataset.act === 'on' });
+      if (r.needsRestart) toast('This mod has a part that loads when Scorpion restarts.');
+    } catch (err) { toast(errText(err), 'error'); }
+    renderMods();
+  };
   $('#theme-grid').onclick = async (e) => {
     const card = e.target.closest('[data-theme-id]');
     if (!card) return;
@@ -2643,3 +2674,9 @@ const setInset = (inset) => {
 setInset(S.taskbarInset);
 api.onTaskbarInset?.(setInset);
 if (S.voice?.installed && S.settings.voiceSpeak) api.warmVoice();
+// Mods: the changes kept in the data folder (mods.js). Their style is added here; their renderer.js is loaded as a script from Scorpion's own
+// address (it turns itself off if it throws). Nothing loads in safe mode.
+for (const m of await api.modsPayload().catch(() => [])) {
+  if (m.css) { const el = document.createElement('style'); el.dataset.mod = m.name; el.textContent = m.css; document.head.appendChild(el); }
+  if (m.js) await new Promise((done) => { const s = document.createElement('script'); s.dataset.mod = m.name; s.src = `mods/${encodeURIComponent(m.name)}.js?t=${Date.now()}`; s.onload = s.onerror = done; document.head.appendChild(s); });
+}
