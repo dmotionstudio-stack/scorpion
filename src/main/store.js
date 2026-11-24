@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
   chatModel: null, // absolute path to a .gguf
   chatSource: 'local', // 'local' (the .gguf above) or the id of one of the providers below
   providers: [], // other model sources: { id, kind, name, baseUrl, model, contextSize } (keys live in secrets.json)
+  remoteControl: { enabled: false, lan: false, port: 8443, devices: [] }, // see and work this computer from another device (remote-control.js); changed only through its own settings, never the generic update
   telegram: { enabled: false, allowed: [], pending: [] }, // phone chats: allowed { chatId, name, threadId }, pending { chatId, name, code }
   mcpServers: [], // MCP tool servers: { id, name, transport: 'stdio'|'http'|'sse', command, args, url, enabled, trusted }
   fallbackSource: null, // used when the chosen source fails before answering: 'local', a provider id, or null

@@ -208,6 +208,21 @@ If I write in Haitian Creole, answer in Haitian Creole.`;
       ${t.allowed.length ? `<div class="small"><b>Can talk to Scorpion</b></div>${t.allowed.map((a) => `<div class="row card-row"><span>${esc(a.name)}${a.username ? ` (@${esc(a.username)})` : ''}</span><button class="btn small" data-tg-remove="${a.chatId}">Remove</button></div>`).join('')}` : ''}`;
   }
 
+  function remoteSection() {
+    const r = X.rc || { state: 'off', devices: [], urls: [], log: [] };
+    const state = { on: 'On', error: `Problem: ${esc(r.error || 'unknown')}`, off: 'Off' }[r.state] || 'Off';
+    const when = (t) => (t ? new Date(t).toLocaleString() : 'never');
+    return `<h2>Remote control (see and control this computer from another device)</h2>
+      <p class="muted small">Open a web page on your phone, tablet or another computer, and see this screen and work its mouse and keyboard, on Windows and Mac. It is <b>off</b> until you turn it on here. A device pairs once with a code shown on this screen, every session is approved on this computer unless you allow that device without asking, only one device can be connected at a time, and a banner on this computer shows while someone is in (with a Stop button). It runs over an encrypted connection with a certificate made on this computer, so the first visit shows a browser warning: check that the fingerprint below matches, then continue. By default it only answers on this computer. To use it from your phone at home, allow your home network; to reach it from outside, use a private network such as Tailscale (never open a port on your router). Anyone who gets in controls everything you can, so pair only your own devices.${/Mac/.test(navigator.platform) ? ' On a Mac, macOS asks you to allow Scorpion under Privacy &amp; Security → Screen Recording and Accessibility.' : ''}</p>
+      <div class="row"><label class="toggle"><input type="checkbox" data-rc="enabled"${r.enabled ? ' checked' : ''}><span>On</span></label><span class="small ${r.state === 'error' ? 'warn' : 'muted'}">${state}</span></div>
+      <div class="row"><label class="toggle"><input type="checkbox" data-rc="lan"${r.lan ? ' checked' : ''}><span>Also allow devices on my home network (private addresses only)</span></label></div>
+      ${r.state === 'on' ? `<div class="small"><b>Address</b></div>${r.urls.map((u) => `<div class="row card-row"><code>${esc(u)}</code></div>`).join('')}<div class="small muted">Certificate fingerprint (SHA-256): <code>${esc(r.fingerprint || '')}</code></div>` : ''}
+      ${r.state === 'on' ? (r.pairing ? `<div class="row card-row"><span>Type this code on the other device: <b><code style="font-size:1.4em">${esc(r.pairing.code)}</code></b> (valid until ${esc(new Date(r.pairing.expiresAt).toLocaleTimeString())})</span><button class="btn small" data-rc="cancel-pair">Cancel</button></div>` : '<div class="row"><button class="btn primary" data-rc="pair">Pair a device</button></div>') : ''}
+      ${r.session ? `<div class="row card-row"><span class="warn"><b>${esc(r.session.name)}</b> (${esc(r.session.ip)}) is controlling this computer now</span><button class="btn small primary" data-rc="end">Stop</button></div>` : ''}
+      ${r.devices.length ? `<div class="small"><b>Paired devices</b></div>${r.devices.map((d) => `<div class="row card-row"><span>${esc(d.name)} <span class="muted small">· last used ${esc(when(d.lastSeen))}</span></span><label class="toggle"><input type="checkbox" data-rc-unattended="${esc(d.id)}"${d.unattended ? ' checked' : ''}><span>Allow without asking</span></label><button class="btn small" data-rc-remove="${esc(d.id)}">Remove</button></div>`).join('')}` : ''}
+      ${r.log.length ? `<details><summary class="small">Recent activity</summary><ul class="small muted">${r.log.slice().reverse().map((l) => `<li>${esc(new Date(l.at).toLocaleTimeString())} · ${esc(l.text)}</li>`).join('')}</ul></details>` : ''}`;
+  }
+
   function renderConnections() {
     const s = S.settings;
     const sources = X.sources;
@@ -242,7 +257,9 @@ If I write in Haitian Creole, answer in Haitian Creole.`;
       <p class="muted small">For sites that need clicking, forms or a login, the agent opens pages in a separate Scorpion browser window (its own cookies and logins, never your normal browser). You can watch it and take over. Typing into a site, and buttons like Buy, Send, Delete or Sign up, ask you first. Downloads and pop-ups are blocked.${s.online ? '' : ' Online mode is off, so it is not used now.'}</p>
       <div class="row"><button class="btn small" data-br="show">Show the browser</button><button class="btn small" data-br="close">Close it</button><button class="btn small" data-br="clear">Sign out of everything in it</button></div>
 
-      ${telegramSection()}`;
+      ${telegramSection()}
+
+      ${remoteSection()}`;
   }
 
   async function reloadConnections() {
@@ -252,6 +269,7 @@ If I write in Haitian Creole, answer in Haitian Creole.`;
     X.presets = await api.sourcesPresets();
     X.mcp = await api.mcpList();
     X.telegram = await api.telegramStatus();
+    X.rc = await api.rcStatus();
     renderConnections();
   }
 
@@ -316,6 +334,11 @@ If I write in Haitian Creole, answer in Haitian Creole.`;
     if (d.br === 'show') { await run(() => api.browserShow()); return; }
     if (d.br === 'close') { await run(() => api.browserClose()); return; }
     if (d.br === 'clear' && confirm('Sign Scorpion\'s browser out of every site (clears its cookies and saved data)?')) { await run(() => api.browserClear(), () => toast('Done.')); return; }
+    // remote control
+    if (d.rc === 'pair') { await run(() => api.rcPair(), async () => { X.rc = await api.rcStatus(); renderConnections(); }); return; }
+    if (d.rc === 'cancel-pair') { await run(() => api.rcCancelPair(), (r) => { X.rc = r; renderConnections(); }); return; }
+    if (d.rc === 'end') { await run(() => api.rcEnd(), (r) => { X.rc = r; renderConnections(); }); return; }
+    if (d.rcRemove && confirm('Remove this device? It has to be paired again to connect.')) { await run(() => api.rcRemove(d.rcRemove), (r) => { X.rc = r; renderConnections(); }); return; }
     // phone
     if (d.tg === 'save') {
       const token = $('#tg-token').value.trim();
@@ -344,9 +367,25 @@ If I write in Haitian Creole, answer in Haitian Creole.`;
       return;
     }
     if (el.dataset.br === 'enabled') { S.settings = await api.updateSettings({ browserEnabled: el.checked }); return; }
+    if (el.dataset.rc === 'enabled') {
+      if (el.checked && !confirm('Turn on remote control? A paired device will be able to see this screen and work the mouse and keyboard, after you approve it here. Pair only your own devices.')) { el.checked = false; return; }
+      await run(() => api.rcSave({ enabled: el.checked }), (r) => { X.rc = r; renderConnections(); });
+      return;
+    }
+    if (el.dataset.rc === 'lan') {
+      if (el.checked && !confirm('Let devices on your home network connect (after pairing)? Only do this on a network you trust.')) { el.checked = false; return; }
+      await run(() => api.rcSave({ lan: el.checked }), (r) => { X.rc = r; renderConnections(); });
+      return;
+    }
+    if (el.dataset.rcUnattended) {
+      if (el.checked && !confirm('Let this device take control without asking you first? Anyone holding that device can then control this computer. Turn this on only for a device you keep safe.')) { el.checked = false; return; }
+      await run(() => api.rcUnattended({ id: el.dataset.rcUnattended, on: el.checked }), (r) => { X.rc = r; renderConnections(); });
+      return;
+    }
     if (el.dataset.tg === 'enabled') { await run(() => api.telegramSave({ enabled: el.checked }), (t) => { X.telegram = t; renderConnections(); }); }
   });
 
+  api.onRemoteStatus?.((r) => { X.rc = r; if (S.view === 'connections') renderConnections(); });
   api.onTelegramStatus?.((t) => { X.telegram = t; if (S.view === 'connections') renderConnections(); });
   api.onOpenView?.((view) => setView(view));
 

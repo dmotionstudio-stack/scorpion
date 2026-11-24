@@ -174,6 +174,20 @@ public static class ScorpionHelper {
     if (keys.Count > 0) SendInput((uint)keys.Count, keys.ToArray(), Marshal.SizeOf(typeof(INPUT)));
     return "";
   }
+  // A key (and the modifiers held with it) pressed once, for remote control. flags: 1 Ctrl, 2 Alt, 4 Shift, 8 Windows, 16 extended key (arrows, Home, Delete...).
+  static string PressKey(int vk, int flags) {
+    var mods = new List<byte>();
+    if ((flags & 1) != 0) mods.Add(0x11);
+    if ((flags & 2) != 0) mods.Add(0x12);
+    if ((flags & 4) != 0) mods.Add(0x10);
+    if ((flags & 8) != 0) mods.Add(0x5B);
+    uint ext = (flags & 16) != 0 ? 1u : 0u;
+    foreach (var m in mods) keybd_event(m, 0, 0, UIntPtr.Zero);
+    keybd_event((byte)vk, 0, ext, UIntPtr.Zero);
+    keybd_event((byte)vk, 0, ext | 2u, UIntPtr.Zero);
+    for (int i = mods.Count - 1; i >= 0; i--) keybd_event(mods[i], 0, 2, UIntPtr.Zero);
+    return "";
+  }
   // The window in front: hwnd, pid, program path, title.
   static string Foreground() {
     var h = GetForegroundWindow();
@@ -201,6 +215,9 @@ public static class ScorpionHelper {
       case "click": Click(I(p[2]), I(p[3]), p[4] == "1", I(p[5])); return "";
       case "down": SetCursorPos(I(p[2]), I(p[3])); mouse_event(0x2, 0, 0, 0, UIntPtr.Zero); return "";
       case "up": SetCursorPos(I(p[2]), I(p[3])); mouse_event(0x4, 0, 0, 0, UIntPtr.Zero); return "";
+      case "rdown": SetCursorPos(I(p[2]), I(p[3])); mouse_event(0x8, 0, 0, 0, UIntPtr.Zero); return "";
+      case "rup": SetCursorPos(I(p[2]), I(p[3])); mouse_event(0x10, 0, 0, 0, UIntPtr.Zero); return "";
+      case "key": return PressKey(I(p[2]), I(p[3]));
       case "wheel": Wheel(I(p[2]), I(p[3]), I(p[4]), p[5] == "1"); return "";
       case "pos": { POINT q; GetCursorPos(out q); return q.X + " " + q.Y; }
       case "appbar": return AppBar(Hwnd(p[2]), uint.Parse(p[3]), I(p[4]), I(p[5]), I(p[6]), I(p[7]));

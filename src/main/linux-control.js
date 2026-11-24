@@ -940,6 +940,21 @@ export function parseFlatpakUpdates(out) {
   return String(out).split('\n').map((l) => l.split('\t')).filter((c) => c[0] && /\./.test(c[0]))
     .map(([id, name]) => ({ name: (name || id).trim(), id: id.trim() }));
 }
+// What installs by itself (Settings → This computer): "off", "security" or "all" (os/rootfs/usr/lib/scorpion-os/scorpion-update auto).
+export const AUTO_LEVELS = ['off', 'security', 'all'];
+export async function autoUpdateLevel() {
+  if (!updatesAvailable()) return null;
+  const out = String(await run('sudo', ['-n', UPDATER, 'auto', 'get'], { timeout: 15000 }).catch(() => '')).trim();
+  return AUTO_LEVELS.includes(out) ? out : 'security';
+}
+export async function setAutoUpdateLevel(level) {
+  if (!updatesAvailable()) throw new Error('Updates are managed this way only on an installed Scorpion OS.');
+  if (!AUTO_LEVELS.includes(level)) throw new Error('Choose off, security or all.');
+  await run('sudo', ['-n', UPDATER, 'auto', level], { timeout: 15000 });
+  return level;
+}
+// The system asks for a restart (a kernel or a core library changed).
+export const restartRequired = () => fs.existsSync('/var/run/reboot-required');
 export async function checkUpdates() {
   if (!updatesAvailable()) throw new Error('Updates are managed this way only on an installed Scorpion OS.');
   const [system, apps] = await Promise.all([

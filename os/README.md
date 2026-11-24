@@ -125,8 +125,13 @@ Manager**. To make Windows the default, in Scorpion OS edit `/etc/default/grub`
   and new versions of Scorpion, from Scorpion's own repository
   (<https://dmotionstudio-stack.github.io/scorpion/apt>, signed with the key in
   `/etc/apt/keyrings/scorpion.asc`, fingerprint
-  `B877 3FEF A9EA F3C1 7AD1 70EA 466E E54B 849C DE26`). Security updates also
-  install by themselves (`unattended-upgrades`). Upgrades to a newer Ubuntu
+  `B877 3FEF A9EA F3C1 7AD1 70EA 466E E54B 849C DE26`). An installed system updates itself:
+  every day, in the background and with a snapshot first, security fixes, Ubuntu's
+  updates and new versions of Scorpion install by themselves (`unattended-upgrades`;
+  it never restarts on its own, Scorpion says when a restart would finish them). **Settings → General →
+  This computer → Install updates by themselves** chooses Everything (the default), Security fixes
+  only, or Nothing; in a terminal, `sudo /usr/lib/scorpion-os/scorpion-update auto get|off|security|all`.
+  The live USB session doesn't download updates in the background. Upgrades to a newer Ubuntu
   release aren't offered: a new Scorpion OS version comes as a new ISO.
 - **Snapshots and undo**: Scorpion OS installs on Btrfs (the system in `@`,
   your files in `@home`). It takes a snapshot of the system right after

@@ -46,6 +46,8 @@ export function initSystemSettings({ $, esc, api, toast, errText }) {
     $('#sys-upd-check').disabled = U.checking || U.installing;
     $('#sys-upd-install').hidden = !U.summary || U.installing;
     $('#sys-restart').hidden = !U.restartNeeded && !undoing;
+    if (U.auto) $('#sys-auto').value = U.auto;
+    $('#sys-auto').disabled = U.installing;
   }
 
   function renderSnaps() {
@@ -70,6 +72,7 @@ export function initSystemSettings({ $, esc, api, toast, errText }) {
     } catch { /* not Scorpion OS */ }
   }
 
+  $('#sys-auto').onchange = async (e) => { U = await api.sysUpdates({ action: 'auto', level: e.target.value }); renderUpdates(); if (U.error) toast(U.error); };
   $('#sys-upd-check').onclick = async () => { U = await api.sysUpdates({ action: 'check' }); renderUpdates(); };
   $('#sys-upd-install').onclick = async () => { U = await api.sysUpdates({ action: 'install' }); renderUpdates(); };
   $('#sys-restart').onclick = () => api.sysSnapshots({ action: 'restart' }).catch((err) => toast(errText(err)));

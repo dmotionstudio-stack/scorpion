@@ -318,7 +318,13 @@
                 <button class="btn primary small" type="button" id="sys-upd-install" hidden>Install updates</button>
                 <button class="btn small" type="button" id="sys-restart" hidden>Restart now</button>
               </div>
-              <p class="muted small">Scorpion looks for updates every few hours and tells you when some are ready. Security fixes install by themselves. A snapshot is taken first, so an update can be undone below.</p>
+              <div class="sys-line"><b>Install updates by themselves</b>
+                <select id="sys-auto">
+                  <option value="all">Everything (recommended)</option>
+                  <option value="security">Security fixes only</option>
+                  <option value="off">Nothing: I install them</option>
+                </select></div>
+              <p class="muted small" id="sys-auto-note">Scorpion looks for updates every few hours. With Everything, security fixes, Ubuntu's updates and new versions of Scorpion install by themselves in the background, and Scorpion tells you when a restart would finish them (it never restarts on its own). A snapshot is taken first, so an update can be undone below.</p>
             </div>
             <div class="sys-block" id="sys-undo-block">
               <div class="sys-line"><b>Undo a change</b><span class="muted small" id="sys-snap-status"></span></div>

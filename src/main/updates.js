@@ -19,7 +19,7 @@ export const updatesKey = ({ system = [], apps = [] } = {}) => [...system.map((u
 
 // deps: { sys (linux-control), send(channel, payload), onInstallAsked(), getSettings, updateSettings }
 export function createUpdates({ sys, send, onInstallAsked = () => {}, getSettings = () => ({}), updateSettings = () => {} }) {
-  const U = { supported: sys.updatesAvailable(), checking: false, installing: false, progress: null, step: '', lastCheck: null, found: null, error: null, restartNeeded: false };
+  const U = { supported: sys.updatesAvailable(), checking: false, installing: false, progress: null, step: '', lastCheck: null, found: null, error: null, restartNeeded: false, auto: null };
   const view = () => ({ ...U, summary: U.found ? updatesSummary(U.found) : null });
   const changed = () => send('sys:updates', view());
   let timer = 0;
@@ -30,8 +30,11 @@ export function createUpdates({ sys, send, onInstallAsked = () => {}, getSetting
     try {
       U.found = await sys.checkUpdates();
       U.lastCheck = Date.now();
+      U.auto = (await sys.autoUpdateLevel?.().catch(() => null)) ?? U.auto;
+      if (sys.restartRequired?.()) U.restartNeeded = true; // an automatic install may have asked for one
       const key = updatesKey(U.found);
-      if (quiet && key && key !== getSettings().updatesAnnounced) {
+      // With everything installing by itself the notice would only come and go: it is for updates the person has to start.
+      if (quiet && key && key !== getSettings().updatesAnnounced && U.auto !== 'all') {
         updateSettings({ updatesAnnounced: key });
         announce(updatesSummary(U.found));
       }
@@ -59,6 +62,13 @@ export function createUpdates({ sys, send, onInstallAsked = () => {}, getSetting
     return view();
   }
 
+  async function setAuto(level) {
+    if (!U.supported) return view();
+    try { U.auto = await sys.setAutoUpdateLevel(level); U.error = null; } catch (err) { U.error = err.message; }
+    changed();
+    return view();
+  }
+
   // The notice, through the session's notification server (Scorpion's own
   // cards on Scorpion OS): notify-send waits and says which button was used.
   function announce(summary) {
@@ -74,9 +84,10 @@ export function createUpdates({ sys, send, onInstallAsked = () => {}, getSetting
   function start() {
     if (!U.supported) return;
     clearTimeout(timer);
+    sys.autoUpdateLevel?.().then((level) => { if (level) { U.auto = level; changed(); } }, () => {});
     const loop = (wait) => { timer = setTimeout(async () => { await check({ quiet: true }); loop(EVERY); }, wait); };
     loop(FIRST_CHECK);
   }
 
-  return { view, check, install, start };
+  return { view, check, install, start, setAuto };
 }

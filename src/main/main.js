@@ -56,6 +56,9 @@ import * as constellations from './constellations.js';
 import { startKeyWatch, stopKeyWatch } from './key-watch.js';
 import { createAgentBrowser, browserTools } from './agent-browser.js';
 import { TelegramBot, pairingCode } from './telegram.js';
+import { createRemoteControl, APPROVE_MS } from './remote-control.js';
+import { windowsInput, macInput } from './remote-input.js';
+import * as macControl from './mac-control.js';
 import { TOOLS, fileSystemRoots } from './tools.js';
 import { applyEvent } from '../shared/events.js';
 import { findIntent, MAIN_CONTROLS } from '../shared/intents.js';
@@ -897,6 +900,86 @@ async function startTelegram() {
   return telegramView();
 }
 
+// ---- remote control: see and work this computer from another device (remote-control.js) ----
+const rcAvailable = process.platform === 'win32' || process.platform === 'darwin';
+const RC_KEY = 'CommandOrControl+Alt+Shift+K'; // ends a session at once, from this computer's keyboard
+let rc = null;
+let rcBanner = null;
+const rcSettings = () => ({ enabled: false, lan: false, port: 8443, devices: [], ...(store.getSettings().remoteControl || {}) });
+
+function rcToScreen(nx, ny) {
+  const b = screen.getPrimaryDisplay().bounds;
+  const p = { x: b.x + nx * b.width, y: b.y + ny * b.height };
+  const q = process.platform === 'win32' ? screen.dipToScreenPoint(p) : p; // Windows' helper works in the screen's real pixels
+  return { x: Math.round(q.x), y: Math.round(q.y) };
+}
+
+async function rcCapture() {
+  const d = screen.getPrimaryDisplay();
+  const w = Math.min(1600, Math.round(d.size.width * d.scaleFactor));
+  const h = Math.round((w * d.size.height) / d.size.width);
+  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: w, height: h } });
+  const s = sources.find((x) => String(x.display_id) === String(d.id)) || sources[0];
+  if (!s || s.thumbnail.isEmpty()) throw new Error(process.platform === 'darwin' ? 'The screen could not be captured. Allow Scorpion under System Settings → Privacy & Security → Screen Recording.' : 'The screen could not be captured.');
+  const size = s.thumbnail.getSize();
+  return { jpeg: s.thumbnail.toJPEG(55), width: size.width, height: size.height };
+}
+
+// "Allow this device to control this computer?" on this computer's own screen.
+async function rcApprove({ device, ip }) {
+  if (Notification.isSupported()) new Notification({ title: 'Remote control request', body: `${device.name} (${ip}) wants to control this computer.` }).show();
+  const options = {
+    type: 'warning', buttons: ['Deny', 'Allow this time'], defaultId: 0, cancelId: 0, noLink: true, title: 'Scorpion remote control',
+    message: `Allow "${device.name}" to control this computer?`,
+    detail: `It connects from ${ip}. It will see your screen and work your mouse and keyboard until you press Stop on the banner (Ctrl+Alt+Shift+K ends it too). Only allow a device that is yours.`,
+    signal: AbortSignal.timeout(APPROVE_MS),
+  };
+  const parent = win && !win.isDestroyed() && win.isVisible() ? win : null;
+  const r = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+  return r.response === 1;
+}
+
+// The red banner and the shortcut that exist only while someone is in.
+function rcShowBanner(session) {
+  if (!session) {
+    if (rcBanner && !rcBanner.isDestroyed()) rcBanner.close();
+    rcBanner = null;
+    globalShortcut.unregister(RC_KEY);
+    return;
+  }
+  if (rcBanner && !rcBanner.isDestroyed()) return;
+  const wa = screen.getPrimaryDisplay().workArea;
+  rcBanner = new BrowserWindow({
+    width: 480, height: 38, x: Math.round(wa.x + wa.width / 2 - 240), y: wa.y + 6, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false,
+    skipTaskbar: true, alwaysOnTop: true, focusable: false, show: false, backgroundColor: '#7a1d12',
+    webPreferences: { preload: path.join(__dirname, '..', 'preload-rc.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  rcBanner.setAlwaysOnTop(true, 'screen-saver');
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const html = `<body style="margin:0;height:38px;display:flex;align-items:center;gap:12px;padding:0 12px;background:#7a1d12;color:#fff;font:600 13px system-ui;overflow:hidden;-webkit-user-select:none"><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">● ${esc(session.name)} is controlling this computer</span><button onclick="scorpionRc.stop()" style="font:600 12px system-ui;padding:4px 14px;border:0;border-radius:6px;background:#fff;color:#7a1d12;cursor:pointer">Stop</button></body>`;
+  rcBanner.webContents.on('will-navigate', (e) => e.preventDefault());
+  rcBanner.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  rcBanner.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  rcBanner.once('ready-to-show', () => rcBanner?.showInactive());
+  try { globalShortcut.register(RC_KEY, () => rc?.endSession('ended with the keyboard shortcut')); } catch { /* the banner's button still works */ }
+}
+ipcMain.on('rc:banner-stop', (e) => { if (rcBanner && !rcBanner.isDestroyed() && e.sender === rcBanner.webContents) rc?.endSession("ended with the banner's Stop button"); });
+
+function getRc() {
+  if (rc) return rc;
+  if (!rcAvailable) throw new Error('Remote control works on Windows and Mac.');
+  const input = process.platform === 'win32' ? windowsInput({ call: (...a) => winHelper.call(...a), toScreen: rcToScreen }) : macInput({ run: (args) => macControl.run('osascript', args), toScreen: rcToScreen });
+  rc = createRemoteControl({
+    dataDir: app.getPath('userData'),
+    config: { get: rcSettings, set: (patch) => send('settings:changed', store.updateSettings({ remoteControl: { ...rcSettings(), ...patch } })) },
+    capture: rcCapture,
+    input,
+    approve: rcApprove,
+    onChange: (st) => { send('rc:status', st); rcShowBanner(st.session); },
+  });
+  return rc;
+}
+
 // ---- MCP tool servers ----
 function connectMcp(server) {
   return mcp.connect(server, {
@@ -1511,7 +1594,7 @@ async function runScheduled(schedule, reason) {
 // scheduled agents, check-ins or the phone (Telegram) connection.
 function keepsRunning() {
   const s = store.getSettings();
-  return scheduler.hasEnabledSchedules() || Boolean(s.heartbeatEnabled) || Boolean(s.telegram?.enabled);
+  return scheduler.hasEnabledSchedules() || Boolean(s.heartbeatEnabled) || Boolean(s.telegram?.enabled) || Boolean(rcAvailable && s.remoteControl?.enabled);
 }
 
 // Dreaming: once a day, while the computer sits idle and a model is already
@@ -1874,6 +1957,28 @@ function registerIpc() {
     if (!p) throw new Error('Unknown source');
     return remote.listRemoteModels(p, key || (id ? providerKey(p) : null));
   });
+  // ---- remote control ----
+  const rcOff = { state: 'off', enabled: false, lan: false, urls: [], devices: [], log: [], pairing: null, session: null, waiting: null, error: rcAvailable ? null : 'Remote control works on Windows and Mac.' };
+  h('rc:status', () => (rcAvailable ? getRc().status() : rcOff));
+  h('rc:save', async ({ enabled, lan, port } = {}) => {
+    const r = getRc();
+    const patch = {};
+    if (enabled !== undefined) patch.enabled = Boolean(enabled);
+    if (lan !== undefined) patch.lan = Boolean(lan);
+    if (port !== undefined) {
+      const n = Number(port);
+      if (!Number.isInteger(n) || n < 1024 || n > 65535) throw new Error('Pick a port from 1024 to 65535.');
+      patch.port = n;
+    }
+    send('settings:changed', store.updateSettings({ remoteControl: { ...rcSettings(), ...patch } }));
+    ensureTrayHint();
+    return r.start();
+  });
+  h('rc:pair', () => { getRc().startPairing(); return getRc().status(); });
+  h('rc:cancelPair', () => { getRc().cancelPairing(); return getRc().status(); });
+  h('rc:remove', (id) => { getRc().removeDevice(String(id)); return getRc().status(); });
+  h('rc:unattended', ({ id, on }) => { getRc().setUnattended(String(id), Boolean(on)); return getRc().status(); });
+  h('rc:end', () => { getRc().endSession('ended from this computer'); return getRc().status(); });
   // ---- phone (Telegram) ----
   h('telegram:status', () => telegramView());
   h('telegram:save', async ({ token, enabled }) => {
@@ -2120,6 +2225,7 @@ function registerIpc() {
     return systemPreferences.askForMediaAccess('camera');
   }
   h('settings:update', async (patch) => {
+    if (patch && 'remoteControl' in patch) { patch = { ...patch }; delete patch.remoteControl; } // only Settings → Connections (rc:*) changes it, with its warnings
     const before = store.getSettings();
     // Choosing a model by hand keeps it (until Auto is chosen again).
     if (patch.chatModel && patch.chatModel !== before.chatModel && !('modelAuto' in patch)) patch = { ...patch, modelAuto: false };
@@ -2401,8 +2507,9 @@ function registerIpc() {
     return appUpdates.view();
   });
   // Scorpion OS: its updates and snapshots (Settings → This computer).
-  h('sys:updates', ({ action } = {}) => {
+  h('sys:updates', ({ action, level } = {}) => {
     if (!updates) return { supported: false };
+    if (action === 'auto') return updates.setAuto(String(level));
     if (action === 'check') return updates.check();
     if (action === 'install') { updates.install(); return updates.view(); } // progress comes as sys:updates events
     return updates.view();
@@ -3047,6 +3154,7 @@ app.whenReady().then(async () => {
   }
   for (const server of store.getSettings().mcpServers || []) if (server.enabled) connectMcp(server).catch(() => {});
   startTelegram().catch(() => {});
+  if (rcAvailable && rcSettings().enabled) getRc().start().catch(() => {});
   // Pick up new and changed files a little after start-up.
   setTimeout(() => { if (library.libraryStatus().folders.length) library.scan().catch(() => {}); }, 20000);
   ensureTrayHint();
@@ -3071,7 +3179,7 @@ app.on('second-instance', (e, argv) => {
   if (argv.includes('--orb')) { if (navReady) send('nav:view', { view: 'orb', search: true }); else pendingNav = { view: 'orb', search: true }; }
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' && !keepsRunning() && !desktop.shellMode()) app.quit(); });
-app.on('will-quit', () => { siteServer.stopAll().catch(() => {}); stopKeyWatch(); globalShortcut.unregisterAll(); winHelper.stopHelper(); });
+app.on('will-quit', () => { rc?.stop().catch(() => {}); siteServer.stopAll().catch(() => {}); stopKeyWatch(); globalShortcut.unregisterAll(); winHelper.stopHelper(); });
 app.on('before-quit', (e) => {
   if (!modsUnhealthy && process.uptime() > 8) mods?.markHealthy();
   // Leaving the desktop: put the screen area back (and the Windows desktop,

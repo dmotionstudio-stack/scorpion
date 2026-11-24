@@ -7,6 +7,11 @@
 #   scorpion-update install   install them all (apt's hook takes a snapshot
 #                             first, so it can be undone); progress lines
 #                             start with "progress<TAB>" and a percentage
+#   scorpion-update auto get|off|security|all
+#                             what installs by itself (every day, in the
+#                             background, snapshot first): nothing, security
+#                             fixes only, or everything (security fixes,
+#                             Ubuntu's updates and Scorpion's own versions)
 #
 # Administrators (the sudo group) may run it without a password
 # (/etc/sudoers.d/scorpion-update). Apps from Flathub are updated by
@@ -16,7 +21,11 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
 
-[ "$(id -u)" -eq 0 ] || { echo "scorpion-update: run it with sudo" >&2; exit 1; }
+# SCORPION_UPDATE_TEST lets the tests run it as a normal user against a folder of their own.
+CONF_DIR="${SCORPION_APT_CONF_DIR:-/etc/apt/apt.conf.d}"
+if [ -z "${SCORPION_UPDATE_TEST:-}" ]; then
+  [ "$(id -u)" -eq 0 ] || { echo "scorpion-update: run it with sudo" >&2; exit 1; }
+fi
 
 # Another program (unattended-upgrades, Software Updater) may hold apt's lock:
 # wait for it up to 10 minutes instead of failing.
@@ -46,8 +55,52 @@ install() {
   echo -e "progress\t100\tDone"
 }
 
+# Automatic installs are Ubuntu's unattended-upgrades; this file (read after its own 50unattended-upgrades) says which origins it may take from.
+AUTO_FILE="$CONF_DIR/52scorpion-auto-upgrades"
+auto() {
+  local level="${1:-get}"
+  case "$level" in
+    get)
+      # No file: Ubuntu's own default, security fixes only.
+      { grep -m1 '^// level: ' "$AUTO_FILE" 2>/dev/null | cut -d' ' -f3; } | grep -E '^(off|security|all)$' || echo security
+      return 0 ;;
+    off|security|all) ;;
+    *) echo "usage: scorpion-update auto get|off|security|all" >&2; exit 3 ;;
+  esac
+  local tmp
+  tmp="$(mktemp "$CONF_DIR/.52scorpion.XXXXXX")"
+  {
+    echo "// level: $level"
+    echo "// Written by scorpion-update auto (Settings → This computer): what installs by itself."
+    if [ "$level" = off ]; then
+      echo 'APT::Periodic::Update-Package-Lists "0";'
+      echo 'APT::Periodic::Unattended-Upgrade "0";'
+    else
+      echo 'APT::Periodic::Update-Package-Lists "1";'
+      echo 'APT::Periodic::Unattended-Upgrade "1";'
+      echo '#clear Unattended-Upgrade::Allowed-Origins;'
+      echo 'Unattended-Upgrade::Allowed-Origins {'
+      echo '  "${distro_id}:${distro_codename}-security";'
+      if [ "$level" = all ]; then
+        echo '  "${distro_id}:${distro_codename}";'
+        echo '  "${distro_id}:${distro_codename}-updates";'
+        echo '  "Scorpion:stable";'
+      fi
+      echo '};'
+      # Never restart by itself: Scorpion says "Restart to finish" when the system asks for it.
+      echo 'Unattended-Upgrade::Automatic-Reboot "false";'
+      echo 'Unattended-Upgrade::Remove-Unused-Dependencies "true";'
+      echo 'Unattended-Upgrade::MinimalSteps "true";'
+    fi
+  } > "$tmp"
+  chmod 644 "$tmp"
+  mv -f "$tmp" "$AUTO_FILE"
+  echo "$level"
+}
+
 case "${1:-}" in
   check) check ;;
   install) install ;;
-  *) echo "usage: scorpion-update check | install" >&2; exit 3 ;;
+  auto) auto "${2:-get}" ;;
+  *) echo "usage: scorpion-update check | install | auto get|off|security|all" >&2; exit 3 ;;
 esac
