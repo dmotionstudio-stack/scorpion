@@ -7,6 +7,7 @@
 #   scorpion-update install   install them all (apt's hook takes a snapshot
 #                             first, so it can be undone); progress lines
 #                             start with "progress<TAB>" and a percentage
+#   scorpion-update clock     put a wrong clock right (see below)
 #   scorpion-update auto get|off|security|all
 #                             what installs by itself (every day, in the
 #                             background, snapshot first): nothing, security
@@ -17,7 +18,8 @@
 # (/etc/sudoers.d/scorpion-update). Apps from Flathub are updated by
 # Scorpion as the user, not here.
 #
-# Exit codes: 0 done, 1 error, 3 usage.
+# Exit codes: 0 done, 1 error, 3 usage, 4 the computer's clock is wrong (apt then says a repository's
+# files are "not valid yet": the clock is behind). Scorpion answers with `clock` and tries again.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
 
@@ -32,7 +34,13 @@ fi
 APT=(apt-get -o DPkg::Lock::Timeout=600 -q)
 
 check() {
-  "${APT[@]}" update >/dev/null
+  local err
+  err="$(mktemp)"
+  if ! "${APT[@]}" update >/dev/null 2>"$err"; then
+    if grep -qiE 'not valid yet|invalid for another' "$err"; then rm -f "$err"; echo "scorpion-update: the clock is wrong" >&2; exit 4; fi
+    cat "$err" >&2; rm -f "$err"; exit 1
+  fi
+  rm -f "$err"
   # "Inst name [installed] (new suite [arch])" for each upgrade.
   "${APT[@]}" -s full-upgrade | sed -n 's/^Inst \([^ ]*\) \[\([^]]*\)\] (\([^ ]*\) .*/\1\t\2\t\3/p'
 }
@@ -98,9 +106,35 @@ auto() {
   echo "$level"
 }
 
+# Another operating system (Windows) on this computer keeps the hardware clock in local time; Linux assumes UTC, and the
+# clock is then hours off. Windows is looked for in the boot partition (SCORPION_EFI_DIR in the tests) and by os-prober.
+windows_here() {
+  [ -d "${SCORPION_EFI_DIR:-/boot/efi}/EFI/Microsoft" ] && return 0
+  command -v os-prober >/dev/null 2>&1 && os-prober 2>/dev/null | grep -qi windows
+}
+
+# Puts a wrong clock right: the internet's time first (so the system clock is true), then, beside Windows, the hardware clock in
+# local time, which Windows expects, so that neither system moves the other one's clock. Prints "synced" or "not synced".
+fixclock() {
+  timedatectl set-ntp true 2>/dev/null || true
+  systemctl restart systemd-timesyncd.service 2>/dev/null || true
+  local i state=no
+  for i in $(seq "${SCORPION_CLOCK_WAIT:-30}"); do
+    state="$(timedatectl show -p NTPSynchronized --value 2>/dev/null || echo no)"
+    [ "$state" = yes ] && break
+    sleep 1
+  done
+  if windows_here; then
+    timedatectl set-local-rtc 1 2>/dev/null || true
+    hwclock --systohc 2>/dev/null || true
+  fi
+  if [ "$state" = yes ]; then echo synced; else echo "not synced"; fi
+}
+
 case "${1:-}" in
+  clock) fixclock ;;
   check) check ;;
   install) install ;;
   auto) auto "${2:-get}" ;;
-  *) echo "usage: scorpion-update check | install | auto get|off|security|all" >&2; exit 3 ;;
+  *) echo "usage: scorpion-update check | install | clock | auto get|off|security|all" >&2; exit 3 ;;
 esac

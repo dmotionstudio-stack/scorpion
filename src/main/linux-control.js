@@ -955,10 +955,27 @@ export async function setAutoUpdateLevel(level) {
 }
 // The system asks for a restart (a kernel or a core library changed).
 export const restartRequired = () => fs.existsSync('/var/run/reboot-required');
+// apt refuses a repository whose files are dated later than the computer's clock ("not valid yet"): the clock is behind.
+export const isClockError = (message) => /clock is wrong|not valid yet|invalid for another/i.test(String(message));
+export const CLOCK_HELP = "This computer's clock is wrong (behind), so the update servers are refused. Settings → Date and time → Sync now sets it from the internet.";
+// scorpion-update check; if the clock is the problem, it is put right (the internet's time) and the check is tried once more.
+async function checkSystemUpdates() {
+  try {
+    return parseUpdates(await run('sudo', ['-n', UPDATER, 'check'], { timeout: 15 * 60000 }));
+  } catch (err) {
+    if (!isClockError(err.message)) throw err;
+    await run('sudo', ['-n', UPDATER, 'clock'], { timeout: 120000 }).catch(() => {});
+    try {
+      return parseUpdates(await run('sudo', ['-n', UPDATER, 'check'], { timeout: 15 * 60000 }));
+    } catch (again) {
+      throw new Error(isClockError(again.message) ? CLOCK_HELP : again.message);
+    }
+  }
+}
 export async function checkUpdates() {
   if (!updatesAvailable()) throw new Error('Updates are managed this way only on an installed Scorpion OS.');
   const [system, apps] = await Promise.all([
-    run('sudo', ['-n', UPDATER, 'check'], { timeout: 15 * 60000 }).then(parseUpdates),
+    checkSystemUpdates(),
     run('flatpak', ['remote-ls', '--updates', '--user', '--columns=application,name'], { timeout: 120000 }).then(parseFlatpakUpdates, () => []),
   ]);
   return { system, apps };

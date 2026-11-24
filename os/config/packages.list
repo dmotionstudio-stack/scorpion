@@ -23,6 +23,7 @@ plymouth-theme-spinner
 sudo
 locales
 tzdata
+systemd-timesyncd
 keyboard-configuration
 console-setup
 

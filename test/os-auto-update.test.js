@@ -77,3 +77,74 @@ test('the manager shows and changes the level, and stays quiet about updates tha
   v = await u.setAuto('bogus');
   assert.match(v.error, /Choose off/);
 });
+
+// ---------- a clock that is hours behind (Windows on the same computer keeps the hardware clock in local time) ----------
+import { isClockError, CLOCK_HELP } from '../src/main/linux-control.js';
+
+// A folder of pretend system programs; each writes its call to a log.
+function fakeSystem(files) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-fake-'));
+  const log = path.join(dir, 'calls.log');
+  for (const [name, body] of Object.entries(files)) {
+    const f = path.join(dir, name);
+    fs.writeFileSync(f, `#!/bin/bash\necho "${name} $*" >> "${asBash(log)}"\n${body}\n`);
+    fs.chmodSync(f, 0o755);
+  }
+  return { dir, calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : []) };
+}
+const asBash = (p) => p.split(path.sep).join('/');
+function runUpdate(args, { fake, efi, extra = {} }) {
+  const r = spawnSync('bash', [asBash(script), ...args], { encoding: 'utf8', env: { ...process.env, PATH: `${asBash(fake.dir)}:${process.env.PATH}`, SCORPION_UPDATE_TEST: '1', SCORPION_APT_CONF_DIR: asBash(os.tmpdir()), SCORPION_EFI_DIR: asBash(efi), SCORPION_CLOCK_WAIT: '2', ...extra } });
+  return { code: r.status, out: r.stdout.trim(), err: r.stderr.trim() };
+}
+
+test('a clock that is behind: apt\'s "not valid yet" becomes a clear answer, and the clock is put right', { skip: !hasBash && 'no bash here' }, () => {
+  // the message from the report: the security repository's files are dated later than this computer's clock
+  const fake = fakeSystem({ 'apt-get': 'case "$*" in *update*) echo "E: Release file for http://security.ubuntu.com/ubuntu/dists/noble-security/InRelease is not valid yet (invalid for another 5h 3min). Updates for this repository will not be applied." >&2; exit 100;; esac' });
+  const noWindows = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-efi-'));
+  const r = runUpdate(['check'], { fake, efi: noWindows });
+  assert.equal(r.code, 4, 'its own exit code for a wrong clock');
+  assert.match(r.err, /clock is wrong/);
+  assert.ok(isClockError(r.err));
+  assert.ok(isClockError('E: Release file for x is not valid yet (invalid for another 5h 3min)'));
+  assert.ok(!isClockError('Temporary failure resolving archive.ubuntu.com'));
+  assert.match(CLOCK_HELP, /Sync now/);
+  // another failure is passed on as it was
+  const other = fakeSystem({ 'apt-get': 'echo "E: Failed to fetch http://x  Temporary failure resolving" >&2; exit 100' });
+  const o = runUpdate(['check'], { fake: other, efi: noWindows });
+  assert.equal(o.code, 1);
+  assert.match(o.err, /Temporary failure/);
+});
+
+test('scorpion-update clock: the internet\'s time first, and beside Windows the hardware clock in local time', { skip: !hasBash && 'no bash here' }, () => {
+  const timedatectl = 'if [ "$1" = show ]; then echo yes; fi';
+  // with Windows on the computer (its boot files are there)
+  const withWin = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-efi-'));
+  fs.mkdirSync(path.join(withWin, 'EFI', 'Microsoft', 'Boot'), { recursive: true });
+  const a = fakeSystem({ timedatectl, systemctl: 'true', hwclock: 'true', 'os-prober': 'true' });
+  const r = runUpdate(['clock'], { fake: a, efi: withWin });
+  assert.equal(r.out, 'synced');
+  const calls = a.calls();
+  assert.ok(calls.indexOf('timedatectl set-ntp true') >= 0 && calls.indexOf('systemctl restart systemd-timesyncd.service') >= 0);
+  const iNtp = calls.indexOf('timedatectl set-ntp true');
+  const iLocal = calls.indexOf('timedatectl set-local-rtc 1');
+  assert.ok(iLocal > iNtp, 'local time for the hardware clock comes after the system clock is true');
+  assert.ok(calls.includes('hwclock --systohc'), 'and the hardware clock is written');
+  // without Windows the hardware clock is left alone
+  const noWin = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-efi-'));
+  const b = fakeSystem({ timedatectl, systemctl: 'true', hwclock: 'true', 'os-prober': 'true' });
+  assert.equal(runUpdate(['clock'], { fake: b, efi: noWin }).out, 'synced');
+  assert.ok(!b.calls().some((c) => c.includes('set-local-rtc')));
+  // no internet time yet: it says so
+  const c = fakeSystem({ timedatectl: 'if [ "$1" = show ]; then echo no; fi', systemctl: 'true', hwclock: 'true', 'os-prober': 'true' });
+  assert.equal(runUpdate(['clock'], { fake: c, efi: noWin }).out, 'not synced');
+});
+
+test('the installer keeps the clock right beside Windows from the first start', () => {
+  const after = fs.readFileSync(path.join(rootfs, 'usr', 'lib', 'scorpion-os', 'after-install'), 'utf8');
+  assert.match(after, /EFI\/Microsoft/);
+  assert.match(after, /LOCAL/);
+  assert.match(after, /systemctl enable systemd-timesyncd/);
+  assert.match(fs.readFileSync(path.join(root, 'os', 'config', 'packages.list'), 'utf8'), /^systemd-timesyncd$/m);
+  assert.ok(fs.readFileSync(path.join(rootfs, 'etc', 'sudoers.d', 'scorpion-update'), 'utf8').includes('scorpion-update clock'));
+});
