@@ -161,7 +161,6 @@ Manager**. To make Windows the default, in Scorpion OS edit `/etc/default/grub`
 
 | Keys | |
 |---|---|
-| Super+Space | Intent wheel (where the pointer is) |
 | Super+Alt+Space | The orb, with search ready |
 | Ctrl+Esc | Leave full screen |
 | Alt+Tab | Switch windows |

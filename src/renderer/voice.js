@@ -107,18 +107,47 @@ export class Recorder {
   }
 }
 
-// Speaks text as it streams in: whole sentences are synthesized and played in
-// order, and the next sentence is synthesized while the current one plays.
+// How much of the silence at a clip's start and end is kept. Kokoro pads every clip with roughly 0.3 s before and 0.45 s after
+// the words; played one after another that is a pause of almost a second between sentences.
+export const KEEP_LEAD_MS = 25;
+export const KEEP_TAIL_MS = 60;
+const FADE_MS = 4;
+const QUIET = 0.01; // below this a sample counts as silence
+
+// A clip without the silence Kokoro puts round the words (a short fade at each end keeps the cut from clicking).
+export function trimClip(audio, sampleRate, { lead = KEEP_LEAD_MS, tail = KEEP_TAIL_MS } = {}) {
+  let a = 0;
+  let b = audio.length - 1;
+  while (a < audio.length && Math.abs(audio[a]) < QUIET) a++;
+  while (b > a && Math.abs(audio[b]) < QUIET) b--;
+  if (a >= audio.length) return audio; // all quiet: left as it was
+  const from = Math.max(0, a - Math.round((lead / 1000) * sampleRate));
+  const to = Math.min(audio.length, b + 1 + Math.round((tail / 1000) * sampleRate));
+  const out = Float32Array.from(audio.subarray(from, to));
+  const fade = Math.min(Math.round((FADE_MS / 1000) * sampleRate), out.length >> 1);
+  for (let i = 0; i < fade; i++) { const g = i / fade; out[i] *= g; out[out.length - 1 - i] *= g; }
+  return out;
+}
+
+// Speaks text as it streams in: whole sentences are synthesized one after another as soon as they arrive (not when the sentence
+// before has finished playing), and each clip is placed on the audio clock right behind the one before it, so the voice
+// carries on without a gap as long as the next clip is ready in time.
 export class Speaker {
-  constructor(synthesize) {
+  constructor(synthesize, { makeContext = () => new AudioContext() } = {}) {
     this.synthesize = synthesize; // text => Promise<{ sampleRate, audio }>
+    this.makeContext = makeContext;
     this.buffer = '';
-    this.queue = [];
+    this.queue = []; // { promise } for each piece, in order, already being synthesized
     this.playing = false;
     this.generation = 0;
     this.onIdle = null;
     this.onChange = null; // speaking started or stopped
     this.spokeYet = false; // first piece of a reply is cut early so speech starts sooner
+    this.sources = new Set(); // clips scheduled and not yet finished
+    this.endAt = 0; // where the audio clock ends the last scheduled clip
+    this.chain = Promise.resolve(); // synthesis goes one piece at a time (the voice model uses every core for each)
+    this.pumping = false;
+    this.wake = null; // resolves the pump's wait for a new piece or the end of playback
   }
 
   get busy() { return this.playing || this.queue.length > 0; }
@@ -148,47 +177,69 @@ export class Speaker {
   }
 
   enqueue(text) {
-    this.queue.push(text);
+    const gen = this.generation;
+    const run = this.chain.then(() => (gen === this.generation ? this.synthesize(text) : null));
+    this.chain = run.catch(() => {});
+    this.queue.push({ promise: run.catch(() => null) });
+    this.wake?.();
     this.pump();
   }
 
+  // Takes the pieces in order as each is synthesized and puts them on the audio clock.
   async pump() {
-    if (this.playing) return;
-    this.playing = true;
-    this.onChange?.();
+    if (this.pumping) return;
+    this.pumping = true;
+    if (!this.playing) { this.playing = true; this.onChange?.(); }
     const gen = this.generation;
-    const next = () => (this.queue.length ? this.synthesize(this.queue.shift()).catch(() => null) : null);
-    let pending = next();
-    while (pending && gen === this.generation) {
-      const clip = await pending;
-      pending = next(); // synthesize the next sentence while this one plays
-      if (clip?.system && gen === this.generation) await this.playSystem(clip);
-      else if (clip?.audio?.length && gen === this.generation) await this.play(clip);
-      pending ??= next();
+    for (;;) {
+      while (this.queue.length && gen === this.generation) {
+        const clip = await this.queue.shift().promise;
+        if (gen !== this.generation) break;
+        if (clip?.system) { await this.drain(gen); if (gen === this.generation) await this.playSystem(clip); }
+        else if (clip?.audio?.length) this.schedule(clip);
+      }
+      if (gen !== this.generation) return; // stop() was called: it has reset everything, and a newer pump may be running
+      if (!this.sources.size) break; // nothing queued and nothing still playing: the reply has been spoken
+      // Still playing: wait for the next piece (it goes on the clock behind the last one) or for the last clip to end.
+      await new Promise((resolve) => { this.wake = resolve; });
+      this.wake = null;
     }
-    if (gen !== this.generation) return;
+    this.pumping = false;
     this.playing = false;
+    this.endAt = 0;
     this.onChange?.();
     this.onIdle?.();
   }
 
-  play({ sampleRate, audio }) {
-    return new Promise((resolve) => {
-      if (!this.ctx) {
-        this.ctx = new AudioContext();
-        this.analyser = this.ctx.createAnalyser();
-        this.analyser.fftSize = 1024;
-        this.analyser.connect(this.ctx.destination);
-      }
-      const buffer = this.ctx.createBuffer(1, audio.length, sampleRate);
-      buffer.copyToChannel(audio instanceof Float32Array ? audio : new Float32Array(audio), 0);
-      const source = this.ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(this.analyser);
-      source.onended = () => resolve();
-      this.source = source;
-      source.start();
-    });
+  context() {
+    if (!this.ctx) {
+      this.ctx = this.makeContext();
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 1024;
+      this.analyser.connect(this.ctx.destination);
+    }
+    return this.ctx;
+  }
+
+  // Starts a clip right when the one before it ends (or at once when nothing is playing).
+  schedule({ sampleRate, audio }) {
+    const ctx = this.context();
+    const pcm = trimClip(audio instanceof Float32Array ? audio : new Float32Array(audio), sampleRate);
+    const buffer = ctx.createBuffer(1, pcm.length, sampleRate);
+    buffer.copyToChannel(pcm, 0);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.analyser);
+    const at = Math.max(ctx.currentTime + 0.01, this.endAt);
+    this.endAt = at + buffer.duration;
+    this.sources.add(source);
+    source.onended = () => { this.sources.delete(source); this.wake?.(); };
+    source.start(at);
+  }
+
+  // Waits until everything scheduled has been played (or stop() was called).
+  async drain(gen) {
+    while (this.sources.size && gen === this.generation) await new Promise((r) => setTimeout(r, 20));
   }
 
   // Languages without a downloaded voice use the computer's own voice for
@@ -222,7 +273,12 @@ export class Speaker {
     this.queue = [];
     this.buffer = '';
     this.playing = false;
-    try { this.source?.stop(); } catch { /* not playing */ }
+    this.pumping = false;
+    this.wake?.();
+    this.chain = Promise.resolve(); // a new reply doesn't wait behind a piece still being synthesized for the old one
+    for (const s of this.sources) { s.onended = null; try { s.stop(); } catch { /* not started */ } }
+    this.sources.clear();
+    this.endAt = 0;
     if (this.utterance) { window.speechSynthesis?.cancel(); this.utterance = null; }
     this.spokeYet = false;
     this.onChange?.();

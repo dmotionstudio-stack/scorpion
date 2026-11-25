@@ -877,6 +877,21 @@ function startTalk() {
   return true;
 }
 
+async function installFastVoice() {
+  if (V.fastDownload) return;
+  if (!confirm(`Download the faster voice? It is about ${gb(S.voice?.fastBytes || 0)} (the voice you have now is smaller but slower than speech on many computers).`)) return;
+  V.fastDownload = { loaded: 0, total: S.voice?.fastBytes };
+  renderVoiceSettings();
+  try {
+    S.voice = await api.installFastVoice();
+    toast('The faster voice is on.');
+  } catch (err) {
+    toast(`The faster voice could not be downloaded: ${errText(err)}`, 8000);
+  }
+  V.fastDownload = null;
+  renderVoiceSettings();
+}
+
 async function installVoice() {
   if (V.download) return;
   V.download = { loaded: 0, total: S.voice?.bytes };
@@ -1016,8 +1031,11 @@ speaker.onNoVoice = (lang) => {
 function renderVoiceSettings() {
   const v = S.voice || {};
   const d = V.download;
+  const fastRow = !v.installed ? '' : v.fast ? '<div class="muted small">The faster voice is on: replies start sooner and flow without pauses.</div>'
+    : V.fastDownload ? `<div class="progress"><div style="width:${Math.min(100, Math.round(((V.fastDownload.loaded || 0) / (V.fastDownload.total || 1)) * 100))}%"></div></div><span class="muted small">Downloading the faster voice… ${gb(V.fastDownload.loaded || 0)} of about ${gb(V.fastDownload.total || v.fastBytes)}</span>`
+    : `<div class="row"><button class="btn" id="voice-fast" type="button">Faster voice (${gb(v.fastBytes || 0)} download)</button><span class="muted small">Speaks about twice as fast, so replies start sooner and flow without pauses.</span></div>`;
   $('#voice-setup').innerHTML = v.installed
-    ? '<span class="muted small">Installed: Whisper (listening) and Kokoro (speaking).</span>'
+    ? `<span class="muted small">Installed: Whisper (listening) and Kokoro (speaking).</span>${fastRow}`
     : d
       ? `<div class="progress"><div style="width:${Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100))}%"></div></div><span class="muted small">Downloading voice… ${gb(d.loaded || 0)} of about ${gb(d.total || v.bytes)}</span>`
       : `<button class="btn primary" id="voice-install" type="button">Install voice (${gb(v.bytes || 0)} download)</button>`;
@@ -1061,8 +1079,10 @@ function wireVoice() {
   };
   $('#voice-setup').onclick = async (e) => {
     if (e.target.closest('#voice-install')) installVoice();
+    if (e.target.closest('#voice-fast')) installFastVoice();
   };
   api.onVoiceDownload((p) => {
+    if (p.fast) { V.fastDownload = p.done ? null : p; if (S.view === 'settings') renderVoiceSettings(); return; }
     if (p.lang) {
       if (p.done || !V.langDownload) return;
       V.langDownload = p;
@@ -2230,7 +2250,7 @@ function wire() {
   modelScanUi = initModelScan({ api, $, esc, toast, errText, refresh });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
   const onNav = ({ view, dir, select, signin, search, talk, query, section }) => {
-    // Typing on the intent wheel: the command palette, with what was typed.
+    // Typing on the taskbar: the command palette, with what was typed.
     if (view === 'palette') { palette.open(query || ''); return; }
     // The "Updates ready" notice and "Software updates": Settings → This computer.
     // The taskbar's Customize…: Settings → Windows and taskbar.
@@ -2240,7 +2260,7 @@ function wire() {
     if (view === 'settings' && section === 'clock') { const go = () => { showGeneralSection('system'); setView('settings'); clockUi?.show(); requestAnimationFrame(() => $('#clock-field')?.scrollIntoView({ block: 'start' })); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
     // The taskbar's Orb settings.
     if (view === 'settings' && section === 'orb') { const go = () => { showGeneralSection('orb'); setView('settings'); }; if (IX.open && !orbSys.away) orbSys.leave(go); else go(); return; }
-    // The intent wheel's Talk: the orb, listening.
+    // The orb, listening (Talk).
     if (view === 'orb' && talk) {
       const ready = () => { if (!S.voice?.installed) $('#ix-input').focus(); else if (!V.talk) startTalk(); };
       if (IX.open) { orbSys.returnToOrb(); ready(); } else openInteract({ desktop: true, signin }).then(ready);

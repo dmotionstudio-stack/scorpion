@@ -114,7 +114,7 @@ fonts-ubuntu
 fonts-noto-core
 fonts-noto-color-emoji
 
-# --- apps (the intent wheel opens these) ---
+# --- apps (the command palette opens these) ---
 foot
 nautilus
 gnome-text-editor
@@ -130,7 +130,7 @@ update-manager
 unattended-upgrades
 
 # --- the native shell host (os/rootfs/usr/lib/scorpion-os/scorpion-shell):
-# Scorpion's rail, wheel, notifications and on-screen display as Wayland
+# Scorpion's rail, notifications and on-screen display as Wayland
 # layer-shell panels, in WebKitGTK ---
 python3-gi
 python3-gi-cairo

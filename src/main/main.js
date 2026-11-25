@@ -121,13 +121,13 @@ else if (app.isPackaged && portableDir) {
 }
 
 // Scorpion OS's session: Scorpion's windows go through XWayland (X11), where
-// they can be placed and kept on top (the rail, the dot, the wheel).
+// they can be placed and kept on top (the rail).
 if (process.platform === 'linux' && process.env.XDG_SESSION_DESKTOP === 'scorpion') app.commandLine.appendSwitch('ozone-platform', 'x11');
 // Without a graphics card (a virtual machine), WebGL falls back to Chromium's
 // software renderer, so the orb still draws (slower).
 if (process.platform === 'linux') app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 
-// A second start (a shortcut like scorpion --wheel or --osd) only hands its
+// A second start (a shortcut like scorpion --orb or --osd) only hands its
 // arguments to the running Scorpion and quits: it must not start anything
 // (on Scorpion OS its shell API would take over the host's connection file).
 // The hand-over is done when the lock call returns; on Linux app.quit() at
@@ -1718,10 +1718,10 @@ function registerSummon(accel) {
 }
 
 // The taskbar's own settings, with defaults for anything missing. layout:
-// 'orbit' (the edge rail with its summon button and the intent wheel) or 'bar'.
+// 'orbit' (the edge rail) or 'bar'.
 function taskbarSettings() {
   const t = store.getSettings().taskbar || {};
-  return { pinned: [], links: [], groups: [], combine: true, groupTray: false, labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, intents: {}, ...t, show: { home: true, apps: true, files: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(t.show || {}) } };
+  return { pinned: [], links: [], groups: [], combine: true, groupTray: false, labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, ...t, show: { home: true, apps: true, files: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(t.show || {}) } };
 }
 function setTaskbarLook(t) {
   // Groups hold only apps that are still pinned.
@@ -1733,8 +1733,7 @@ function setTaskbarLook(t) {
   return s;
 }
 
-// The intent wheel (summon.html): what each intent opens. Each can be changed
-// to another app (right-click it on the wheel).
+// What the command palette's Write a note, Draw something and Focus timer open (Browse opens your default browser).
 const INTENT_APPS = process.platform === 'linux' ? {
   // Scorpion OS's own apps (os/config/packages.list).
   write: { id: 'org.gnome.TextEditor.desktop', name: 'Text Editor', fallback: 'gnome-text-editor' },
@@ -1745,8 +1744,6 @@ const INTENT_APPS = process.platform === 'linux' ? {
   create: { id: 'Microsoft.Paint_8wekyb3d8bbwe!App', name: 'Paint', fallback: 'mspaint.exe' },
   focus: { id: 'Microsoft.WindowsAlarms_8wekyb3d8bbwe!App', name: 'Clock (focus sessions)' },
 };
-const INTENT_LABEL = { write: 'Write', browse: 'Browse', talk: 'Talk', create: 'Create', files: 'Files', focus: 'Focus' };
-const INTENT_BUILTIN = { browse: 'Your default browser', talk: 'Talk to Scorpion', files: "Scorpion's Files" };
 // The program the system opens for a kind of link (http: your browser, mailto: your mail).
 async function openDefault(proto, fallback) {
   const app = await winctl.defaultApp(proto).catch(() => null);
@@ -1754,14 +1751,7 @@ async function openDefault(proto, fallback) {
   return shell.openExternal(fallback);
 }
 async function runIntent(id) {
-  desktop.closeWheel();
   const launch = (a) => winctl.launchApp(a, { viaExplorer: desktop.shellMode() !== 'shell' });
-  const chosen = taskbarSettings().intents[id];
-  if (chosen?.id) return launch(chosen);
-  // The wheel's centre: the desktop, or (Scorpion only minimized) back to the orb.
-  if (id === 'home') return showView(desktop.shellMode() === 'shell' || process.platform !== 'win32' ? 'desktop' : 'orb');
-  if (id === 'talk') return showView('orb', { talk: true });
-  if (id === 'files') return showView('files');
   if (id === 'browse') return openDefault('http', process.platform === 'linux' ? 'https://duckduckgo.com' : 'https://www.bing.com');
   const a = INTENT_APPS[id];
   if (!a) throw new Error(`Unknown intent "${id}"`);
@@ -1772,7 +1762,7 @@ async function runIntent(id) {
   }
 }
 // An entry of the shared list (src/shared/intents.js) that the main process
-// runs: a system settings page, a safe system control, or a wheel intent.
+// runs: a system settings page, a safe system control, or an app to open.
 async function runNamedIntent(id) {
   const it = findIntent(id, process.platform, { live: process.platform === 'linux' && winctl.isLiveSession() });
   const kind = it?.run?.main;
@@ -1780,13 +1770,10 @@ async function runNamedIntent(id) {
   if (kind === 'settings' && it.run.arg === 'update' && process.platform === 'linux') return showView('settings', { section: 'system' });
   if (kind === 'settings') return winctl.openSettings(it.run.arg);
   if (kind === 'control' && MAIN_CONTROLS.includes(it.run.arg)) return winctl.systemControl(it.run.arg);
-  if (kind === 'wheel') return runIntent(it.run.arg);
+  if (kind === 'app') return runIntent(it.run.arg);
   if (kind === 'install') return winctl.startInstaller();
   throw new Error(`"${id}" isn't something Scorpion can do here.`);
 }
-// When each open window was last in front (the taskbar asks every 1.5 s), for
-// the wheel's recent windows.
-const lastUsed = new Map();
 let mods = null; // changes to Scorpion kept in the data folder (mods.js)
 let modsUnhealthy = false; // the screens crashed during start-up: this start is not marked healthy
 let updates = null; // Scorpion OS's updates (updates.js)
@@ -1816,12 +1803,9 @@ const nativeId = (bw) => { const b = bw.getNativeWindowHandle(); return b.length
 let notifications = [];
 const notificationSummary = () => ({ unread: notifications.filter((n) => !n.read).length, total: notifications.length });
 function noteWindows(list) {
-  const now = Date.now();
-  for (const w of list) if (w.active) lastUsed.set(w.hwnd, now);
-  for (const h of lastUsed.keys()) if (!list.some((w) => w.hwnd === h)) lastUsed.delete(h);
   // Scorpion OS: full mode is a full-screen window, which hides every other
   // (Windows pulls a focused app into the orb instead). When another app's
-  // window takes focus (one opened from the wheel, the installer, a
+  // window takes focus (one opened from the palette, the installer, a
   // terminal), Scorpion leaves full mode so it can be seen.
   if (process.platform === 'linux' && fullMode && list.some((w) => w.active && !w.self)) setFullMode(false);
 }
@@ -1838,35 +1822,9 @@ function registerDictationKey() {
   return dictationKey;
 }
 
-// The wheel's summon shortcut (Win+Shift+Space, or Alt+Shift+Space): the wheel
-// opens where the pointer is.
-let wheelKey = null;
-function registerWheelKey() {
-  if (wheelKey) { globalShortcut.unregister(wheelKey); wheelKey = null; }
-  const open = () => desktop.openWheel(screen.getCursorScreenPoint());
-  for (const key of ['Super+Shift+Space', 'Alt+Shift+Space']) {
-    try { if (globalShortcut.register(key, open)) { wheelKey = key; break; } } catch { /* taken */ }
-  }
-  return wheelKey;
-}
 // The look at the open windows (a new app's window fills the screen); set
 // up with the IPC handlers, which have the window list.
 let watchWindows = () => {};
-// A small picture of the main screen (a quarter size: it is only shown blurred,
-// behind the intent wheel). It stays on this computer. Scorpion OS takes it
-// with grim (labwc lets it read the screen without asking).
-async function snapScreen() {
-  if (process.platform === 'linux') {
-    const { execFile } = await import('node:child_process');
-    // PNG, quickly packed (Ubuntu's grim has no JPEG).
-    const png = await new Promise((resolve, reject) => execFile('grim', ['-s', '0.25', '-l', '1', '-'], { encoding: 'buffer', maxBuffer: 8 << 20, timeout: 2000 }, (err, out) => (err ? reject(err) : resolve(out))));
-    return png.length ? `data:image/png;base64,${png.toString('base64')}` : null;
-  }
-  const d = screen.getPrimaryDisplay();
-  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(d.size.width / 4), height: Math.round(d.size.height / 4) } });
-  const s = sources.find((x) => String(x.display_id) === String(d.id)) || sources[0];
-  return s && !s.thumbnail.isEmpty() ? s.thumbnail.toDataURL() : null;
-}
 // Pin an app (a Start menu app id, or a program's path) to the taskbar, or unpin it.
 function setPinned({ id, name, on }) {
   const t = taskbarSettings();
@@ -2163,6 +2121,10 @@ function registerIpc() {
   });
   h('orb:warm', () => { warmUp({ spoken: true, orb: true }).catch(() => {}); return true; });
   h('voice:warm', () => { voice.warmUp(store.getSettings().voiceLanguage); warmUp({ spoken: true }).catch(() => {}); return true; });
+  h('voice:installFast', async () => {
+    await voice.installFastVoice((p) => send('voice:download', { ...p, fast: true }));
+    return voice.voiceStatus();
+  });
   h('voice:installLanguage', async (lang) => {
     await voice.installLanguageVoice(lang, (p) => send('voice:download', { ...p, lang }));
     return voice.voiceStatus();
@@ -2247,7 +2209,7 @@ function registerIpc() {
       desktop.refreshRail();
       sendTaskbarInset();
     }
-    if (['taskbar', 'railAway', 'appsFull', 'wheel', 'orbBubbles', 'orbTiles', 'orbCaptions', 'orbTitle'].some((k) => k in patch)) send('settings:changed', next);
+    if (['taskbar', 'railAway', 'appsFull', 'orbBubbles', 'orbTiles', 'orbCaptions', 'orbTitle'].some((k) => k in patch)) send('settings:changed', next);
     if ('appsFull' in patch) watchWindows();
     return next;
   });
@@ -2401,23 +2363,9 @@ function registerIpc() {
     return list;
   };
   h('shell:windows', shellWindows);
-  // The intent wheel: recent windows (last in front first; never-seen ones
-  // after, in screen order), its intents, opening and closing it.
-  h('shell:recent', async () => {
-    const list = (await shellWindows()).filter((w) => !w.self);
-    for (const w of list) w.at = lastUsed.get(w.hwnd) || null;
-    return list.sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 6);
-  });
-  h('shell:intent', (id) => runIntent(String(id)));
-  // The command palette (Ctrl+K in Scorpion's window; typing on the wheel
-  // opens it there) and the entries of src/shared/intents.js it runs here.
-  h('shell:palette', (query) => { desktop.closeWheel(); showView('palette', { query: String(query || '').slice(0, 100) }); });
+  // The command palette (Ctrl+K in Scorpion's window) and the entries of src/shared/intents.js it runs here.
+  h('shell:palette', (query) => { showView('palette', { query: String(query || '').slice(0, 100) }); });
   h('intent:run', (id) => runNamedIntent(String(id)));
-  h('shell:intents', () => {
-    const t = taskbarSettings();
-    return Object.fromEntries(Object.keys(INTENT_LABEL).map((k) => [k, t.intents[k]?.name || INTENT_APPS[k]?.name || INTENT_BUILTIN[k]]));
-  });
-  h('shell:wheel', ({ open, centre } = {}) => (open ? desktop.openWheel(centre ? screen.getCursorScreenPoint() : null) : desktop.closeWheel()));
   // The edge rail's glance items: notifications, Wi-Fi, battery, mail.
   const RAIL_LINKS = { notifications: 'ms-actioncenter:', network: 'ms-availablenetworks:', battery: 'ms-settings:batterysaver' };
   const MAC_LINKS = { notifications: 'notifications', network: 'network', battery: 'battery' };
@@ -2701,21 +2649,6 @@ function registerIpc() {
         { type: 'separator' },
         item('Minimize all', async () => { for (const w of list) await winctl.windowByHandle(String(w.hwnd), 'minimize').catch(() => {}); }),
         item('Close all', async () => { for (const w of list) await winctl.windowByHandle(String(w.hwnd), 'close').catch(() => {}); })];
-    } else if (kind === 'intent') {
-      // An intent on the wheel: what it opens.
-      const t = taskbarSettings();
-      const setIntent = (a) => setTaskbarLook({ ...t, intents: { ...t.intents, [id]: a || undefined } });
-      const current = t.intents[id];
-      template = [{ label: `${INTENT_LABEL[id] || 'Intent'} opens`, enabled: false }, { type: 'separator' },
-        { label: INTENT_APPS[id]?.name || INTENT_BUILTIN[id] || 'Default', type: 'radio', checked: !current, click: () => setIntent(null) },
-        ...t.pinned.map((p) => ({ label: p.name, type: 'radio', checked: current?.id === p.id, click: () => setIntent({ id: p.id, name: p.name }) })),
-        ...(current && !t.pinned.some((p) => p.id === current.id) ? [{ label: current.name, type: 'radio', checked: true }] : []),
-        { type: 'separator' },
-        item('Choose a program…', async () => {
-          desktop.holdWheel(true);
-          const r = await dialog.showOpenDialog(owner, { title: `What ${INTENT_LABEL[id] || 'this'} opens`, properties: ['openFile'], filters: [{ name: 'Programs', extensions: ['exe', 'lnk'] }] }).finally(() => desktop.holdWheel(false));
-          if (!r.canceled && r.filePaths[0]) setIntent({ id: r.filePaths[0], name: r.filePaths[0].toLowerCase().endsWith('.exe') ? await programName(r.filePaths[0]) : path.basename(r.filePaths[0], '.lnk') });
-        })];
     } else if (kind === 'bar') {
       // Customizing the taskbar (right-click on an empty part of it).
       const t = taskbarSettings();
@@ -2725,7 +2658,7 @@ function registerIpc() {
       const edges = [['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']];
       const here = desktop.railEdge();
       const position = { label: 'Position', submenu: edges.map(([v, l]) => ({ label: l, type: 'radio', checked: here === v, click: () => set({ edge: v }) })) };
-      const layoutMenu = { label: 'Layout', submenu: [['orbit', 'Edge rail with the intent wheel'], ['bar', 'Classic bar']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.layout === v, click: () => set({ layout: v }) })) };
+      const layoutMenu = { label: 'Layout', submenu: [['orbit', 'Edge rail'], ['bar', 'Classic bar']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.layout === v, click: () => set({ layout: v }) })) };
       // The same choices for every taskbar.
       template = [{ label: 'Taskbar', enabled: false }, { type: 'separator' }, layoutMenu, position, autoHide,
         { label: 'Show app names', type: 'checkbox', checked: t.labels, click: () => set({ labels: !t.labels }) },
@@ -2781,10 +2714,8 @@ function registerIpc() {
   ipcMain.handle('shell:menu', async (e, arg) => {
     const owner = BrowserWindow.fromWebContents(e.sender);
     const template = await shellMenuTemplate(arg, owner);
-    // The wheel stays open while its menu is up.
-    desktop.holdWheel(true);
     desktop.holdRail(true); // a hiding taskbar stays while its menu is up
-    Menu.buildFromTemplate(template).popup({ window: owner, callback: () => { desktop.holdWheel(false); desktop.holdRail(false); } });
+    Menu.buildFromTemplate(template).popup({ window: owner, callback: () => { desktop.holdRail(false); } });
     return true;
   });
   // The native shell host shows menus itself: the menu as data, and what
@@ -3046,8 +2977,8 @@ app.whenReady().then(async () => {
   store.initStore(app.getPath('userData'));
   // Windows: the helper (windows, the mouse, the taskbar's room) is built and kept here.
   winHelper.initHelper(path.join(app.getPath('userData'), 'bin'));
-  desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf, snapScreen,
-    autoHide: () => taskbarSettings().autoHide === true, railAway: () => store.getSettings().railAway !== false, edge: () => taskbarSettings().edge || null, railSize: (key) => taskbarSettings().sizes?.[key] ?? null, wheel: () => store.getSettings().wheel || {} });
+  desktop.initShell({ BrowserWindow, screen, preload: path.join(__dirname, '..', 'preload.cjs'), dataDir: app.getPath('userData'), getMainWindow: () => win, showView, getLayout: () => taskbarSettings().layout, perf: currentPerf,
+    autoHide: () => taskbarSettings().autoHide === true, railAway: () => store.getSettings().railAway !== false, edge: () => taskbarSettings().edge || null, railSize: (key) => taskbarSettings().sizes?.[key] ?? null });
   // Performance follows the power cable when "Light on battery" is on.
   applyPerf();
   powerMonitor.on('on-battery', applyPerf);
@@ -3061,7 +2992,6 @@ app.whenReady().then(async () => {
     launchApp: (a) => winctl.launchApp(a, { viaExplorer: desktop.shellMode() !== 'shell' }),
   });
   registerSummon();
-  registerWheelKey();
   if (process.platform === 'win32') {
     dictation = createDictation({ BrowserWindow, screen, call: winHelper.call, url: 'scorpion://app/dictate.html', theme: () => store.getSettings().theme });
     registerDictationKey();
@@ -3168,10 +3098,8 @@ app.whenReady().then(async () => {
 
 // Starting Scorpion again brings it forward; a few words in the command line
 // are commands from the system (Scorpion OS's session keys, labwc rc.xml):
-// --wheel opens the intent wheel where the pointer is, --orb the orb with
-// search ready, --exit-full leaves full mode.
+// --orb the orb with search ready, --exit-full leaves full mode.
 app.on('second-instance', (e, argv) => {
-  if (argv.includes('--wheel')) { desktop.openWheel(screen.getCursorScreenPoint()); return; }
   if (argv.includes('--exit-full')) { setFullMode(false); return; }
   // --osd volume|brightness: the session's keys changed a level; show it.
   if (argv.includes('--osd')) { showOsd(argv[argv.indexOf('--osd') + 1] || 'volume'); return; }

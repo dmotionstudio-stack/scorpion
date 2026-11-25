@@ -14,7 +14,7 @@ The same code is the desktop in all three. Only a thin system layer differs per 
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Scorpion (Electron: HTML, CSS, JavaScript)                           │
 │  src/renderer  the orb, home, chats, Files, Apps, the taskbar         │
-│                (edge rail, intent wheel), hand gestures, voice         │
+│                (edge rail), hand gestures, voice                      │
 │  src/main      the agent, local models (llama.cpp), voice, faces,     │
 │                memory, library, schedules, the taskbar windows         │
 ├──────────────────────────────────────────────────────────────────────┤
@@ -82,9 +82,9 @@ Scorpion OS writes no drivers of its own: what Ubuntu supports, it supports.
    the idle lock, then `run-scorpion`, which starts Scorpion with `--shell`
    (and starts it again if it crashes).
 5. Scorpion is the desktop (kept under other windows), the edge rail on the
-   right (labwc keeps its 76 pixels free). Keys: Super+Space
-   opens the intent wheel, Super+Alt+Space the orb, Ctrl+Esc leaves full
-   screen (labwc passes them to Scorpion as `scorpion --wheel`, `--orb`,
+   right (labwc keeps its 76 pixels free). Keys: Super+Alt+Space
+   opens the orb, Ctrl+Esc leaves full
+   screen (labwc passes them to Scorpion as `scorpion --orb`,
    `--exit-full`).
 
 ## Files

@@ -266,7 +266,7 @@ export async function listWindows() {
   const tops = parseToplevels(await run('lswt', ['-j']));
   const wins = [];
   for (const t of tops) {
-    if (/^Scorpion (taskbar|summon)$/.test(t.title)) continue;
+    if (/^Scorpion taskbar$/.test(t.title)) continue;
     const app = await appForAppId(t.appId);
     // key: the compositor's lasting identifier (lswt 2), when there is one.
     wins.push({ hwnd: handleOf(t), key: t.id ? `id:${t.id}` : undefined, pid: 0, process: app?.name || t.appId, title: t.title || app?.name || t.appId, active: t.active, minimized: t.minimized, exe: app?.id || t.appId || null, appId: t.appId });

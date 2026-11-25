@@ -52,16 +52,11 @@ contextBridge.exposeInMainWorld('scorpion', {
   shellApps: invoke('shell:apps'),
   shellLaunch: invoke('shell:launch'),
   shellAppIcons: invoke('shell:appIcons'),
-  // The edge rail and the intent wheel (edge.html, summon.html).
-  shellRecent: invoke('shell:recent'),
-  shellIntent: invoke('shell:intent'),
-  shellIntents: invoke('shell:intents'),
-  shellWheel: invoke('shell:wheel'),
   // The rail hiding and coming back.
   onRail: on('shell:rail'),
   // The taskbar's inner edge dragged to make it thicker or thinner.
   shellRailSize: invoke('shell:railSize'),
-  // The command palette: opened from the wheel, and its system entries run (src/shared/intents.js).
+  // The command palette: and its system entries run (src/shared/intents.js).
   shellPalette: invoke('shell:palette'),
   intentRun: invoke('intent:run'),
   // Scorpion OS: quick settings and, from the ISO, the installer.
@@ -97,8 +92,6 @@ contextBridge.exposeInMainWorld('scorpion', {
   onSysUpdates: on('sys:updates'),
   shellGlance: invoke('shell:glance'),
   sysWifi: invoke('sys:wifi'),
-  onWheelOpen: on('wheel:open'),
-  onWheelClose: on('wheel:close'),
   // Performance level changes (Settings, or the power cable): 'full' | 'balanced' | 'light'.
   onPerfChanged: on('perf:changed'),
   constGet: invoke('const:get'),
@@ -247,6 +240,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   uninstallVoice: invoke('voice:uninstall'),
   transcribe: invoke('voice:transcribe'),
   speak: invoke('voice:speak'),
+  installFastVoice: invoke('voice:installFast'),
   micAccess: invoke('voice:micAccess'),
   warmVoice: invoke('voice:warm'),
   warmOrb: invoke('orb:warm'),

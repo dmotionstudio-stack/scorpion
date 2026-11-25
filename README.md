@@ -181,17 +181,10 @@ internet connection to chat.
   it is in front). Right-click an empty part of the taskbar to customize it: app names
   or icons only, centered, small, normal or large, a holographic, neon, glass or solid
   look, and which of network, battery, volume and clock show.
-- **Edge rail and intent wheel** (the taskbar's layout, by default): the taskbar is a
-  glass rail down the right edge of the screen to glance at: the clock and date,
+- **Edge rail** (the taskbar's layout, by default): the taskbar is a
+  glass rail down the right edge of the screen to glance at: Scorpion, Apps and Files one under the other, the clock and date,
   battery, network, notifications, mail and chat with Scorpion, then the pinned apps and
-  open windows as icons, and volume and power. **Win+Shift+Space**, which opens it where your pointer is, summons the
-  **intent wheel**: Write, Browse, Talk, Create, Files and Focus around Scorpion's
-  button, with the windows you used last around the outside (a live picture of each,
-  what it is and how long ago). Flick from anywhere on the wheel toward an intent, or
-  click it; arrow keys or 1 to 6 work too, and Esc closes it. Write opens Notepad,
-  Browse your default browser, Talk Scorpion listening, Create Paint, Files Scorpion's
-  Files and Focus the Clock app's focus sessions; right-click an intent to make it open
-  another app. Right-click an empty part of the rail → **Layout** to go back to the bar
+  open windows as icons, and volume and power. Right-click an empty part of the rail → **Layout** to go back to the bar
   along the bottom.
 - **Performance** (Settings → General): **Full** is everything as designed.
   **Balanced** draws the orb at 40 frames a second (24 while Scorpion writes, 10

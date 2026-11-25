@@ -9,8 +9,6 @@ pages in WebKitGTK:
   edge.html    the rail down the right edge, or the left, or along the top
                or bottom (reserves its room, or hides until the pointer
                touches the edge)
-  summon.html  the intent wheel (the whole screen while it's open; nothing
-               to see otherwise)
   notify.html  notification cards and the list, top right, clear of the rail
   quick.html   quick settings (Wi-Fi, Bluetooth, sound, brightness, battery)
   osd.html     the on-screen volume and brightness
@@ -348,7 +346,6 @@ class Host:
         self.panels = {}
         self.notifications = Notifications()
         self.ready = False
-        self.wheel_open = False
         # The rail hiding by itself, and whether it's hidden now.
         self.rail_hides = False
         self.rail_hidden = False
@@ -364,8 +361,6 @@ class Host:
         # window, which compositors draw above the top layer.
         overlay = GtkLayerShell.Layer.OVERLAY
         self.panels["edge"] = Panel(self, "edge.html", layer=overlay, anchors={E.RIGHT, E.TOP, E.BOTTOM}, width=RAIL, height=-1, exclusive=RAIL)  # until its page says where (place_rail)
-        # The wheel's panel stays mapped, a single see-through pixel in the corner, and grows to the screen when the wheel opens.
-        self.panels["summon"] = Panel(self, "summon.html", layer=overlay, anchors={E.LEFT, E.BOTTOM}, width=1, height=1)
         self.panels["notify"] = Panel(self, "notify.html", layer=overlay, anchors={E.TOP, E.RIGHT}, width=NOTIFY_WIDTH, height=1, margins=beside_rail())
         self.panels["quick"] = Panel(self, "quick.html", layer=overlay, anchors={E.TOP, E.RIGHT}, width=QUICK_WIDTH, height=1, margins=beside_rail())
         self.panels["osd"] = Panel(self, "osd.html", layer=overlay, anchors={E.BOTTOM}, width=340, height=90, margins={E.BOTTOM: 90})
@@ -373,7 +368,6 @@ class Host:
         self.panels["wallpaper"] = Panel(self, "wallpaper.html", layer=GtkLayerShell.Layer.BACKGROUND, anchors={E.LEFT, E.RIGHT, E.TOP, E.BOTTOM}, width=-1, height=-1, exclusive=-1)
         self.panels["wallpaper"].show_all()
         self.panels["edge"].show_all()
-        self.panels["summon"].show_all()
         for name in ("notify", "quick", "osd"):
             self.panels[name].show_all()
             self.panels[name].hide()
@@ -444,16 +438,6 @@ class Host:
             return False
         api.call("shell:hostReady", on_fail=again)
         return False
-
-    def wheel(self, is_open):
-        p = self.panels["summon"]
-        self.wheel_open = is_open
-        if is_open:
-            p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.RIGHT, E.TOP, E.BOTTOM}, width=-1, height=-1, exclusive=-1, keyboard="exclusive")
-            p.present()
-        else:
-            # Closed: back to its single see-through pixel.
-            p.place(layer=GtkLayerShell.Layer.OVERLAY, anchors={E.LEFT, E.BOTTOM}, width=1, height=1, keyboard="none")
 
     # ---------- the rail's edge ----------
     def place_rail(self, edge):
@@ -578,9 +562,7 @@ class Host:
 
     def handle(self, panel, msg):
         kind = msg.get("type")
-        if kind == "wheel":
-            self.wheel(bool(msg.get("open")))
-        elif kind == "rail":
+        if kind == "rail":
             if "autoHide" in msg:
                 self.rail_mode(bool(msg.get("autoHide")))
             if "size" in msg:

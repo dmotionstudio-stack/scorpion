@@ -1,6 +1,6 @@
 // Scorpion's taskbar inside the orb's screen (Interact): the same bar the Windows desktop has (taskbar.js), with
 // the same functions and the same settings, so the orb's screen needs nothing around it. Scorpion (back to the
-// Scorpion page), the intent wheel, Apps and Files, the pinned apps and every open window (an app's windows under
+// Scorpion page), Apps and Files, the pinned apps and every open window (an app's windows under
 // one icon, groups, right-click menus), then the drives, network, battery, notifications, mail, chat, volume, the
 // clock, Settings and power. A click on an open window puts it in a tile of the orb.
 //

@@ -14,6 +14,9 @@ const REQUIRED = {
   [KOKORO.id]: ['config.json', 'onnx/model_quantized.onnx', 'tokenizer.json'],
 };
 export const VOICE_DOWNLOAD_BYTES = 230 * 1024 ** 2;
+// The faster voice: the same Kokoro model unquantized (fp32). The small 8-bit one is slower than real time on many processors
+// (measured: 1.5 s to speak 1 s on a 14-core i9, against 0.7 s for this one), which is a pause after every sentence.
+export const FAST_VOICE_BYTES = 310 * 1024 ** 2;
 
 // Kokoro's English voices, best first. The id prefix says the accent and
 // gender (a = American, b = British; f = female, m = male).
@@ -114,6 +117,8 @@ export function voiceStatus() {
     voices: VOICES,
     languages: LANGUAGES.map((l) => ({ ...l, voiceReady: l.speech === 'kokoro' ? installed : l.speech === 'system' ? true : mmsReady(l.speech) })),
     bytes: VOICE_DOWNLOAD_BYTES,
+    fast: installed && fastReady(),
+    fastBytes: FAST_VOICE_BYTES,
     languageVoiceBytes: MMS_VOICE_BYTES,
   };
 }
@@ -202,10 +207,40 @@ async function loadAsr(progress_callback, download = false) {
   return pipeline('automatic-speech-recognition', WHISPER.id, { dtype: WHISPER.dtype, device: 'cpu', progress_callback });
 }
 
-async function loadTts(progress_callback, download = false) {
+// Written once the faster voice has downloaded AND loaded, so a download cut off halfway never counts (the file alone would).
+const fastMarker = () => path.join(dir, 'fast-voice.json');
+export const fastReady = () => Boolean(dir) && fs.existsSync(fastMarker()) && fs.existsSync(path.join(dir, KOKORO.id, 'onnx', 'model.onnx'));
+
+async function loadTts(progress_callback, download = false, dtype = fastReady() ? 'fp32' : KOKORO.dtype) {
   await lib(download);
   const { KokoroTTS } = await import('kokoro-js');
-  return KokoroTTS.from_pretrained(KOKORO.id, { dtype: KOKORO.dtype, device: 'cpu', progress_callback });
+  return KokoroTTS.from_pretrained(KOKORO.id, { dtype, device: 'cpu', progress_callback });
+}
+
+// Downloads the faster voice (~310 MB) next to the installed one. Until it has loaded, nothing changes.
+let fastInstalling = null;
+export function installFastVoice(onProgress) {
+  if (!voiceStatus().installed) return Promise.reject(new Error('Install the voice first.'));
+  fastInstalling ??= (async () => {
+    writableDir({ copySystem: true });
+    const file = path.join(dir, KOKORO.id, 'onnx', 'model.onnx');
+    const report = (p) => { if (p.status === 'progress' && /model\.onnx$/.test(p.file || '')) onProgress?.({ loaded: p.loaded ?? 0, total: Math.max(p.total ?? 0, FAST_VOICE_BYTES), done: false }); };
+    try {
+      fs.rmSync(file, { force: true });
+      const loaded = await loadTts(report, true, 'fp32');
+      fs.writeFileSync(fastMarker(), JSON.stringify({ dtype: 'fp32', at: new Date().toISOString() }));
+      tts = loaded; // the next sentence is spoken with it
+      onProgress?.({ done: true });
+    } catch (err) {
+      fs.rmSync(file, { force: true });
+      fs.rmSync(fastMarker(), { force: true });
+      throw err;
+    } finally {
+      transformers.env.allowRemoteModels = false;
+      fastInstalling = null;
+    }
+  })();
+  return fastInstalling;
 }
 
 // Load both models ahead of time (they take a few seconds), so the first

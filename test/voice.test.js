@@ -55,3 +55,26 @@ test('the first piece of a reply is cut early so speech starts sooner', () => {
   assert.equal(nextCut(t), -1);
   assert.equal(t.slice(0, nextCut(t, true)), 'Bonjour, je vais bien merci, ');
 });
+
+test('the faster voice: offered once the voice is installed, and only counted when it has fully downloaded and loaded', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { initVoice, voiceStatus, fastReady, FAST_VOICE_BYTES } = await import('../src/main/voice.js');
+  const models = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpion-fastvoice-'));
+  const dir = path.join(models, 'voice');
+  const k = path.join(dir, 'onnx-community', 'Kokoro-82M-v1.0-ONNX');
+  fs.mkdirSync(path.join(k, 'onnx'), { recursive: true });
+  initVoice(models);
+  assert.equal(fastReady(), false);
+  assert.equal(voiceStatus().fast, false);
+  assert.equal(voiceStatus().fastBytes, FAST_VOICE_BYTES);
+  // a model file with no marker is a download that may have been cut off: not used
+  fs.writeFileSync(path.join(k, 'onnx', 'model.onnx'), 'partial');
+  assert.equal(fastReady(), false);
+  fs.writeFileSync(path.join(dir, 'fast-voice.json'), '{}');
+  assert.equal(fastReady(), true);
+  // the marker without the file is not enough either
+  fs.rmSync(path.join(k, 'onnx', 'model.onnx'));
+  assert.equal(fastReady(), false);
+});

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { INTENTS, MAIN_CONTROLS, intentsFor, findIntent, rankIntents, matchSpoken } from '../src/shared/intents.js';
 import * as win from '../src/main/windows-control.js';
 import * as linux from '../src/main/linux-control.js';
-import { INTENTS as WHEEL } from '../src/renderer/wheel-core.js';
+const APPS = ['write', 'browse', 'create', 'focus']; // what the palette's app entries open (main.js runIntent)
 
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
@@ -22,7 +22,7 @@ test('every entry is complete and points at something that exists', () => {
       assert.ok(arg in win.SETTINGS_PAGES, `Windows has no settings page "${arg}"`);
       if (!it.only) assert.ok(arg in linux.SETTINGS_PAGES, `Scorpion OS has no settings page "${arg}"`);
     } else if (main === 'control') assert.ok(MAIN_CONTROLS.includes(arg) && win.ACTIONS.includes(arg), arg);
-    else if (main === 'wheel') assert.ok(WHEEL.some((w) => w.id === arg), `the wheel has no "${arg}"`);
+    else if (main === 'app') assert.ok(APPS.includes(arg), `no app "${arg}"`);
     else if (main === 'install') assert.ok(it.live && it.only === 'linux');
     else assert.fail(`${it.id} runs nothing`);
   }

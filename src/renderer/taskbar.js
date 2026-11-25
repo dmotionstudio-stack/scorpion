@@ -101,7 +101,6 @@ async function refreshTray() {
   }
 }
 
-$('#tb-summon').addEventListener('click', () => api.shellWheel({ open: true, centre: true }));
 $('#tb-home').addEventListener('click', () => api.shellShow('desktop'));
 $('#tb-apps').addEventListener('click', () => api.shellShow('apps'));
 $('#tb-files').addEventListener('click', () => api.shellShow('files'));

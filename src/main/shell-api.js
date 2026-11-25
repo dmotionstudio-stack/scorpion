@@ -1,6 +1,6 @@
 // The local connection between Scorpion and the native shell host on Scorpion
 // OS (os/rootfs/usr/lib/scorpion-os/scorpion-shell). The host shows Scorpion's
-// shell pages (edge.html, summon.html, notify.html, osd.html) as Wayland
+// shell pages (edge.html, notify.html, osd.html) as Wayland
 // layer-shell panels in WebKitGTK; their window.scorpion (shell-bridge.js)
 // calls Scorpion here. It listens on 127.0.0.1 only, every request carries a
 // random key written to a file only this user can read

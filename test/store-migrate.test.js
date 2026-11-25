@@ -16,7 +16,7 @@ test('older settings are brought up to date, once', () => {
   assert.equal(s.taskbar.autoHide, true, 'what was set is kept');
   assert.equal(s.taskbar.show.clock, false);
   assert.equal(s.taskbar.show.mail, true, 'what was missing is filled in');
-  assert.deepEqual(s.wheel, { size: 'small', recent: true, frosted: true });
+  assert.equal('wheel' in s, false, 'the intent wheel is gone, with its settings');
   // Saved at the new version: the steps don't run again.
   const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'));
   assert.equal(onDisk.settingsVersion, store.SETTINGS_VERSION);

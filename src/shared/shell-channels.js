@@ -1,4 +1,4 @@
-// What Scorpion's shell pages (the edge rail, the intent wheel,
+// What Scorpion's shell pages (the edge rail,
 // notifications, the on-screen display) may use: each method of their
 // window.scorpion with its IPC channel, and the events they receive. The
 // Electron preload (preload.cjs) and the native shell host's bridge
@@ -15,10 +15,6 @@ export const SHELL_CALLS = {
   shellVolume: 'shell:volume',
   shellMenu: 'shell:menu',
   shellGlance: 'shell:glance',
-  shellRecent: 'shell:recent',
-  shellIntent: 'shell:intent',
-  shellIntents: 'shell:intents',
-  shellWheel: 'shell:wheel',
   shellPalette: 'shell:palette',
   shellQuick: 'shell:quick',
   shellInstall: 'shell:install',
@@ -35,8 +31,6 @@ export const SHELL_CALLS = {
 export const SHELL_EVENTS = {
   onSettingsChanged: 'settings:changed',
   onPerfChanged: 'perf:changed',
-  onWheelOpen: 'wheel:open',
-  onWheelClose: 'wheel:close',
   onNotify: 'shell:notify',
   onNotificationsChanged: 'shell:notifications',
   onOsd: 'shell:osd',

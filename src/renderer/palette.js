@@ -1,5 +1,5 @@
 // The command palette: Ctrl+K anywhere in Scorpion's window (or typing on the
-// intent wheel) searches everything Scorpion can do in one step
+// taskbar) searches everything Scorpion can do in one step
 // (src/shared/intents.js) and runs the chosen entry. Anything that matches
 // nothing can be asked of Scorpion instead.
 import { intentsFor, rankIntents } from '/shared/intents.js';

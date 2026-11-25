@@ -1,7 +1,7 @@
 // Scorpion as the Windows desktop ("shell"). When Windows starts Scorpion at
 // sign-in (scorpion --shell), Scorpion shows its home screen as the desktop
 // and its taskbar: by default a glance rail along the right edge (edge.html)
-// with a summon button that opens the intent wheel (summon.html), the classic
+// with the clock, notifications and your apps, or the classic
 // bar along the bottom (taskbar.html; right-click the taskbar → Layout). 'bar' (Settings: the holographic taskbar
 // whenever Scorpion runs) takes over from the Windows taskbar on the normal
 // Windows desktop: the Windows one is hidden while Scorpion's runs and comes
@@ -13,7 +13,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import win from './system.js';
-import { shellEvent } from './shell-api.js';
 
 const WIN = process.platform === 'win32';
 const TASKBAR_HEIGHT = 48; // the bar along the top or bottom
@@ -22,25 +21,21 @@ const RAIL_WIDTH = 76; // the rail down a side
 const RAIL_ACROSS = 64; // the rail along the top or bottom
 const EDGES = ['right', 'left', 'top', 'bottom'];
 // deps.autoHide: the taskbar hides until the pointer reaches its edge;
-// deps.railAway: the rail floats while Scorpion's window is away; deps.wheel: the
-// wheel's settings ({ size, recent, frosted }); deps.edge: the screen
+// deps.railAway: the rail floats while Scorpion's window is away; deps.edge: the screen
 // edge the taskbar is on (null: the rail down the right, the bar along the bottom).
 let deps = null; // { BrowserWindow, screen, preload, dataDir, getMainWindow, showView, getLayout, perf, snapScreen, autoHide, railAway, edge }
 let taskbar = null;
-let summon = null; // the intent wheel's window (shown only while the wheel is open)
-let wheelOpen = false;
-let held = false; // a menu or dialog from the wheel is up: it stays open
-let layout = 'orbit'; // 'orbit' (edge rail + wheel) | 'bar'
+let layout = 'orbit'; // 'orbit' (edge rail) | 'bar'
 // On the normal Windows desktop the rail floats while Scorpion's window is
-// minimized or hidden, and Win+Shift+Space opens the wheel whenever Scorpion runs.
+// minimized or hidden.
 let away = false;
 let railFloats = false; // the rail is up on the Windows desktop (Scorpion minimized)
 // Auto-hide: the taskbar slides away and the pointer at its edge brings it back.
 let railHidden = false;
 let railHeld = 0; // until when it stays (a menu from it is open)
 let pointerWatch = 0;
-// Scorpion OS's native shell host shows the rail and the wheel as
-// layer-shell panels (os/.../scorpion-shell); then Scorpion makes none itself.
+// Scorpion OS's native shell host shows the rail as a
+// layer-shell panel (os/.../scorpion-shell); then Scorpion makes none itself.
 let hostMode = false;
 let savedWorkArea = null;
 let mode = null; // null | 'bar' | 'shell'
@@ -51,7 +46,6 @@ export const shellMode = () => mode;
 // Scorpion's taskbar back on top (Scorpion itself is on top in full mode).
 export function raiseTaskbar() {
   if (taskbar && !taskbar.isDestroyed()) taskbar.moveTop();
-  if (wheelOpen && summon && !summon.isDestroyed()) summon.moveTop();
 }
 // The edge of the screen the taskbar is on (Settings, or a right-click on
 // it): by default the rail down the right, the bar along the bottom. The
@@ -74,13 +68,6 @@ export const railThickness = (e = railEdge()) => {
   if (Number.isFinite(own)) return fitSize(key, own);
   return barLayout() && !hostMode ? (across(e) ? TASKBAR_HEIGHT : BAR_SIDE) : (across(e) ? RAIL_ACROSS : RAIL_WIDTH);
 };
-// A rectangle less the taskbar's strip along its edge.
-function besideEdge(r, e = railEdge(), t = railThickness(e)) {
-  if (e === 'left') return { ...r, x: r.x + t, width: r.width - t };
-  if (e === 'top') return { ...r, y: r.y + t, height: r.height - t };
-  if (e === 'bottom') return { ...r, height: r.height - t };
-  return { ...r, width: r.width - t };
-}
 // The room Scorpion's taskbar takes, on its edge ({ top, right, bottom, left }).
 // The native shell host (Scorpion OS) draws the rail over Scorpion's window
 // (XWayland windows aren't shrunk to leave it room). Hiding by itself, it
@@ -123,20 +110,6 @@ export function railRect(base, e = railEdge(), t = railThickness(e)) {
 }
 function placeTaskbar() {
   if (taskbar && !taskbar.isDestroyed()) taskbar.setBounds(railRect(railBase()));
-  placeSummon();
-}
-// Where the wheel opens: the screen, less the rail's strip while it's up.
-const wheelArea = (r) => (railUp() ? besideEdge(r) : r);
-// The wheel's window: the whole screen beside the rail, while it's open.
-function placeSummon() {
-  if (!wheelOpen || !summon || summon.isDestroyed()) return;
-  summon.setBounds(wheelArea(deps.screen.getPrimaryDisplay().bounds));
-}
-// Scorpion OS: the screen beside the rail (the host's panels sit over it all).
-function hostArea() {
-  const r = deps.screen.getPrimaryDisplay().bounds;
-  const all = { x: 0, y: 0, width: r.width, height: r.height };
-  return deps.autoHide?.() ? all : besideEdge(all);
 }
 // On Linux the window manager places a new window itself (labwc centres it);
 // a move asked for once it's on screen is honoured, so the rail asks again.
@@ -147,7 +120,7 @@ function placeAgain() {
 
 const windowOptions = (title) => ({
   frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
-  // See-through, for the glass look (edge.css, summon.css, taskbar.css).
+  // See-through, for the glass look (edge.css, taskbar.css).
   skipTaskbar: true, alwaysOnTop: true, show: false, transparent: true, hasShadow: false, backgroundColor: '#00000000', title,
   webPreferences: { preload: deps.preload, contextIsolation: true, nodeIntegration: false, sandbox: true },
 });
@@ -157,7 +130,6 @@ function createWindows() {
   taskbar?.destroy(); // a floating rail makes way for the desktop's own
   railFloats = false;
   makeTaskbar();
-  if (!summon || summon.isDestroyed()) makeSummon(); // ready (hidden) for the wheel
 }
 function makeTaskbar() {
   railHidden = false;
@@ -167,77 +139,13 @@ function makeTaskbar() {
   taskbar.once('ready-to-show', () => { placeTaskbar(); taskbar.showInactive(); placeAgain(); watchPointer(); });
   taskbar.on('closed', () => { taskbar = null; });
 }
-// The intent wheel's window: made when the wheel first opens, shown only while it's open.
-function makeSummon() {
-  summon = new deps.BrowserWindow(windowOptions('Scorpion summon'));
-  summon.setAlwaysOnTop(true, 'pop-up-menu');
-  summon.loadURL('scorpion://app/summon.html');
-  summon.loaded = new Promise((resolve) => summon.webContents.once('did-finish-load', resolve));
-  summon.on('blur', () => { if (wheelOpen && !held) summon.webContents.send('wheel:close'); });
-  summon.on('closed', () => { summon = null; wheelOpen = false; });
-}
-// The rail is up (Scorpion as the desktop, orbit layout, or floating).
-const railUp = () => (Boolean(mode) && layout === 'orbit') || railFloats;
 function destroyWindows() {
   taskbar?.destroy();
   taskbar = null;
   railFloats = false;
   railHidden = false;
-  summon?.destroy();
-  summon = null;
-  wheelOpen = false;
 }
 
-// The intent wheel: open (centred on a point of the screen, or its middle) or
-// closed. Its window is made when first needed.
-// Frosted glass: a small picture of the screen, taken before the wheel shows,
-// which the page blurs behind it (not in Light, nor if it's slow).
-async function snapBackdrop(r, wait) {
-  if (!deps.snapScreen || deps.perf?.() === 'light' || deps.wheel?.().frosted === false) return null;
-  const src = await Promise.race([deps.snapScreen().catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), wait))]);
-  return src ? { src, w: r.width, h: r.height } : null;
-}
-export async function openWheel(at) {
-  const r = deps.screen.getPrimaryDisplay().bounds;
-  // Scorpion OS: the host's summon surface covers the whole screen (rail
-  // included) once the page asks, so the page hears the centre beside the
-  // rail, in screen terms.
-  if (hostMode) {
-    const backdrop = await snapBackdrop(r, 400);
-    const area = hostArea();
-    const centre = at ? { x: at.x - r.x, y: at.y - r.y } : { x: area.x + area.width / 2, y: area.y + area.height / 2 };
-    shellEvent('wheel:open', { ...centre, backdrop });
-    return true;
-  }
-  if (!summon || summon.isDestroyed()) {
-    if (!WIN && !mode) return false;
-    makeSummon();
-  }
-  await summon.loaded;
-  if (!summon || summon.isDestroyed()) return false;
-  const shot = WIN ? await snapBackdrop(r, 250) : null;
-  wheelOpen = true;
-  summon.setAlwaysOnTop(true, 'screen-saver');
-  placeSummon();
-  // In the open window's terms (it starts beside a rail on the left or top);
-  // the screen's picture is shifted to match.
-  const w = wheelArea(r);
-  const centre = at ? { x: at.x - w.x, y: at.y - w.y } : { x: w.width / 2, y: w.height / 2 };
-  const backdrop = shot && { ...shot, x: r.x - w.x, y: r.y - w.y };
-  summon.webContents.send('wheel:open', { ...centre, backdrop });
-  summon.show();
-  summon.focus();
-  return true;
-}
-export function closeWheel() {
-  if (hostMode) { shellEvent('wheel:close'); return true; }
-  if (!summon || summon.isDestroyed() || !wheelOpen) return false;
-  wheelOpen = false;
-  summon.setAlwaysOnTop(true, 'pop-up-menu');
-  summon.blur();
-  summon.hide();
-  return true;
-}
 // Scorpion's window went away (minimized, or to the tray) or came back: on
 // the normal Windows desktop the rail (open windows, clock, notifications)
 // floats down its edge while it's away.
@@ -317,7 +225,6 @@ function watchPointer() {
 }
 function lookAtPointer() {
   if (!hidesNow()) { watchPointer(); return; }
-  if (wheelOpen) return;
   const p = deps.screen.getCursorScreenPoint();
   // How far in from the taskbar's outer edge the pointer is (beyond it,
   // over the Windows taskbar for one floating along the bottom: below 0).
@@ -367,7 +274,6 @@ export function resizeRail({ phase, x, y, size } = {}) {
   if (!hostMode) placeTaskbar();
   return { key, size: px };
 }
-export function holdWheel(on) { held = Boolean(on); }
 // The native shell host came up (or went away): its panels, or Scorpion's own windows.
 export function useHost(on) {
   if (hostMode === Boolean(on)) return;

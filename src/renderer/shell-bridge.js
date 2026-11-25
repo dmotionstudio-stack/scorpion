@@ -12,12 +12,12 @@
   const CALLS = {
     state: 'app:state', shellPinned: 'shell:pinned', shellWindows: 'shell:windows', shellWindow: 'shell:window',
     shellTray: 'shell:tray', shellDrives: 'shell:drives', shellLaunch: 'shell:launch', shellVolume: 'shell:volume', shellMenu: 'shell:menu',
-    shellGlance: 'shell:glance', shellRecent: 'shell:recent', shellIntent: 'shell:intent', shellIntents: 'shell:intents',
-    shellWheel: 'shell:wheel', shellPalette: 'shell:palette', shellQuick: 'shell:quick', shellInstall: 'shell:install', constPreview: 'const:preview', notifications: 'shell:notifications', notificationAct: 'shell:notificationAct',
+    shellGlance: 'shell:glance',
+    shellPalette: 'shell:palette', shellQuick: 'shell:quick', shellInstall: 'shell:install', constPreview: 'const:preview', notifications: 'shell:notifications', notificationAct: 'shell:notificationAct',
     shellShow: 'shell:show', desktopItems: 'desktop:items', filesOpen: 'files:open', filesRename: 'files:rename', desktopBackground: 'desktop:background', shellRailSize: 'shell:railSize',
   };
   const EVENTS = {
-    onSettingsChanged: 'settings:changed', onPerfChanged: 'perf:changed', onWheelOpen: 'wheel:open', onWheelClose: 'wheel:close',
+    onSettingsChanged: 'settings:changed', onPerfChanged: 'perf:changed',
     onNotify: 'shell:notify', onNotificationsChanged: 'shell:notifications', onOsd: 'shell:osd',
     onRail: 'shell:rail', onFilesChanged: 'files:changed', onDrivesChanged: 'shell:drives',
   };

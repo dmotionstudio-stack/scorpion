@@ -1,8 +1,7 @@
 // The edge rail: Scorpion's taskbar down the right edge of the screen (or the
 // left, or along the top or bottom: Settings, or Position on its right-click
 // menu), for a glance (the clock, battery, network, notifications, mail and
-// chat), the pinned apps and the open windows, then volume and power. The
-// summon button opens the intent wheel (summon.js). Right-click an empty part of
+// chat), the pinned apps and the open windows, then volume and power. Right-click an empty part of
 // it to customize it (or switch to the classic bar). Pinned apps can be put
 // in groups (right-click one → Group): a group is one icon that drops down
 // its apps; an app's open windows share one icon that drops down the windows
@@ -124,7 +123,6 @@ const pollDrives = () => api.shellDrives?.().then(showDrives).catch(() => {});
 api.onDrivesChanged?.(showDrives);
 pollDrives();
 setInterval(pollDrives, 30_000);
-$('#eg-summon').addEventListener('click', () => api.shellWheel({ open: true, centre: true }));
 for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => api.shellShow?.(b.dataset.view));
 $('#eg-power').addEventListener('click', () => api.shellMenu({ kind: 'power' }));
 $('#eg-volume').addEventListener('click', () => (window.scorpionHost ? quick('sound') : api.shellVolume('mute')));

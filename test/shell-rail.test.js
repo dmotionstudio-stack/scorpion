@@ -3,8 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import * as shell from '../src/main/shell.js';
 
-// The intent wheel's window and the rail floating on the normal Windows
-// desktop, with stand-in windows: what is made, shown, hidden and where.
+// The rail floating on the normal Windows desktop, with stand-in windows: what is made, shown, hidden and where.
 const made = [];
 class FakeWindow extends EventEmitter {
   constructor(opts) {
@@ -27,27 +26,13 @@ shell.initShell({ BrowserWindow: FakeWindow, screen, preload: 'p', dataDir: '.',
 const tick = () => new Promise((r) => setTimeout(r, 30));
 const opts = { skip: process.platform !== 'win32' && 'the floating rail is Windows only' };
 
-test('nothing floats on the screen while Scorpion is away: the wheel has its own window, there only while it is open', opts, async () => {
-  shell.setAway(true); // no rail asked for (railAway isn't given): nothing at all is made
+test('nothing floats on the screen while Scorpion is away (no rail asked for): no window at all is made, and there is no wheel window any more', opts, async () => {
+  shell.setAway(true); // railAway isn't given: nothing at all is made
   await tick();
   assert.equal(made.length, 0);
-  assert.equal(await shell.openWheel(null), true);
-  const wheel = made.find((w) => w.url.endsWith('summon.html'));
-  assert.ok(wheel.visible);
-  assert.deepEqual(wheel.bounds, { x: 0, y: 0, width: 1600, height: 900 }); // no rail: the whole screen
-  const [ch, at] = wheel.sent.at(-1);
-  assert.equal(ch, 'wheel:open');
-  assert.deepEqual(at, { x: 800, y: 450, backdrop: null }); // its middle; no snapshot given
-  shell.closeWheel();
-  assert.equal(wheel.visible, false, 'closed: nothing is left on the screen');
-  // Win+Shift+Space: the wheel opens at the pointer.
-  await shell.openWheel({ x: 300, y: 200 });
-  assert.deepEqual(wheel.sent.at(-1)[1], { x: 300, y: 200, backdrop: null });
-  assert.ok(wheel.visible);
-  shell.closeWheel();
-  assert.equal(wheel.visible, false);
+  assert.equal(shell.openWheel, undefined, 'the intent wheel is gone');
   shell.setAway(false);
-  assert.equal(made.filter((w) => !w.url.endsWith('summon.html')).length, 0);
+  assert.equal(made.length, 0);
 });
 
 test('minimized, the rail floats and hides until the pointer reaches the edge', opts, async () => {

@@ -346,7 +346,6 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
   // How windows and the taskbar behave, your way: apps full screen, the rail
   // while Scorpion is minimized, auto-hide, what the taskbar shows and which
   // apps are pinned to it (in order).
-  const INTENT_NAMES = [['browse', 'Browse'], ['talk', 'Talk'], ['create', 'Create'], ['files', 'Files'], ['focus', 'Focus'], ['write', 'Write']];
   const TASKBAR_ITEMS = [['clock', 'Clock'], ['network', 'Network'], ['battery', 'Battery'], ['notifications', 'Notifications'], ['mail', 'Mail'], ['chat', 'Chat'], ['volume', 'Volume']];
   async function renderLayout() {
     const box = $('#layout-settings');
@@ -369,15 +368,13 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     const pick = (attr, now, options) => options.map(([v, label]) => `<button class="btn small${v === now ? ' primary' : ''}" type="button" ${attr}="${v}" aria-pressed="${v === now}">${label}</button>`).join('');
     const style = t.layout === 'bar' ? 'bar' : 'orbit';
     const edge = t.edge || (style === 'bar' ? 'bottom' : 'right');
-    const wheel = { size: 'normal', recent: true, frosted: true, ...(s.wheel || {}) };
-    const intents = await api.shellIntents?.().catch(() => ({})) || {};
     box.innerHTML = `
       ${check('data-layout="appsFull"', s.appsFull !== false, 'Open apps full screen: an app\'s window fills the screen when it opens (its dialogs keep their size)')}
       ${win ? check('data-layout="railAway"', s.railAway !== false, 'When Scorpion is minimized, keep its rail on the desktop: your open apps, clock and notifications along the taskbar\'s edge') : ''}
       ${check('data-taskbar="autoHide"', t.autoHide === true, 'Hide the taskbar until the pointer touches its edge')}
       <p class="small">The taskbar</p>
       <div class="row wrap" role="group" aria-label="The taskbar">${pick('data-style', style, [['orbit', 'Edge rail'], ['bar', 'Classic bar']])}</div>
-      <p class="muted small">${style === 'orbit' ? 'A glance rail with the clock, notifications, your apps and the summon button.' : 'A bar with Scorpion, Apps and Files, your apps and the tray.'}</p>
+      <p class="muted small">${style === 'orbit' ? 'A glance rail with the clock, notifications and your apps.' : 'A bar with Scorpion, Apps and Files, your apps and the tray.'}</p>
       <p class="small">The taskbar's place on the screen</p>
       <div class="row wrap" role="group" aria-label="The taskbar's place on the screen">${pick('data-edge', edge, [['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']])}</div>
       <p class="small">Its look</p>
@@ -387,11 +384,6 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
       <div class="row wrap">${check('data-taskbar="labels"', t.labels !== false, 'Show app names')}${check('data-taskbar="center"', t.center === true, 'Center the apps')}</div>
       ${check('data-taskbar="groupTray"', t.groupTray === true, 'Group the status icons (network, battery, notifications, mail, chat, sound) in one dropdown on the taskbar')}
       ${check('data-taskbar="combine"', t.combine !== false, 'Combine an app\'s open windows under one icon: click it for the list of its windows')}
-      <p class="small">The summon wheel</p>
-      <div class="row wrap" role="group" aria-label="The wheel's size"><span class="muted small">Wheel</span>${pick('data-wheel-size', wheel.size, [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']])}</div>
-      <div class="row wrap">${check('data-wheel="recent"', wheel.recent !== false, 'Show the windows you used last around it')}${check('data-wheel="frosted"', wheel.frosted !== false, 'Frosted glass behind it')}</div>
-      <div class="row wrap" role="group" aria-label="What each intent opens">${INTENT_NAMES.map(([id, label]) => `<button class="btn small" type="button" data-intent-pick="${id}" title="Choose what ${label} opens">${label}: <span class="muted">${esc(intents[id] || 'Default')}</span></button>`).join('')}</div>
-      <p class="muted small">Click an intent to choose what it opens (on the wheel: right-click it). The wheel opens from the taskbar's summon button, or with Win+Shift+Space anywhere.</p>
       <p class="small">Desktop background</p>
       <div class="bg-grid" id="bg-grid"><span class="muted small">Loading…</span></div>
       <div class="row"><button class="btn small" type="button" id="bg-add">Add pictures…</button><span class="muted small">Click a picture to make it your desktop's background. Also from the taskbar: right-click it → Desktop background.</span></div>
@@ -427,11 +419,6 @@ export function initDesktop({ api, $, esc, toast, errText, setView, S }) {
     for (const b of box.querySelectorAll('[data-edge]')) b.onclick = () => saveTaskbar({ edge: b.dataset.edge });
     for (const b of box.querySelectorAll('[data-style]')) b.onclick = () => saveTaskbar({ layout: b.dataset.style });
     for (const b of box.querySelectorAll('[data-look]')) b.onclick = () => saveTaskbar({ style: b.dataset.look });
-    // The summon wheel.
-    const saveWheel = (patch) => save({ wheel: { ...wheel, ...patch } });
-    for (const b of box.querySelectorAll('[data-wheel-size]')) b.onclick = () => saveWheel({ size: b.dataset.wheelSize });
-    for (const b of box.querySelectorAll('[data-wheel]')) b.onchange = () => saveWheel({ [b.dataset.wheel]: b.checked });
-    for (const b of box.querySelectorAll('[data-intent-pick]')) b.onclick = () => api.shellMenu({ kind: 'intent', id: b.dataset.intentPick });
     for (const b of box.querySelectorAll('[data-size]')) b.onclick = () => saveTaskbar({ size: b.dataset.size });
     // The desktop background's pictures.
     const showBackgrounds = (list) => {

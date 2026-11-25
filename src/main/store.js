@@ -51,9 +51,6 @@ const DEFAULT_SETTINGS = {
   voiceName: 'af_heart', // Kokoro voice id
   voiceSpeed: 1, // 0.5–2
   voiceLanguage: 'en', // the language you speak and Scorpion replies in (see voice.js LANGUAGES)
-  // The summon wheel (Settings → Windows and taskbar): its size, the recent
-  // windows around it, the frosted glass behind it.
-  wheel: { size: 'normal', recent: true, frosted: true },
   backgrounds: [], // pictures added for the desktop background (paths)
   background: null, // the one chosen, or null for the system's own
   fullWallpaper: 'system', // full mode's desktop background: 'system' (the desktop's picture), 'theme' (the theme's colours), 'none', or a picture's path
@@ -120,6 +117,11 @@ const MIGRATIONS = [
     s.handsAlwaysOn = false; s.talkAtStart = false; s.wakeWord = false;
     for (const k of ['stage', 'minimizeToStage', 'summonDot', 'dotAt']) delete s[k];
     if (s.wheel && typeof s.wheel === 'object') delete s.wheel.button;
+  },
+  // 5. The intent wheel is gone, with its settings and the programs chosen for its intents.
+  (s) => {
+    delete s.wheel;
+    if (s.taskbar && typeof s.taskbar === 'object') delete s.taskbar.intents;
   },
 ];
 export const SETTINGS_VERSION = MIGRATIONS.length;

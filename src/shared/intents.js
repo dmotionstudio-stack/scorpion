@@ -1,11 +1,11 @@
 // Everything Scorpion can do in one step, in one list: its own places, its
-// Settings tabs, the wheel's intents and the system's settings and controls.
+// Settings tabs, a few apps to open and the system's settings and controls.
 // The command palette (Ctrl+K) searches it, the orb matches spoken commands
 // against it, and the main process runs the entries marked `main`. Plain data
 // and functions, used by both the main process and the pages.
 //
 // run: { view } a place in Scorpion's window; { ui } something the window
-// does itself; { main: 'settings' | 'control' | 'wheel', arg } done by the main
+// does itself; { main: 'settings' | 'control' | 'app', arg } done by the main
 // process (intent:run). only: the one platform an entry exists on; live:
 // only in Scorpion OS's live session (from the ISO or a USB stick).
 
@@ -31,10 +31,10 @@ export const INTENTS = [
   // ---- things to do ----
   { id: 'new-chat', label: 'New chat', group: 'Do', keys: ['start a new chat', 'new conversation'], run: { ui: 'newChat' } },
   { id: 'talk', label: 'Talk to Scorpion', group: 'Do', keys: ['talk', 'voice', 'listen', 'speak'], run: { ui: 'talk' } },
-  { id: 'write', label: 'Write a note', group: 'Do', keys: ['write', 'notes', 'text editor', 'notepad'], run: { main: 'wheel', arg: 'write' } },
-  { id: 'browse', label: 'Browse the web', group: 'Do', keys: ['browse', 'browser', 'web', 'internet browser'], run: { main: 'wheel', arg: 'browse' } },
-  { id: 'create', label: 'Draw something', group: 'Do', keys: ['create', 'draw', 'paint', 'drawing'], run: { main: 'wheel', arg: 'create' } },
-  { id: 'focus', label: 'Focus timer', group: 'Do', keys: ['focus', 'timer', 'clock', 'stopwatch'], run: { main: 'wheel', arg: 'focus' } },
+  { id: 'write', label: 'Write a note', group: 'Do', keys: ['write', 'notes', 'text editor', 'notepad'], run: { main: 'app', arg: 'write' } },
+  { id: 'browse', label: 'Browse the web', group: 'Do', keys: ['browse', 'browser', 'web', 'internet browser'], run: { main: 'app', arg: 'browse' } },
+  { id: 'create', label: 'Draw something', group: 'Do', keys: ['create', 'draw', 'paint', 'drawing'], run: { main: 'app', arg: 'create' } },
+  { id: 'focus', label: 'Focus timer', group: 'Do', keys: ['focus', 'timer', 'clock', 'stopwatch'], run: { main: 'app', arg: 'focus' } },
 
   { id: 'sidebar', label: 'Show or hide the sidebar', group: 'Do', keys: ['sidebar', 'toggle sidebar'], hint: 'Ctrl+B', run: { ui: 'sidebar' } },
   { id: 'welcome', label: 'Show the welcome again', group: 'Do', keys: ['welcome', 'tour', 'first start', 'tutorial'], run: { ui: 'welcome' } },
