@@ -198,26 +198,11 @@ internet connection to chat.
   chose (Settings asks before turning it on, and a notice says which model is used).
   Full or Balanced brings your chosen model back. **Light while
   running on battery** switches to Light when you unplug and back when you plug in.
-- **Constellation launcher** (an optional look for the orb's screen, in Settings →
-  General → Orb look; the orb sphere is the default): instead of "which app do I
-  need?", it asks "what am I working on?". Each project is a constellation: a warm star with its
-  apps (coloured planets, with their icons), folders and documents (moons) and
-  websites orbiting it. Orbit distance is relevance (recent, frequent, usual at this
-  hour, open now; recommendations can be turned off), brightness is recent use, lines
-  are your connections, open apps carry their windows as satellites, missing files show
-  as red eclipses, and archived projects are dimmed. Click an item to open it, the star
-  to **resume** the project (its saved session, from **Save session**), drag an item
-  onto another to connect them or anywhere to pin it there for good, scroll or pinch
-  out to the galaxy of all projects, drag the background to look around, and type to
-  search (matches light up; Enter opens the first). Hover or focus an item for a preview:
-  a live picture of its window, or the document's thumbnail. **+ Add** offers apps (with
-  icons), recent and recently changed files, websites, files and folders; files dragged
-  in from File Explorer join the project. **List** shows everything as plain lists for
-  screen readers and keyboards; arrow keys walk the orbits; motion, bigger items and high
-  contrast are in Settings → General → Orb look, with the summon shortcut
-  (Win+Space if Windows lets go of it, otherwise Win+Alt+Space). Projects are saved on
-  this computer and can be exported and imported in a shared format
-  (`scorpion-constellations/1`). The classic 3D orb is still there as an option.
+- **The orb humanoid** (an optional look for the orb's screen, in Settings → General → Orb look; the orb sphere is the
+  default): a hologram figure that fills the screen, drawn in glowing orb-dust in your theme's colour, with Scorpion's orb
+  beating as its heart. It breathes while it waits, leans in and follows you while it listens, its dust swirls while it
+  thinks, and its mouth and heart move with the voice while it speaks. Voice, hand gestures, apps inside the orb and the
+  orb shortcut (Win+Space if Windows lets go of it, otherwise Win+Alt+Space) work the same as with the orb sphere.
 - **The orb as a voice chat** (on by default once the voice is installed; Settings →
   Voice and hands → *The orb*): the orb's screen is just the orb, the captions and
   Talk. Say "Scorpion" and ask; the answer is spoken, as a conversation (no file or

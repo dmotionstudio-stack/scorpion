@@ -1,16 +1,14 @@
 // Settings → General, the part about how Scorpion looks and runs:
 // Performance (Full, Balanced, Light, and Light on battery), accessibility, the orb's look,
-// the constellation map's options, its summon shortcut, and showing the
+// its shortcut, and showing the
 // welcome again. Its own module (show the values, wire the controls), the
 // first part of Settings moved out of app.js.
 export const PERF_LEVELS = ['full', 'balanced', 'light'];
-export const CONSTELLATION_DEFAULTS = { recommend: true, motion: true, large: false, contrast: false };
 
 // "Now: Light (on battery)" when the level in use isn't the one chosen.
 export function perfNote(chosen, now) {
   return now && now !== chosen ? `Now: ${now[0].toUpperCase()}${now.slice(1)} (on battery)` : '';
 }
-export const constellationOptions = (settings) => ({ ...CONSTELLATION_DEFAULTS, ...(settings?.constellation || {}) });
 
 // ctx: { $, api, S, setSetting, toast, IX, startWelcome }
 export function initLookSettings({ $, api, S, setSetting, toast, IX, startWelcome }) {
@@ -19,10 +17,8 @@ export function initLookSettings({ $, api, S, setSetting, toast, IX, startWelcom
     $('#perf-level').value = chosen;
     $('#perf-battery').checked = Boolean(S.settings.performanceOnBattery);
     $('#perf-now').textContent = perfNote(chosen, S.perf);
-    $('#orb-look').value = S.settings.orbLook === 'constellation' ? 'constellation' : 'classic';
-    if (document.activeElement !== $('#const-shortcut')) $('#const-shortcut').value = S.settings.constellationShortcut ?? 'Super+Space';
-    const opts = constellationOptions(S.settings);
-    for (const box of document.querySelectorAll('[data-const]')) box.checked = opts[box.dataset.const];
+    $('#orb-look').value = S.settings.orbLook === 'humanoid' ? 'humanoid' : 'classic';
+    if (document.activeElement !== $('#orb-shortcut')) $('#orb-shortcut').value = S.settings.orbShortcut ?? 'Super+Space';
     const access = S.settings.access || {};
     for (const box of document.querySelectorAll('[data-access]')) box.checked = Boolean(access[box.dataset.access]);
   }
@@ -41,20 +37,14 @@ export function initLookSettings({ $, api, S, setSetting, toast, IX, startWelcom
     S.settings = await api.updateSettings({ orbLook: e.target.value });
     if (IX.open) toast('The new look shows the next time the orb opens.');
   };
-  // The summon shortcut is tried as soon as you finish typing it (Enter, or click away).
+  // The orb shortcut is tried as soon as you finish typing it (Enter, or click away).
   const applyShortcut = async () => {
-    const got = await api.constShortcut($('#const-shortcut').value.trim());
-    $('#const-shortcut-now').textContent = got ? `In use: ${got}` : 'That combination is taken by the system or another app.';
+    const got = await api.orbShortcut($('#orb-shortcut').value.trim());
+    $('#orb-shortcut-now').textContent = got ? `In use: ${got}` : 'That combination is taken by the system or another app.';
     if (got) document.dispatchEvent(new Event('settings-saved'));
   };
-  $('#const-shortcut').onchange = applyShortcut;
-  $('#const-shortcut').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } };
-  for (const box of document.querySelectorAll('[data-const]')) {
-    box.onchange = async () => {
-      S.settings = await api.updateSettings({ constellation: { ...constellationOptions(S.settings), [box.dataset.const]: box.checked } });
-      IX.orb?.refreshSettings?.();
-    };
-  }
+  $('#orb-shortcut').onchange = applyShortcut;
+  $('#orb-shortcut').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } };
   // Accessibility: each switch takes effect at once (main.js applyAccess).
   for (const box of document.querySelectorAll('[data-access]')) {
     box.onchange = async () => {

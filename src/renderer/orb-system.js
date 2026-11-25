@@ -529,8 +529,6 @@ export function initOrbSystem(ctx) {
       const id = IX.orb.pick(...toView(pick));
       const item = id && items().find((i) => i.id === id);
       if (item) { flash(r.bloom ? `Zoom into ${item.label}` : item.label); activate(item); }
-      // The constellation map: a project, an item or the star under the hand.
-      else if (IX.orb.tap?.(...toView(pick))) flash('Open');
     }
     if (r.scroll) IX.orb.spinRings(r.scroll * 0.25);
     // Both hands, spreading, right after pointing at a shortcut: fly into it

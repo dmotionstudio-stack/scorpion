@@ -13,7 +13,7 @@
     state: 'app:state', shellPinned: 'shell:pinned', shellWindows: 'shell:windows', shellWindow: 'shell:window',
     shellTray: 'shell:tray', shellDrives: 'shell:drives', shellLaunch: 'shell:launch', shellVolume: 'shell:volume', shellMenu: 'shell:menu',
     shellGlance: 'shell:glance',
-    shellPalette: 'shell:palette', shellQuick: 'shell:quick', shellInstall: 'shell:install', constPreview: 'const:preview', notifications: 'shell:notifications', notificationAct: 'shell:notificationAct',
+    shellPalette: 'shell:palette', shellQuick: 'shell:quick', shellInstall: 'shell:install', notifications: 'shell:notifications', notificationAct: 'shell:notificationAct',
     shellShow: 'shell:show', desktopItems: 'desktop:items', filesOpen: 'files:open', filesRename: 'files:rename', desktopBackground: 'desktop:background', shellRailSize: 'shell:railSize',
   };
   const EVENTS = {

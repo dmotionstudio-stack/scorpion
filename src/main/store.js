@@ -55,9 +55,7 @@ const DEFAULT_SETTINGS = {
   background: null, // the one chosen, or null for the system's own
   fullWallpaper: 'system', // full mode's desktop background: 'system' (the desktop's picture), 'theme' (the theme's colours), 'none', or a picture's path
   fullModeAtStart: true, // Scorpion starts in full mode: the whole screen, over every window (Ctrl+Esc or Esc twice to leave, F11 back)
-  constellationShortcut: 'Super+Space', // summons the constellation launcher (falls back to Win+Alt+Space)
-  // The constellation map: recommendations (relevance ordering and suggestions), motion, bigger items, high contrast.
-  constellation: { recommend: true, motion: true, large: false, contrast: false },
+  orbShortcut: 'Super+Space', // brings up the orb with its search ready (falls back to Win+Alt+Space)
   // Scorpion's taskbar: pinned apps ({ id, name }: a Start menu app or a program path), the
   // person's own groups of them ({ id, name, apps: [pinned ids] }: one icon that drops down
   // its apps), an app's open windows combined under one icon, app
@@ -70,7 +68,7 @@ const DEFAULT_SETTINGS = {
   orbSpeakEvents: false, // the orb says PC events out loud (battery, downloads, schedules, check-ins)
   orbApps: true, // while the orb is open, apps open inside it (framed in its panel)
   orbBubbles: null, // the bubbles around the orb (orb-bubbles.js; null: the usual ones)
-  orbLook: 'classic', // the orb's screen: 'classic' (the 3D sphere) or 'constellation' (a map of your projects)
+  orbLook: 'classic', // the orb's screen: 'classic' (the 3D sphere) or 'humanoid' (a hologram figure with the orb as its heart)
   performance: 'full', // 'full' | 'balanced' | 'light' (Settings → General → Performance)
   performanceOnBattery: false, // Light while running on battery
   welcomeDone: false, // the spoken first start was shown (welcome.js)
@@ -122,6 +120,13 @@ const MIGRATIONS = [
   (s) => {
     delete s.wheel;
     if (s.taskbar && typeof s.taskbar === 'object') delete s.taskbar.intents;
+  },
+  // 6. The constellation map is gone: its look becomes the orb humanoid, its shortcut is the orb's, its options go.
+  (s) => {
+    if (s.orbLook === 'constellation') s.orbLook = 'humanoid';
+    if (s.constellationShortcut !== undefined) s.orbShortcut = s.constellationShortcut;
+    delete s.constellationShortcut;
+    delete s.constellation;
   },
 ];
 export const SETTINGS_VERSION = MIGRATIONS.length;

@@ -94,17 +94,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   sysWifi: invoke('sys:wifi'),
   // Performance level changes (Settings, or the power cable): 'full' | 'balanced' | 'light'.
   onPerfChanged: on('perf:changed'),
-  constGet: invoke('const:get'),
-  constSave: invoke('const:save'),
-  constOpen: invoke('const:open'),
-  constExport: invoke('const:export'),
-  constImport: invoke('const:import'),
-  constPick: invoke('const:pick'),
-  constRecent: invoke('const:recent'),
-  constPathInfo: invoke('const:pathInfo'),
-  constIcon: invoke('const:icon'),
-  constPreview: invoke('const:preview'),
-  constShortcut: invoke('const:shortcut'),
+  orbShortcut: invoke('orb:shortcut'),
   // A file dragged in (from File Explorer): its path on disk.
   pathForFile: (f) => webUtils.getPathForFile(f),
   shellPin: invoke('shell:pin'),

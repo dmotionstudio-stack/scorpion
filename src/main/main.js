@@ -52,7 +52,6 @@ import { listFolder } from './files-list.js';
 import { scanForModels, commonFolders, wholeComputerRoots, isGguf } from './model-scan.js';
 import * as appFrame from './orb-frame.js';
 import * as appIcons from './app-icons.js';
-import * as constellations from './constellations.js';
 import { startKeyWatch, stopKeyWatch } from './key-watch.js';
 import { createAgentBrowser, browserTools } from './agent-browser.js';
 import { TelegramBot, pairingCode } from './telegram.js';
@@ -1701,15 +1700,14 @@ async function powerAction(action) {
   throw new Error('Unknown power action');
 }
 
-// The constellation launcher's summon shortcut (Settings → General →
-// Constellation): brings Scorpion forward with the map and its search ready.
+// The orb shortcut (Settings → General → Orb): brings Scorpion forward with the orb and its search ready.
 // Windows keeps some combinations for itself (Win+Space switches keyboard
 // layouts); if the chosen one can't be had, Win+Alt+Space (or Ctrl+Shift+Space) is used.
 let summonKey = null;
 function registerSummon(accel) {
-  if (accel !== undefined) store.updateSettings({ constellationShortcut: String(accel || '') });
+  if (accel !== undefined) store.updateSettings({ orbShortcut: String(accel || '') });
   if (summonKey) { globalShortcut.unregister(summonKey); summonKey = null; }
-  const wanted = store.getSettings().constellationShortcut ?? 'Super+Space';
+  const wanted = store.getSettings().orbShortcut ?? 'Super+Space';
   const summon = () => { showWindow(); if (navReady) send('nav:view', { view: 'orb', search: true }); else pendingNav = { view: 'orb', search: true }; };
   for (const key of [wanted, 'Super+Alt+Space', 'Control+Shift+Space'].filter(Boolean)) {
     try { if (globalShortcut.register(key, summon)) { summonKey = key; break; } } catch { /* not a valid combination */ }
@@ -2774,18 +2772,7 @@ function registerIpc() {
   };
   const iconsFor = (fresh) => (process.platform === 'linux' ? winctl.appIcons() : process.platform === 'darwin' ? macAppIcons(fresh) : appIcons.appIcons({ fresh: Boolean(fresh) }));
   h('shell:appIcons', (fresh) => iconsFor(Boolean(fresh)));
-  // The constellation launcher (constellations.js).
-  h('const:get', () => constellations.load(taskbarSettings().pinned));
-  h('const:save', (data) => constellations.save(data));
-  h('const:open', (node) => constellations.open(node));
-  h('const:export', (data) => constellations.exportTo(data));
-  h('const:import', (data) => constellations.importFrom(data));
-  h('const:pick', (kind) => constellations.pick(kind));
-  h('const:recent', () => constellations.recent());
-  h('const:pathInfo', (p) => constellations.pathInfo(String(p)));
-  h('const:icon', (p) => constellations.iconFor(String(p)));
-  h('const:preview', (what) => constellations.preview(what || {}));
-  h('const:shortcut', (accel) => registerSummon(accel));
+  h('orb:shortcut', (accel) => registerSummon(accel));
   h('shell:pin', ({ id, name, on }) => setPinned({ id, name, on }));
   // The pinned apps with their icons, for the taskbar.
   h('shell:pinned', async () => {
@@ -2987,10 +2974,6 @@ app.whenReady().then(async () => {
   // Apps inside the orb (orb-frame.js): the panel is given in CSS pixels of
   // Scorpion's window; Windows wants physical screen pixels.
   appIcons.initAppIcons({ app, nativeImage, dataDir: app.getPath('userData') });
-  constellations.initConstellations({
-    app, shell: { ...shell, openExternal: (u) => (openLink(u) ? Promise.resolve() : shell.openExternal(u)) }, nativeImage, desktopCapturer, dialog, dataDir: app.getPath('userData'), getWindow: () => win,
-    launchApp: (a) => winctl.launchApp(a, { viaExplorer: desktop.shellMode() !== 'shell' }),
-  });
   registerSummon();
   if (process.platform === 'win32') {
     dictation = createDictation({ BrowserWindow, screen, call: winHelper.call, url: 'scorpion://app/dictate.html', theme: () => store.getSettings().theme });

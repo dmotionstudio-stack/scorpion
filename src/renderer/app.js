@@ -1157,22 +1157,21 @@ async function openInteract(opts = {}) {
   renderInteract();
   IX.timer = setInterval(tickInteract, 50);
   try {
-    // The orb's screen: the 3D orb sphere, or the constellation launcher (a map
-    // of your projects), chosen in Settings → General → Orb look.
-    const look = S.settings.orbLook === 'constellation' ? 'constellation' : 'classic';
+    // The orb's screen: the 3D orb sphere, or the orb humanoid (a hologram figure with the orb as its heart), chosen in
+    // Settings → General → Orb look.
+    const look = S.settings.orbLook === 'humanoid' ? 'humanoid' : 'classic';
     // Full detail needs a graphics card with its own memory (or a Mac), and
     // not Performance → Light.
     const strong = (IS_MAC || (S.hardware?.dedicatedVram || 0) >= 2 * 1024 ** 3) && S.perf !== 'light';
-    const kind = look === 'classic' ? `classic:${strong ? 'high' : 'low'}` : look;
+    const kind = `${look}:${strong ? 'high' : 'low'}`;
     if (IX.orb && IX.look !== kind) { IX.orb.dispose(); IX.orb = null; IX.loading = null; }
     if (!IX.orb) {
       IX.look = kind;
       IX.loading ??= look === 'classic'
         ? import('./orb.js').then(({ createOrb }) => createOrb($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low' }))
-        : import('./constellation.js').then(({ createConstellation }) => createConstellation($('#ix-stage'), { accent: accentColor(), api, toast, errText, settings: () => S.settings }));
+        : import('./humanoid.js').then(({ createHumanoid }) => createHumanoid($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low' }));
       IX.orb = await IX.loading;
       applyOrbCap();
-      $('#interact').classList.toggle('ix-constellation', look === 'constellation');
     } else {
       IX.orb.setAccent(accentColor());
     }
