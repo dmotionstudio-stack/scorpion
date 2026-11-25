@@ -173,7 +173,7 @@ export function initOrbSystem(ctx) {
     const pageTile = `<div class="ix-tile-head"><span class="ix-tile-title">Scorpion</span><span class="ix-gap"></span>${arrows}<button type="button" class="ix-btn" data-act="closepage" title="Close this page: the orb stays">✕</button></div><div class="ix-page-body" id="ix-page-body"></div>`;
     el.innerHTML = id === 'scorpion' ? pageTile : id === 'orb'
       ? `<div class="ix-tile-head"><span class="ix-tile-title">Scorpion</span><span class="ix-gap"></span><button type="button" class="ix-btn" data-act="layout" title="How the tiles are laid out: automatic, side by side, one above the other, or a grid">▦</button>${arrows}</div>`
-      : `<div class="ix-tile-head"><img class="ix-tile-icon" alt="" hidden><span class="ix-tile-title"></span><span class="ix-gap"></span>${arrows}<button type="button" class="ix-btn" data-act="clip" title="The app's own title bar: its minimize, maximize and close buttons are always hidden (click for a taller cut)">▔</button><button type="button" class="ix-btn" data-act="min" title="Tuck this app away (it stays open, minimized)">–</button><button type="button" class="ix-btn" data-act="pop" title="Give this app its normal window">⧉</button><button type="button" class="ix-btn" data-act="close" title="Close the app (it can still ask to save your work)">✕</button></div>`;
+      : `<div class="ix-tile-head"><img class="ix-tile-icon" alt="" hidden><span class="ix-tile-title"></span><span class="ix-gap"></span>${arrows}<button type="button" class="ix-btn" data-act="min" title="Tuck this app away (it stays open, minimized)">–</button><button type="button" class="ix-btn" data-act="pop" title="Give this app its normal window">⧉</button><button type="button" class="ix-btn" data-act="close" title="Close the app (it can still ask to save your work)">✕</button></div>`;
     $('#ix-tiles').appendChild(el);
     O.tiles.els.set(id, el);
     return el;
@@ -232,9 +232,6 @@ export function initOrbSystem(ctx) {
       el.classList.toggle('focus', c.id !== 'orb' && c.id === T.focus);
       if (c.id !== 'orb' && c.id !== 'scorpion') {
         el.querySelector('.ix-tile-title').textContent = appTitle(c.id);
-        const clipNow = T.apps.get(c.id)?.clip || 0;
-        const clipBtn = el.querySelector('[data-act="clip"]');
-        if (clipBtn) { clipBtn.classList.toggle('on', clipNow > 0); clipBtn.title = clipNow === 1 ? "The app's own minimize, maximize and close buttons are hidden. Click to hide its whole title bar too." : clipNow ? `The app's title bar is hidden (${clipNow} points cut off). Click for a taller cut (the last one goes back to the buttons-only cut).` : "This app shows no title bar buttons of its own. Click to cut off the top corner anyway."; }
         const icon = T.apps.get(c.id)?.icon;
         const img = el.querySelector('.ix-tile-icon');
         if (icon && img.getAttribute('src') !== icon) img.src = icon;
@@ -296,7 +293,6 @@ export function initOrbSystem(ctx) {
         const next = MODES[(MODES.indexOf(modeOf(S.settings.orbTiles)) + 1) % MODES.length];
         api.updateSettings({ orbTiles: next }).then((s) => { S.settings = s; caption(`Tiles: ${{ auto: 'automatic', columns: 'side by side', rows: 'one above the other', grid: 'a grid' }[next]}`); relayout(); }).catch(() => {});
       }
-      else if (b.dataset.act === 'clip') { const cur = T.apps.get(id)?.clip || 0; appAction('clip', id, { 0: 1, 1: 32, 32: 40, 40: 48, 48: 1 }[cur] ?? 1); }
       else appAction({ min: 'minimize', pop: 'popout', close: 'close' }[b.dataset.act], id);
     });
     let drag = null;

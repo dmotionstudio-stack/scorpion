@@ -1,6 +1,7 @@
-// Apps open inside the orb: while the orb is open, an app that comes to the front loses its
-// title bar and border and is placed in its own tile on the orb's stage (kept on top of
-// Scorpion), with Scorpion's own title bar above it. Several apps at once, side by side
+// Apps open inside the orb: while the orb is open, an app that comes to the front is placed in its
+// own tile on the orb's stage (kept on top of Scorpion), with Scorpion's own title bar above it. The app
+// keeps its own title bar, so its own minimize, maximize and close buttons always show at its top right:
+// minimize tucks it away, maximize gives it the whole screen as a normal window, close closes it. Several apps at once, side by side
 // like Windows Snap (shared/tiles.js decides the tiles; this puts the windows there).
 // Leaving the orb or quitting Scorpion gives every app its normal window back; if Scorpion
 // stops unexpectedly, the next start does it (frame.json).
@@ -69,12 +70,13 @@ public static class ScorpionFrame {
   }
   // The height of the title bar that apps like Calculator draw themselves (32 at 100%).
   public static int Caption(IntPtr h) { Dpi(); uint d = GetDpiForWindow(h); if (d == 0) d = 96; return (int)Math.Round(32.0 * d / 96.0); }
-  // Title bar and border off, on top, in the panel. False: the app refused.
+  // The resizing border off (the tile decides its size), on top, in the panel; its title bar, with its own minimize, maximize and
+  // close buttons, stays. False: the app refused.
   public static bool Frame(IntPtr h, int x, int y, int w, int hh) {
     Dpi();
     if (IsIconic(h) || IsZoomed(h)) ShowWindow(h, 9);
     int s = GetWindowLong(h, -16);
-    int ns = s & ~0x00C00000 & ~0x00040000;
+    int ns = s & ~0x00040000;
     SetWindowLong(h, -16, ns);
     bool ok = GetWindowLong(h, -16) == ns;
     SetWindowPos(h, new IntPtr(-1), x, y, w, hh, 0x0020 | 0x0040);
@@ -83,6 +85,7 @@ public static class ScorpionFrame {
     return ok;
   }
   public static void Restore(IntPtr h) { Dpi(); ShowWindow(h, 9); }
+  public static void Maximize(IntPtr h) { Dpi(); ShowWindow(h, 3); }
   public static void Place(IntPtr h, int x, int y, int w, int hh) { Dpi(); SetWindowPos(h, new IntPtr(-1), x, y, w, hh, 0x0010 | 0x0040); }
   // An app that keeps its own title bar and its own minimize, maximize and close buttons: the window goes up
   // by that much and its top is cut off, so only what is under the title bar shows in the tile.
@@ -274,10 +277,10 @@ async function frame(hwnd) {
   const store = info.cls === UWP_FRAME; // Store apps: the whole strip, with the title Windows draws for them
   const own = store || drawsOwnTitleBar(info) || ncTop < 20 * scale;
   const exe = String(await run(`(Get-Process -Id ${info.pid} -ErrorAction SilentlyContinue).Path`).catch(() => '')).trim().toLowerCase();
-  const saved = savedClip(deps.clips?.(), exe);
-  // An app's own minimize, maximize and close buttons are never shown in a tile: its trim is at least the corner (an old saved 0 counts as the corner).
-  const clipDip = (own ? [1, 32, 40, 48] : [0, 1, 32, 40, 48]).includes(saved) ? saved : store ? 32 : own ? 1 : 0;
-  const clip = clipDip >= 32 ? Math.round(clipDip * scale) : 0;
+  // Nothing of the app's own title bar is cut off: its minimize, maximize and close buttons always show (a trim saved by an older
+  // Scorpion is not used).
+  const clipDip = 0;
+  const clip = 0;
   if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', hwnd, 'own title bar:', own, '| content starts', ncTop, 'px down | program:', exe, '| saved:', saved, '| trim:', clipDip, '| style 0x' + (info.style >>> 0).toString(16));
   const [mw, mh] = String(await run(`[ScorpionFrame]::MinSize(${ptr(hwnd)})`).catch(() => '0 0')).trim().split(' ').map(Number);
   const min = { w: Math.max(0, mw || 0), h: Math.max(0, (mh || 0) - clip) };
@@ -318,6 +321,12 @@ async function tick() {
       const info = infos.get(t.hwnd);
       if (!info || !info.visible) { if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', t.hwnd, 'gone:', JSON.stringify(info)); tiles.delete(t.hwnd); changed = true; continue; } // closed
       if (info.iconic) { if (process.env.SCORPION_FRAME_DEBUG) console.log('[frame]', t.hwnd, 'minimized'); await release(t.hwnd, { minimize: true }); continue; } // minimized from elsewhere
+      if (info.zoomed) { // its own maximize button: the whole screen, as its normal window
+        released.add(t.hwnd);
+        await release(t.hwnd, { minimize: false });
+        await run(`[ScorpionFrame]::Maximize(${ptr(t.hwnd)})`).catch(() => {});
+        continue;
+      }
       if (info.title !== t.title) { t.title = info.title; changed = true; }
       const want = expected(t);
       if (!sameRect(info, want)) {
@@ -387,21 +396,9 @@ export async function setAway(away) {
 
 // hwnd: the tile a button belongs to. popout: its normal window; minimize: tucked away; close: closed (it
 // can still ask to save); focus: in front; minimizeAll: every app tucked away.
-export async function action(what, { hwnd = null, dip = 0 } = {}) {
+export async function action(what, { hwnd = null } = {}) {
   const h = hwnd ? String(hwnd) : focus;
-  if (what === 'clip') { // the trim of the app's own title bar: 0 none, 1 its caption buttons, 32 / 40 / 48 the top strip (points)
-    const t = tiles.get(h);
-    if (!t) return false;
-    const v = (t.own ? [1, 32, 40, 48] : [0, 1, 32, 40, 48]).includes(Number(dip)) ? Number(dip) : (t.own ? 1 : 0);
-    t.clipDip = v;
-    t.clip = v >= 32 ? Math.round(v * (t.scale || 1)) : 0;
-    t.min = { w: t.min?.w || 0, h: Math.max(0, (t.rawMinH || 0) - t.clip) };
-    if (!t.clip) await run(`[ScorpionFrame]::Unclip(${ptr(h)})`).catch(() => {});
-    await run(placeScript(t)).catch(() => {});
-    if (t.exe) deps.setClip?.(clipKey(t.exe), v);
-    tell();
-    return true;
-  }
+  if (what === 'clip') return false; // no trims any more: the app's own title bar always shows
   if (what === 'minimizeAll') { await releaseAll({ minimize: true }); return true; }
   if (what === 'popout') { if (h) released.add(h); return release(h, { minimize: false }); }
   if (what === 'minimize') return release(h, { minimize: true });
