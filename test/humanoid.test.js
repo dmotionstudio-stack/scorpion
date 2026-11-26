@@ -97,3 +97,21 @@ test('"transform into the humanoid" and "show me the orb" switch the form, and q
   }
   assert.equal(parseLook('transform into the humanoid', { lang: 'fr' }), null, 'English only, like the other commands');
 });
+
+test('Scorpion turns its own switches on and off by what it is told', async () => {
+  const { parseSwitch } = await import('../src/renderer/orb-commands.js');
+  const cases = {
+    'turn off hand gestures': ['gestures', false], 'Scorpion, enable hand gestures': ['gestures', true], 'start hand tracking': ['gestures', true],
+    'turn on face tracking': ['face', true], 'switch face tracking on': ['face', true], 'stop face tracking': ['face', false],
+    'turn off talk mode': ['talk', false], 'please turn on the microphone': ['talk', true],
+    'turn off text': ['text', false], 'turn on the typing box': ['text', true],
+    'turn the wake word off': ['wake', false], 'set the wake word on': ['wake', true],
+    'turn off spoken replies': ['voice', false], 'enable read aloud': ['voice', true],
+    'turn on soft sounds': ['sounds', true], 'disable the background lines': ['lines', false],
+  };
+  for (const [say, [key, on]] of Object.entries(cases)) assert.deepEqual(parseSwitch(say), { key, on }, say);
+  for (const say of ['stop talking', 'what is face tracking', 'turn off the lights', 'turn on dark mode', 'tell me about hand gestures', 'open the wake word app please now']) {
+    assert.equal(parseSwitch(say), null, say);
+  }
+  assert.equal(parseSwitch('turn off hand gestures', { lang: 'de' }), null, 'English only');
+});

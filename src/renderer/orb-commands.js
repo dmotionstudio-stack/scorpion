@@ -76,6 +76,44 @@ export function parseLook(text, { lang = 'en' } = {}) {
   return null;
 }
 
+// Switches Scorpion turns on and off itself: "turn off hand gestures", "enable face tracking", "turn the wake word on",
+// "stop face tracking", "start talk mode". Returns { key, on } or null. English only. The switches are listed in app.js (applySwitch).
+const SWITCH_WORDS = {
+  gestures: /^(?:the |my |your )?(?:hand |hands |finger )?(?:gestures?|tracking|control|hands?)(?: tracking| control| gestures?)?$|^hand (?:gestures?|tracking|control)$/,
+  face: /^(?:the |my |your )?(?:face|facial)(?: tracking| tracker| recognition| detection| id| camera| cam)?$|^face (?:tracking|tracker|recognition|detection|id|camera)$/,
+  talk: /^(?:the |my |your )?(?:talk|talk mode|conversation|conversation mode|listening|microphone|mic)$/,
+  voice: /^(?:the |my |your )?(?:voice|voice replies|spoken replies|speech|read aloud|reading aloud|reading replies aloud|read replies aloud|replies aloud|spoken answers)$/,
+  text: /^(?:the |my |your )?(?:text|typing|typing box|text box|text input|text mode|keyboard|keyboard input|type box)$/,
+  wake: /^(?:the |my |your )?(?:wake word|wake up word|wake words|hey scorpion|wake phrase)$/,
+  sounds: /^(?:the |my |your )?(?:soft sounds|sound effects|chimes|orb sounds|beeps)$/,
+  lines: /^(?:the |my |your )?(?:background lines|lines|constellation|stars|background|background animation)$/,
+};
+const SWITCH_ON = '(?:turn|switch|put|set)(?: it| them)? on|enable|activate|start|begin|use';
+const SWITCH_OFF = '(?:turn|switch|put|set)(?: it| them)? off|disable|deactivate|stop|end|quit|hide';
+function switchKey(words) {
+  const w = words.replace(/\b(?:please|now|for me|again)\b/g, '').replace(/\s+/g, ' ').trim();
+  for (const [key, re] of Object.entries(SWITCH_WORDS)) if (re.test(w)) return key;
+  return null;
+}
+export function parseSwitch(text, { lang = 'en' } = {}) {
+  if (String(lang || 'en').toLowerCase().split('-')[0] !== 'en') return null;
+  const t = clean(text).replace(/^(?:hey |ok |okay )?(?:scorpion )?(?:please |can you |could you |would you )?/, '').replace(/ please$/, '').trim();
+  if (!t || t.split(' ').length > 8) return null;
+  // "turn off the wake word", "enable face tracking", "stop talk mode"
+  let m = new RegExp('^(' + SWITCH_ON + '|' + SWITCH_OFF + ') (.+)$').exec(t);
+  if (m) {
+    // "turn on" and "turn off" have the target after them; "turn the wake word off" has it between
+    const on = new RegExp('^(?:' + SWITCH_ON + ')$').test(m[1]);
+    // "turn off" (two words) is matched whole; a trailing "on/off" in the target is handled below
+    const key = switchKey(m[2]);
+    if (key) return { key, on };
+  }
+  // "turn the wake word off", "switch hand gestures on"
+  m = /^(?:turn|switch|put|set) (.+) (on|off)$/.exec(t);
+  if (m) { const key = switchKey(m[1]); if (key) return { key, on: m[2] === 'on' }; }
+  return null;
+}
+
 // More things done without the model: open an installed app by name, a screenshot, dark or light mode, the battery.
 // Returns { open: 'name' } | { intent: 'screenshot' | 'dark-mode' | 'light-mode', say } | { battery: true } or null. English only.
 // (The app name is matched against the installed apps by bestApp: no match, and the model gets the request.)

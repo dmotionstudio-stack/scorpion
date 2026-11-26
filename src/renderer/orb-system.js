@@ -10,7 +10,7 @@
 //   left (orb-frame.js does the window work), the orb moves to the right.
 // - At sign-in the orb greets the person it recognizes.
 // - The wake word: saying "Scorpion" starts listening.
-import { instantCommand, parseAction, parseLook, bestApp, parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
+import { instantCommand, parseAction, parseLook, parseSwitch, bestApp, parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
 import { intentsFor, matchSpoken } from '/shared/intents.js';
 import { PLATFORM } from './palette.js';
 import { ringLook, siteUrl } from './orb-bubbles.js';
@@ -427,6 +427,13 @@ export function initOrbSystem(ctx) {
       caption(q.say);
       if (q.volume) for (let i = 0; i < (q.volume === 'mute' ? 1 : IS_WINDOWS ? 5 : 2); i++) api.shellVolume(q.volume).catch(() => {});
       if (q.volume !== 'mute' && S.voice?.installed) speaker.say(q.say);
+      return true;
+    }
+    // Scorpion turns its own switches: "turn off hand gestures", "enable face tracking", "turn the wake word on".
+    const sw = ctx.applySwitch && parseSwitch(text, { lang });
+    if (sw) {
+      $('#ix-you').textContent = text;
+      ctx.applySwitch(sw.key, sw.on).then((line) => say(line)).catch((err) => toast(errText(err), 'error'));
       return true;
     }
     // The orb and the humanoid are two forms of the same thing: "transform into the humanoid", "show me the orb".
@@ -860,7 +867,7 @@ export function initOrbSystem(ctx) {
 
   return {
     onOpen, onClose, state, handleSpoken, instant, handleGesture, onApproval, clearApproval, returnToOrb, greeted, scheduleWake, stopWake: stopWakeListening, leave: leaveOrb,
-    toggleGuide, goHome, handleGlobals, togglePause,
+    toggleGuide, goHome, handleGlobals, togglePause, toggleWake,
     // For the taskbar on the orb's screen: a place (Apps, Files) over the orb, a window into a tile of the orb, the stage.
     openFolder: (dir) => leaveOrb(() => (desktopUi ? desktopUi.showFiles(dir) : api.shellLinkOpen(dir))),
     place: (id) => { const p = PLACES.find((x) => x.id === id); if (p) activate(p); else leaveOrb(() => setView('home')); },

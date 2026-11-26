@@ -1146,6 +1146,85 @@ const STATE_LABEL = { standby: 'Standby', listening: 'Listening', thinking: 'Thi
 
 // The orb and the humanoid are two forms of one thing: switch between them while the orb is open (a spoken "transform
 // into the humanoid" / "show me the orb"). The new one is made on top of the old, the old fades out as it fades in.
+// Scorpion turns its own switches on and off ("turn off hand gestures", "enable face tracking", "turn the wake word on"; the
+// words are parsed in orb-commands.js). Each says what it did, or why it could not.
+const SWITCHES = {
+  gestures: { name: 'Hand gestures', plural: true, get: () => G.on || G.wanted === true, set: (on) => toggleHands(on) },
+  face: {
+    name: 'Face tracking',
+    get: () => FX.on,
+    set: async (on) => {
+      if (on && !S.faces?.installed) return 'Face tracking needs the face recognition download first: Settings, People, Install.';
+      if (on) await startFace(); else stopFace();
+    },
+  },
+  talk: {
+    name: 'Talk mode',
+    get: () => V.talk,
+    set: async (on) => {
+      if (on && !S.voice?.installed) return 'Talk mode needs the voice download first: Settings, Voice, Install.';
+      if (on) startTalk(); else stopTalk();
+    },
+  },
+  voice: {
+    name: 'Spoken replies',
+    plural: true,
+    get: () => S.settings.voiceSpeak === true,
+    set: async (on) => {
+      if (on && !S.voice?.installed) return 'Spoken replies need the voice download first: Settings, Voice, Install.';
+      S.settings = await api.updateSettings({ voiceSpeak: on });
+      if (!on) speaker.stop();
+      renderAll();
+    },
+  },
+  text: {
+    name: 'The typing box',
+    get: () => S.settings.orbVoiceOnly === false || !S.voice?.installed,
+    set: async (on) => {
+      if (!on && !S.voice?.installed) return 'The orb needs the voice download before the typing box can be turned off: Settings, Voice, Install.';
+      S.settings = await api.updateSettings({ orbVoiceOnly: !on });
+      orbSys?.applyVoiceOnly();
+      if (!on) orbSys?.scheduleWake(300);
+      renderAll();
+    },
+  },
+  wake: {
+    name: 'The wake word',
+    get: () => S.settings.wakeWord === true,
+    set: async (on) => {
+      if (on && !S.voice?.installed) return 'The wake word needs the voice download first: Settings, Voice, Install.';
+      await orbSys?.toggleWake(on);
+    },
+  },
+  sounds: {
+    name: 'Soft sounds',
+    plural: true,
+    get: () => S.settings.orbSounds !== false,
+    set: async (on) => { S.settings = await api.updateSettings({ orbSounds: on }); },
+  },
+  lines: {
+    name: 'The background lines',
+    plural: true,
+    get: () => S.settings.orbLines !== 'off',
+    set: async (on) => {
+      S.settings = await api.updateSettings({ orbLines: on ? (S.settings.orbLines === 'full' ? 'full' : 'subtle') : 'off' });
+      IX.orb?.setLines?.(S.settings.orbLines);
+    },
+  },
+};
+async function applySwitch(key, on) {
+  const sw = SWITCHES[key];
+  if (!sw) return "I can't switch that.";
+  const is = sw.plural ? 'are' : 'is';
+  const word = on ? 'on' : 'off';
+  if (Boolean(sw.get()) === on) return `${sw.name} ${is} already ${word}.`;
+  const problem = await sw.set(on);
+  return typeof problem === 'string' ? problem : `${sw.name} ${is} ${word}.`;
+}
+
+// Anything can flip a switch too: document.dispatchEvent(new CustomEvent('orb:switch', { detail: { key: 'lines', on: false } })).
+document.addEventListener('orb:switch', (e) => { applySwitch(e.detail?.key, e.detail?.on === true).then((line) => { $('#ix-reply').textContent = line; }).catch((err) => toast(errText(err), 'error')); });
+
 const HEART_AT = '50% 81%'; // where the humanoid's heart is on the screen: the point everything folds into and grows from
 async function switchLook(look) {
   if (!IX.open || IX.switching) return;
@@ -2327,7 +2406,7 @@ function wire() {
   wirePeople();
   const libraryView = initLibrary({ api, $, esc, toast, errText, gb });
   desktopUi = initDesktop({ api, $, esc, toast, errText, setView, S });
-  orbSys = initOrbSystem({ voiceBusy, orbThread: () => OT.thread, api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, insets: () => interactBar?.insets() || { top: 0, right: 0, bottom: 0, left: 0 }, pageGestures: (r) => hands?.handle(r, { globals: false }), switchLook, handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
+  orbSys = initOrbSystem({ voiceBusy, orbThread: () => OT.thread, api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, insets: () => interactBar?.insets() || { top: 0, right: 0, bottom: 0, left: 0 }, pageGestures: (r) => hands?.handle(r, { globals: false }), switchLook, applySwitch, handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice });
