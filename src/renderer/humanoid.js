@@ -271,7 +271,7 @@ export function buildGlass(q = 1) {
 
 // ---------- the shaders ----------
 const BODY_VERTEX = `
-  uniform float uTime, uLevel, uSwirl, uSize, uFace, uRings, uGlow, uVeins, uListen, uIntro, uSpeak, uHeart, uStyle;
+  uniform float uTime, uLevel, uSwirl, uSize, uFace, uRings, uGlow, uVeins, uListen, uIntro, uSpeak, uHeart, uStyle, uMode, uPS;
   uniform vec3 uRot, uPivot, uLine, uRim, uDim, uWarm, uHot;
   attribute vec3 aNormal;
   attribute float aSeed, aWarm, aGlow, aKind;
@@ -280,9 +280,19 @@ const BODY_VERTEX = `
   mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }
   mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c); }
   mat3 rotZ(float a) { float c = cos(a), s = sin(a); return mat3(c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0); }
+  float hash1(float n) { return fract(sin(n * 127.1) * 43758.5453); }
+  // How far a sweep has got at a point (hh: 0..1 along the sweep), and the bright edge of it.
+  float sweep(float hh, float k, out float band) {
+    float edge = k * 1.55 - 0.1;
+    band = exp(-pow((hh - edge + 0.06) * 14.0, 2.0)) * (1.0 - k);
+    return 1.0 - smoothstep(edge - 0.2, edge, hh);
+  }
   void main() {
     vec3 p = position;
     float t = uTime;
+    if (uMode > 8.5 && uMode < 9.5 && uIntro < 1.0) { // it assembles itself out of scattered points
+      p += (vec3(hash1(aSeed + 0.13), hash1(aSeed + 0.57), hash1(aSeed + 0.91)) - 0.5) * 8.0 * pow(1.0 - uIntro, 3.0);
+    }
     if (aKind > 7.5 && aKind < 8.5) { // the heart rings spin about their own centre
       vec3 hc = vec3(0.0, -0.62, 0.58);
       p = hc + rotY(t * (0.8 + aSeed * 1.1)) * (p - hc);
@@ -380,15 +390,24 @@ const BODY_VERTEX = `
       glow = (0.05 + pow(fres, 2.2) * 0.6) * (0.5 + 0.5 * front);
       vAlpha = 0.55;
     }
-    // The figure draws itself in from the bottom up, with a bright line of light climbing it.
+    // How it enters (one of ten, picked at random each time): a line of light sweeps over it from the bottom, the top,
+    // the left, out from the heart, around it, or it dissolves in, glides in, drops in, zooms in or assembles itself.
     float h = (position.y + 1.6) / 3.8;
-    float edge = uIntro * 1.5 - 0.25;
-    float reveal = 1.0 - smoothstep(edge - 0.2, edge, h);
-    float band = exp(-pow((h - edge + 0.06) * 14.0, 2.0)) * (1.0 - uIntro) * (aKind > 5.5 ? 0.0 : 0.7);
+    float band = 0.0;
+    float reveal = 1.0;
+    if (uMode < 0.5) reveal = sweep(h, uIntro, band);
+    else if (uMode < 1.5) reveal = sweep(1.0 - h, uIntro, band);
+    else if (uMode < 2.5) reveal = sweep(clamp((position.x + 2.2) / 4.4, -0.3, 1.3), uIntro, band);
+    else if (uMode < 3.5) reveal = sweep(clamp(length(position.xy - vec2(0.0, 0.3)) / 3.0, 0.0, 1.2), uIntro, band);
+    else if (uMode < 4.5) reveal = sweep(aSeed * 0.95, uIntro, band);
+    else if (uMode < 5.5) reveal = sweep(fract(atan(position.x, position.z) / 6.2832 + 0.5) * 0.7 + h * 0.3, uIntro, band);
+    else reveal = smoothstep(0.0, (uMode > 5.5 && uMode < 8.5) || uMode > 9.5 ? 0.12 : 0.35, uIntro);
+    band *= (aKind > 5.5 ? 0.0 : 0.7);
     // While it speaks, light runs up from the chest through the neck into the head, in time with the voice.
     float ry = -0.5 + mod(t * 1.25, 2.9);
     float rip = uSpeak * exp(-pow((position.y - ry) * 4.2, 2.0)) * (0.5 + uLevel * 1.0) * (aKind < 2.5 ? 1.0 : (aKind < 3.5 ? 1.3 : 0.0));
     // The look: hologram (as is), glass (a faint skin, quieter lines) or wireframe (the lines alone, no face light).
+    gl_PointSize *= uPS;
     float sk = 1.0;
     if (aKind < 0.5) sk = uStyle > 1.5 ? 0.85 : (uStyle > 0.5 ? 0.55 : 1.0);
     else if (aKind > 5.5 && aKind < 7.5) sk = uStyle > 1.5 ? 0.0 : (uStyle > 0.5 ? 0.5 : 1.0);
@@ -476,7 +495,7 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
 
   // ---- the figure ----
   const bodyU = {
-    uTime: { value: 0 }, uLevel: { value: 0 }, uSwirl: { value: 0 }, uSize: { value: low ? 1.7 : 1.35 }, uFace: { value: 0.5 }, uRings: { value: 0.3 }, uGlow: { value: 1 }, uVeins: { value: 0.5 }, uListen: { value: 0 }, uIntro: { value: 0 }, uSpeak: { value: 0 }, uHeart: { value: 0 }, uStyle: { value: 0 },
+    uTime: { value: 0 }, uLevel: { value: 0 }, uSwirl: { value: 0 }, uSize: { value: low ? 1.7 : 1.35 }, uFace: { value: 0.5 }, uRings: { value: 0.3 }, uGlow: { value: 1 }, uVeins: { value: 0.5 }, uListen: { value: 0 }, uIntro: { value: 0 }, uSpeak: { value: 0 }, uHeart: { value: 0 }, uStyle: { value: 0 }, uMode: { value: 0 }, uPS: { value: 1 },
     uRot: { value: new THREE.Vector3() }, uPivot: { value: NECK_PIVOT.clone() },
     uLine: { value: toColor(pal.line) }, uRim: { value: toColor(pal.rim) }, uDim: { value: toColor(pal.dim) }, uWarm: { value: toColor(pal.warm) }, uHot: { value: toColor(pal.hot) },
   };
@@ -523,6 +542,15 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
   scene.add(sky);
   sky.visible = lines !== 'off';
 
+  // The seed of light the humanoid grows from (the 'grow' entrance).
+  const seedCanvas = document.createElement('canvas');
+  seedCanvas.width = seedCanvas.height = 64;
+  { const g = seedCanvas.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,0.7)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }
+  const seedSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(seedCanvas), color: toColor(pal.rim), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
+  seedSprite.position.set(0, -0.62, 0.6);
+  seedSprite.visible = false;
+  scene.add(seedSprite);
+
   // A ring that spreads out behind the head for a pulse (alerts, confirmations).
   const pulseMat = new THREE.MeshBasicMaterial({ color: toColor(pal.rim), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
   const pulseRing = new THREE.Mesh(new THREE.RingGeometry(0.98, 1, 128), pulseMat);
@@ -549,7 +577,11 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
   let perfLevel = 0, perfEma = 0, perfSlow = 0, useBloom = true, detailShare = 1; // frames dropping: bloom off first, then fewer pixels
   const ratio = () => Math.min(FULL_RATIO, Math.max(0.5, FULL_RATIO * detailShare * (perfLevel >= 2 ? 0.7 : 1)));
   let heartFlash = -10; // when the heart orb last flared (a wave hello)
+  let figYaw = 0;
   let idleK = 0; // how much it is idling (looking around on its own)
+  const INTRO_MODES = 11;
+  let introMode = 0, introSide = 1;
+  const randomIntro = () => { introMode = Math.floor(Math.random() * INTRO_MODES); introSide = Math.random() < 0.5 ? -1 : 1; };
   let introAt = -100; // when the figure began drawing itself in
   let running = false, raf = 0, fpsCap = 60, last = 0;
   let viewTarget = null;
@@ -644,7 +676,32 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
     bodyU.uListen.value = now.listen;
     bodyU.uSpeak.value = now.speak;
     bodyU.uHeart.value = Math.max(0, 1 - (t - heartFlash) / 1.4);
-    { const k = Math.max(0, Math.min(1, (t - introAt) / 3.4)); bodyU.uIntro.value = k * k * (3 - 2 * k); }
+    let introDist = 0, introSpin = 0, sx = 1, sy = 1, pivotY = Y_BOTTOM;
+    {
+      const k = Math.max(0, Math.min(1, (t - introAt) / (introMode === 10 ? 3.4 : introMode >= 6 ? 2.6 : 3.4)));
+      const e = k * k * (3 - 2 * k);
+      bodyU.uIntro.value = e;
+      bodyU.uMode.value = introMode;
+      if (introMode === 6) { // it spins in, fast then slowing, growing as it turns
+        introSpin = introSide * (1 - k) ** 2.2 * Math.PI * 6;
+        sx = sy = 0.25 + 0.75 * Math.min(1, k * 1.6);
+      } else if (introMode === 7) { // it pops up like jelly: overshoots, squashes and stretches, settles
+        const s = 1 - Math.exp(-5.5 * k) * Math.cos(k * 17);
+        const wob = Math.exp(-4 * k) * Math.sin(k * 20) * 0.22;
+        sy = Math.max(0.001, s * (1 + wob)); sx = Math.max(0.001, s * (1 - wob));
+      } else if (introMode === 8) introDist = 10 * (1 - e) ** 2; // it flies in from far away
+      else if (introMode === 10) { // it grows from a seed of light on its chest: a thin sprout first, then it fills out
+        const g = 1 - (1 - k) ** 3;
+        sy = Math.max(0.02, g); sx = Math.max(0.02, g ** 1.8);
+        pivotY = -0.62;
+      }
+      seedSprite.visible = introMode === 10 && k < 0.98;
+      if (seedSprite.visible) {
+        seedSprite.scale.setScalar(0.35 + 1.1 * (1 - k) ** 1.5 + 0.12 * Math.sin(t * 12));
+        seedSprite.material.opacity = Math.min(1, 1.1 - k * 1.1);
+        seedSprite.material.color.copy(bodyU.uRim.value);
+      }
+    }
     if (Math.abs(now.listen - listenK) > 0.004) { listenK = now.listen; recolour(); }
     bodyU.uFace.value = now.face;
     bodyU.uRings.value = now.rings + level * 0.4;
@@ -656,14 +713,19 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
     linkU.uPulses.value = now.pulses + level;
 
     // The shoulders follow a little; the camera sways, and the stars turn slowly behind.
-    figure.rotation.y = ease(figure.rotation.y, look.yaw * 0.15 + Math.sin(t * 0.21) * 0.025, 2);
-    figure.position.y = Math.sin(t * 1.2) * 0.01;
+    figYaw = ease(figYaw, look.yaw * 0.15 + Math.sin(t * 0.21) * 0.025, 2);
+    figure.rotation.y = figYaw + introSpin;
+    figure.scale.set(sx, sy, sx);
+    bodyU.uPS.value = Math.max(0.05, Math.min(sx, sy)); // the dots shrink with the figure
+    figure.position.y = Math.sin(t * 1.2) * 0.01 + pivotY * (1 - sy); // it scales about the bottom edge (or the heart, for a seed)
+    figure.position.x = 0;
     sky.rotation.y = Math.sin(t * 0.04) * 0.12;
     sky.rotation.z = Math.sin(t * 0.03) * 0.03;
     const cy = cam.yaw + Math.sin(t * 0.15) * 0.05 + look.yaw * 0.08;
     const cp = cam.pitch + Math.sin(t * 0.12) * 0.015;
-    TARGET.y = Y_BOTTOM + HALF_FOV_TAN * cam.dist * 0.97; // the bottom of the body on the bottom edge of the screen, whatever the screen
-    camera.position.set(TARGET.x + Math.sin(cy) * Math.cos(cp) * cam.dist, TARGET.y + Math.sin(cp) * cam.dist, TARGET.z + Math.cos(cy) * Math.cos(cp) * cam.dist);
+    TARGET.y = Y_BOTTOM + HALF_FOV_TAN * (cam.dist + introDist) * 0.97; // the bottom of the body on the bottom edge of the screen, whatever the screen
+    const camDist = cam.dist + introDist;
+    camera.position.set(TARGET.x + Math.sin(cy) * Math.cos(cp) * camDist, TARGET.y + Math.sin(cp) * camDist, TARGET.z + Math.cos(cy) * Math.cos(cp) * camDist);
     camera.lookAt(TARGET);
 
     if (pulseT >= 0) {
@@ -705,7 +767,8 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
     // 'full' | 'subtle' | 'off': the constellation of lines behind the figure.
     setLines(mode) { if (!(mode in LINES)) mode = 'subtle'; starU.uSky.value = LINES[mode]; sky.visible = mode !== 'off'; },
     // Draws the figure in again from the bottom up.
-    introduce() { introAt = clock.elapsedTime; },
+    // Enters again, in a random way, or in the way asked for (0 to 9).
+    introduce(mode) { if (Number.isInteger(mode) && mode >= 0 && mode < INTRO_MODES) introMode = mode; else randomIntro(); introAt = clock.elapsedTime; },
     setSatellites() {},
     setRingLook() {},
     spinRings() {},
@@ -743,6 +806,7 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
       if (running) return;
       running = true;
       clock.getDelta();
+      randomIntro();
       introAt = clock.elapsedTime + 0.15;
       resize();
       raf = requestAnimationFrame(frame);
