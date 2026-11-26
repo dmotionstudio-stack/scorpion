@@ -159,8 +159,8 @@ form.addEventListener('submit', async (e) => {
       location.href = data.url;
       return;
     }
-    // No server behind the pages (a static copy of the site) answers 404.
-    if (data.demo || res.status === 404) {
+    // No server behind the pages (a static copy of the site) answers 404, or 405 on GitHub Pages.
+    if (data.demo || res.status === 404 || res.status === 405) {
       showAlert('info', 'Payments are not switched on for this site yet. Once the store owner adds a Stripe key, this button opens the secure payment page.');
     } else {
       showAlert('error', data.error || 'Something went wrong. Please try again.');

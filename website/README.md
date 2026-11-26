@@ -106,3 +106,10 @@ payments** so buyers get the receipt the site mentions.
 Before going live, replace the placeholder support address
 (`support@scorpion.app`) in `assets/site.js` and `success.html`, and check the
 refund promise in the Download page FAQ matches your policy.
+
+## Photo credit
+
+`assets/usb-photo.jpg` on the USB page is "black thumb drive" by Sara Kurfeß on
+Unsplash (https://unsplash.com/photos/black-thumb-drive-9Eid2zc_Veo), free to use
+under the Unsplash license. It's a stand-in: replace it with a photo of the real
+Scorpion stick when you have one.

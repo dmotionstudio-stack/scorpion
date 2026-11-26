@@ -535,3 +535,10 @@ details.faq p { color: var(--muted); margin: 12px 0 0; }
 .compare-usb td:first-child, .compare-usb th:first-child { text-align: left; }
 .compare-usb .y { color: var(--gold); font-weight: 700; }
 .compare-usb .n { color: var(--dim); }
+
+/* USB page: a real photo in the hero, with the drawn Scorpion stick tucked beside it */
+.product-shot figure.photo { margin: 0; }
+.product-shot figure.photo img { width: 100%; border: 0; box-shadow: none; border-radius: 0; }
+.shot-main.photo { overflow: hidden; border-radius: 22px; border: 1px solid var(--line); box-shadow: 0 30px 70px rgba(0, 0, 0, .55); background: #e9e9ea; }
+.shot-main.photo figcaption { padding: 8px 14px; font-size: .75rem; color: var(--muted); background: var(--panel); }
+.shot-main.photo figcaption a { color: var(--muted); text-decoration: underline; }

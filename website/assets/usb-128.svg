@@ -1,36 +1,75 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 380" width="1280" height="760" role="img" aria-label="Scorpion USB 128 GB">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 640 380" width="1280" height="760" role="img" aria-label="Scorpion USB 128 GB">
   <title>Scorpion USB 128 GB</title>
   <defs>
-    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7d24a"/><stop offset="1" stop-color="#b98600"/></linearGradient>
-    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2f3f5"/><stop offset=".45" stop-color="#b9bcc2"/><stop offset="1" stop-color="#7b7f87"/></linearGradient>
-    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".34"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
-    <radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#f4c51c" stop-opacity=".30"/><stop offset="1" stop-color="#f4c51c" stop-opacity="0"/></radialGradient>
-    <filter id="blur" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="12"/></filter>
-  </defs>
-  <rect width="640" height="380" fill="#0d0c0a"/>
-  <ellipse cx="320" cy="205" rx="310" ry="130" fill="url(#glow)"/>
-  <ellipse cx="330" cy="318" rx="250" ry="20" fill="#000" opacity="0.7" filter="url(#blur)"/>
-  <g transform="rotate(-7 320 190)">
-    <!-- the plug -->
-    <rect x="34" y="142" width="194" height="86" rx="6" fill="url(#metal)"/>
-    <rect x="48" y="154" width="170" height="62" rx="3" fill="#6f737b" opacity=".45"/>
-    <rect x="66" y="170" width="44" height="30" rx="2" fill="#2b2d31"/>
-    <rect x="124" y="170" width="44" height="30" rx="2" fill="#2b2d31"/>
-    <!-- the body -->
-    <rect x="208" y="112" width="364" height="156" rx="40" fill="url(#body)" stroke="#fff" stroke-opacity=".12" stroke-width="2"/>
-    <rect x="208" y="124" width="14" height="132" rx="7" fill="#1a1405" opacity=".9"/>
-    <rect x="214" y="116" width="352" height="64" rx="36" fill="url(#gloss)"/>
-    <circle cx="550" cy="190" r="14" fill="#0d0c0a" stroke="#1a1405" stroke-width="4"/>
-    <!-- the kunai mark -->
-    <g transform="translate(252 148)">
-      <polygon points="4,4 44,18 52,34 38,42 16,36" fill="#1a1405"/>
-      <polygon points="4,4 44,18 52,34" fill="#fff" opacity=".28"/>
-      <line x1="40" y1="40" x2="70" y2="70" stroke="#1a1405" stroke-width="9" stroke-linecap="butt"/>
-      <line x1="40" y1="40" x2="70" y2="70" stroke="#1a1405" stroke-width="9" stroke-dasharray="5 6"/>
-      <circle cx="74" cy="74" r="10" fill="none" stroke="#1a1405" stroke-width="5"/>
+    <radialGradient id="studio" cx=".5" cy=".42" r=".75"><stop offset="0" stop-color="#e9eaec"/><stop offset=".7" stop-color="#c6c8cc"/><stop offset="1" stop-color="#a7a9ae"/></radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2d98a"/><stop offset="1" stop-color="#a98128"/></linearGradient>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#26272b"/><stop offset=".5" stop-color="#121316"/><stop offset="1" stop-color="#050506"/></linearGradient>
+    <linearGradient id="bevel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".5" stop-color="#fff" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".5"/></linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbfbfc"/><stop offset=".22" stop-color="#d4d7dc"/><stop offset=".5" stop-color="#9aa0a9"/><stop offset=".72" stop-color="#cfd2d8"/><stop offset="1" stop-color="#6b6f77"/></linearGradient>
+    <linearGradient id="metalSide" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8d929a"/><stop offset="1" stop-color="#3f4247"/></linearGradient>
+    <linearGradient id="collar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f4f5f7"/><stop offset=".35" stop-color="#aab0b8"/><stop offset=".7" stop-color="#e7e9ec"/><stop offset="1" stop-color="#7d828a"/></linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f9bff"/><stop offset="1" stop-color="#1459d6"/></linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="hole" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b1c1f"/><stop offset="1" stop-color="#5a5d63"/></linearGradient>
+    <pattern id="brush" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="1" fill="#fff" opacity=".35"/><rect width="4" height="1" y="2" fill="#000" opacity=".08"/></pattern>
+    <filter id="blur12" x="-20%" y="-80%" width="140%" height="260%"><feGaussianBlur stdDeviation="12"/></filter>
+    <filter id="blur3" x="-10%" y="-100%" width="120%" height="300%"><feGaussianBlur stdDeviation="3"/></filter>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="7" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .9 -.3" result="m"/>
+      <feComposite in="m" in2="SourceAlpha" operator="in"/>
+    </filter>
+    <g id="stick">
+      <!-- the USB 3 plug: the open end shows its blue tongue and gold contacts -->
+      <rect x="40" y="158" width="170" height="76" rx="5" fill="url(#metalSide)"/>
+      <rect x="40" y="148" width="170" height="76" rx="5" fill="url(#metal)"/>
+      <rect x="40" y="148" width="170" height="76" rx="5" fill="url(#brush)" opacity=".5"/>
+      <rect x="41" y="149" width="168" height="74" rx="4" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.5"/>
+      <rect x="72" y="170" width="40" height="30" rx="3" fill="url(#hole)"/>
+      <rect x="126" y="170" width="40" height="30" rx="3" fill="url(#hole)"/>
+      <rect x="72" y="170" width="40" height="30" rx="3" fill="none" stroke="#fff" stroke-opacity=".45"/>
+      <rect x="126" y="170" width="40" height="30" rx="3" fill="none" stroke="#fff" stroke-opacity=".45"/>
+      <g>
+        <rect x="8" y="150" width="34" height="80" rx="4" fill="url(#metalSide)"/>
+        <rect x="11" y="154" width="28" height="70" rx="3" fill="#07080a"/>
+        <rect x="12" y="170" width="26" height="34" rx="2" fill="url(#blue)"/>
+        <rect x="14" y="176" width="22" height="2.6" rx="1" fill="#e9c46a"/><rect x="14" y="182.5" width="22" height="2.6" rx="1" fill="#e9c46a"/><rect x="14" y="189" width="22" height="2.6" rx="1" fill="#e9c46a"/><rect x="14" y="195.5" width="22" height="2.6" rx="1" fill="#e9c46a"/>
+      </g>
+      <!-- the body: thickness, face, bevel, grain -->
+      <rect x="196" y="140" width="366" height="112" rx="32" fill="#6a4d10"/>
+      <rect x="196" y="130" width="366" height="112" rx="32" fill="url(#body)"/>
+      <rect x="196" y="130" width="366" height="112" rx="32" fill="#fff" filter="url(#grain)" opacity=".14"/>
+      <rect x="197.5" y="131.5" width="363" height="109" rx="30.5" fill="none" stroke="url(#bevel)" stroke-width="3"/>
+      <!-- the slider plate with its grip ribs -->
+      <rect x="246" y="140" width="262" height="92" rx="20" fill="#000" opacity=".4" transform="translate(0 3)"/>
+      <rect x="246" y="140" width="262" height="92" rx="20" fill="url(#plate)" stroke="#f4c51c" stroke-opacity=".45" stroke-width="1"/>
+      <path d="M262 144 C 350 136 440 138 500 150 L 500 176 C 440 164 350 164 262 184 Z" fill="url(#gloss)"/>
+      <rect x="258" y="150" width="3.2" height="68" rx="1.6" fill="#fff" opacity=".13"/><rect x="261" y="150" width="1.6" height="68" rx=".8" fill="#000" opacity=".5"/><rect x="265" y="150" width="3.2" height="68" rx="1.6" fill="#fff" opacity=".13"/><rect x="268" y="150" width="1.6" height="68" rx=".8" fill="#000" opacity=".5"/><rect x="272" y="150" width="3.2" height="68" rx="1.6" fill="#fff" opacity=".13"/><rect x="275" y="150" width="1.6" height="68" rx=".8" fill="#000" opacity=".5"/><rect x="279" y="150" width="3.2" height="68" rx="1.6" fill="#fff" opacity=".13"/><rect x="282" y="150" width="1.6" height="68" rx=".8" fill="#000" opacity=".5"/><rect x="286" y="150" width="3.2" height="68" rx="1.6" fill="#fff" opacity=".13"/><rect x="289" y="150" width="1.6" height="68" rx=".8" fill="#000" opacity=".5"/><rect x="293" y="150" width="3.2" height="68" rx="1.6" fill="#fff" opacity=".13"/><rect x="296" y="150" width="1.6" height="68" rx=".8" fill="#000" opacity=".5"/><rect x="300" y="150" width="3.2" height="68" rx="1.6" fill="#fff" opacity=".13"/><rect x="303" y="150" width="1.6" height="68" rx=".8" fill="#000" opacity=".5"/>
+      <!-- the metal collar where the plug enters the body -->
+      <rect x="196" y="136" width="22" height="100" rx="6" fill="url(#collar)"/>
+      <rect x="196" y="136" width="22" height="100" rx="6" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="1.5"/>
+      <rect x="198" y="138" width="5" height="96" rx="2.5" fill="#fff" opacity=".6"/>
+      <!-- the lanyard eyelet -->
+      <circle cx="534" cy="188" r="14" fill="#000" opacity=".3"/>
+      <circle cx="534" cy="186" r="13" fill="url(#metal)"/>
+      <circle cx="534" cy="186" r="7.5" fill="#cdd0d4"/>
+      <circle cx="534" cy="186" r="7.5" fill="none" stroke="#2a2c30" stroke-opacity=".8" stroke-width="2"/>
+      <!-- the mark and name, printed in #f4c51c -->
+      <g transform="translate(304 160) scale(.62)">
+        <polygon points="4,4 44,18 52,34 38,42 16,36" fill="#f4c51c"/>
+        <polygon points="4,4 44,18 52,34" fill="#fff" opacity=".28"/>
+        <line x1="40" y1="40" x2="70" y2="70" stroke="#f4c51c" stroke-width="9" stroke-dasharray="5 6"/>
+        <circle cx="74" cy="74" r="10" fill="none" stroke="#f4c51c" stroke-width="5"/>
+      </g>
+      <text x="374" y="184" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="19" letter-spacing="3" fill="#f4c51c">SCORPION</text>
+      <text x="375" y="206" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="17" fill="#f1ede4">128 GB</text>
+      <text x="376" y="224" font-family="Arial, Helvetica, sans-serif" font-size="9" letter-spacing="2.5" fill="#8d8a82">OFFLINE AI</text>
     </g>
-    <text x="346" y="184" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="24" letter-spacing="4" fill="#1a1405">SCORPION</text>
-    <text x="348" y="208" font-family="Arial, Helvetica, sans-serif" font-size="12" letter-spacing="3" fill="#4a3a0a">OFFLINE AI</text>
-    <text x="348" y="248" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="26" fill="#1a1405">128 GB</text>
+  </defs>
+  <rect width="640" height="380" fill="url(#studio)"/>
+  <g transform="rotate(-8 320 190)">
+    <ellipse cx="318" cy="276" rx="290" ry="22" fill="#000" opacity="0.32" filter="url(#blur12)"/>
+    <ellipse cx="316" cy="262" rx="250" ry="7" fill="#000" opacity="0.4" filter="url(#blur3)"/>
+    <use href="#stick" xlink:href="#stick"/>
   </g>
 </svg>

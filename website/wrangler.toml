@@ -6,6 +6,12 @@ main = "worker.js"
 compatibility_date = "2025-09-01"
 compatibility_flags = ["nodejs_compat"] # process.env for the settings and secrets
 
+# The site's own domain (its zone is on this Cloudflare account); the DNS records are created automatically.
+routes = [
+  { pattern = "scorpionai.tech", custom_domain = true },
+  { pattern = "www.scorpionai.tech", custom_domain = true },
+]
+
 [assets]
 directory = "."          # the pages; .assetsignore keeps the server code and tooling out
 binding = "ASSETS"
