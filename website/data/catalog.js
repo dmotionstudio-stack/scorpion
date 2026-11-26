@@ -6,7 +6,7 @@ export const CURRENCY = 'usd';
 
 // The version on sale now. Download links for Standard and Complete stay on the
 // version that was bought; Lifetime always gets this one.
-export const CURRENT_VERSION = '0.1.8';
+export const CURRENT_VERSION = '0.1.60';
 
 // Scorpion OS has its own version, separate from the app's.
 export const OS_VERSION = '0.1';

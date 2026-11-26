@@ -75,6 +75,15 @@ test('the website orb is an exact copy of the app orb', async () => {
   assert.equal(site, app, 'copy src/renderer/orb.js to website/assets/orb/orb.js');
 });
 
+test('the website humanoid is an exact copy of the app humanoid', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const [app, site] = await Promise.all([
+    readFile(new URL('../src/renderer/humanoid.js', import.meta.url), 'utf8'),
+    readFile(new URL('../website/assets/orb/humanoid.js', import.meta.url), 'utf8'),
+  ]);
+  assert.equal(site, app, 'copy src/renderer/humanoid.js to website/assets/orb/humanoid.js');
+});
+
 test('every page link and image on the website points at a file that exists', async () => {
   const { readdir, readFile, access } = await import('node:fs/promises');
   const root = new URL('../website/', import.meta.url);

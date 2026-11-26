@@ -217,6 +217,10 @@ code { font-family: var(--mono); font-size: .9em; background: var(--panel-2); pa
 
 /* The ORB section: a playable orb */
 .orb-section { position: relative; overflow: hidden; }
+.forms-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 4px; }
+/* The point of light the orb folds into and the humanoid grows from (assets/forms-site.js). */
+.forms-seed { position: absolute; left: 50%; top: 81%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, #fff 0%, var(--gold) 32%, transparent 68%); mix-blend-mode: screen; opacity: 0; z-index: 2; }
 .orb-layout { display: grid; grid-template-columns: .9fr 1.1fr; gap: 40px; align-items: center; }
 @media (max-width: 960px) { .orb-layout { grid-template-columns: 1fr; } }
 .orb-stage {

@@ -73,7 +73,7 @@ function footer() {
         </div>
       </div>
       <div class="footer-bottom">
-        <span>&copy; ${year} Scorpion. Pay once, yours forever.</span>
+        <span>&copy; ${year} Scorpion. Free for Windows and Mac; editions pay once, yours forever.</span>
         <span>Your chats never leave your computer.</span>
       </div>
     </div>`;
