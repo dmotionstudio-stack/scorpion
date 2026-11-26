@@ -83,3 +83,17 @@ test('the glass skin is a closed grid of triangles on the body', async () => {
   assert.ok(g.index.length > 3000 && g.index.length % 3 === 0);
   assert.ok(Math.max(...g.index) < g.glow.length, 'every triangle uses real points');
 });
+
+test('"transform into the humanoid" and "show me the orb" switch the form, and questions about humanoids do not', async () => {
+  const { parseLook } = await import('../src/renderer/orb-commands.js');
+  for (const s of ['transform into the humanoid', 'Transform into a humanoid.', 'show me your humanoid', 'Scorpion, turn into the humanoid', 'become the humanoid']) {
+    assert.equal(parseLook(s)?.look, 'humanoid', s);
+  }
+  for (const s of ['transform into the orb', 'Show me the orb', 'show me your orb', 'turn back into the orb', 'go back to the orb', 'switch to the sphere']) {
+    assert.equal(parseLook(s)?.look, 'classic', s);
+  }
+  for (const s of ['what is a humanoid', 'tell me about the orb', 'open the orbit app', 'humanoid robots are cool', 'show me the weather']) {
+    assert.equal(parseLook(s), null, s);
+  }
+  assert.equal(parseLook('transform into the humanoid', { lang: 'fr' }), null, 'English only, like the other commands');
+});

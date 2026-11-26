@@ -340,6 +340,9 @@ html.glass-native .thread, html.glass-css .thread { color: color-mix(in srgb, va
 .ix-stage { position: absolute; inset: 0; cursor: grab; }
 .ix-stage:active { cursor: grabbing; }
 .ix-stage canvas { display: block; }
+/* The point of light the orb folds into and the humanoid grows from (a transformation, app.js switchLook). */
+.ix-seed { position: absolute; left: 50%; top: 81%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, #fff 0%, var(--accent, #ffd35a) 32%, transparent 68%); mix-blend-mode: screen; opacity: 0; }
 .ix-vignette, .ix-grain, .ix-scanlines { position: absolute; inset: 0; pointer-events: none; }
 .ix-vignette { z-index: 9; background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,.72) 100%); }
 .ix-grain { z-index: 10; opacity: .06; mix-blend-mode: screen; background-size: 150px;

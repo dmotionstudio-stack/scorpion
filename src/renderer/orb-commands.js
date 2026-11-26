@@ -63,6 +63,19 @@ export function instantCommand(text, { now = new Date(), lang = 'en' } = {}) {
   return null;
 }
 
+// "Transform into the humanoid", "show me your humanoid", and back: "transform into the orb", "show me the orb".
+// Returns { look: 'humanoid' | 'classic', say, same } or null. English only; it has to start with a verb of showing or changing,
+// so a question about humanoids still goes to the model.
+const LOOK_VERB = /^(?:please )?(?:transform|turn|change|morph|switch|become|go back|go|show|bring|let me see|can i see|i want to see|i would like to see)\b/;
+export function parseLook(text, { lang = 'en' } = {}) {
+  if (String(lang || 'en').toLowerCase().split('-')[0] !== 'en') return null;
+  const t = clean(text).replace(/^(?:hey |ok |okay )?(?:scorpion )?/, '').trim();
+  if (!t || t.split(' ').length > 10 || !LOOK_VERB.test(t)) return null;
+  if (/\bhumanoid\b/.test(t)) return { look: 'humanoid', say: 'Transforming into the humanoid.', same: "I'm already the humanoid." };
+  if (/\b(?:orb|sphere)\b/.test(t)) return { look: 'classic', say: 'Back to the orb.', same: "I'm already the orb." };
+  return null;
+}
+
 // More things done without the model: open an installed app by name, a screenshot, dark or light mode, the battery.
 // Returns { open: 'name' } | { intent: 'screenshot' | 'dark-mode' | 'light-mode', say } | { battery: true } or null. English only.
 // (The app name is matched against the installed apps by bestApp: no match, and the model gets the request.)

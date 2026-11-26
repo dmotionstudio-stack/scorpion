@@ -1144,6 +1144,89 @@ const accentColor = () => {
 };
 const STATE_LABEL = { standby: 'Standby', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', acting: 'Working', waiting: 'Waiting for you' };
 
+// The orb and the humanoid are two forms of one thing: switch between them while the orb is open (a spoken "transform
+// into the humanoid" / "show me the orb"). The new one is made on top of the old, the old fades out as it fades in.
+const HEART_AT = '50% 81%'; // where the humanoid's heart is on the screen: the point everything folds into and grows from
+async function switchLook(look) {
+  if (!IX.open || IX.switching) return;
+  if (IX.orb && (S.settings.orbLook === 'humanoid' ? 'humanoid' : 'classic') === (look === 'humanoid' ? 'humanoid' : 'classic')) return; // already that form
+  IX.switching = true;
+  try {
+    S.settings = await api.updateSettings({ orbLook: look === 'humanoid' ? 'humanoid' : 'classic' });
+    const strong = (IS_MAC || (S.hardware?.dedicatedVram || 0) >= 2 * 1024 ** 3) && S.perf !== 'light';
+    const stage = $('#ix-stage');
+    const old = IX.orb;
+    const before = [...stage.querySelectorAll('canvas')];
+    const options = { accent: accentColor(), quality: strong ? 'high' : 'low' };
+    const toHumanoid = look === 'humanoid';
+    const started = performance.now();
+    // 1. The old form folds into its heart, in slow motion: the orb breathes in, then shrinks to a point of light; the
+    //    humanoid folds back into the seed of light on its chest.
+    const OUT = toHumanoid ? 2400 : 2700;
+    if (toHumanoid) {
+      for (const c of before) {
+        c.style.transformOrigin = HEART_AT;
+        c.style.mixBlendMode = 'screen'; // the black of the picture does not show as the orb shrinks
+        c.animate([
+          { transform: 'scale(1)', filter: 'brightness(1)', opacity: 1, offset: 0 },
+          { transform: 'scale(1.07)', filter: 'brightness(1.6)', offset: 0.18 },
+          { transform: 'scale(0.3)', filter: 'brightness(2)', offset: 0.75 },
+          { transform: 'scale(0.04)', filter: 'brightness(2.4)', opacity: 1, offset: 0.97 },
+          { transform: 'scale(0.02)', filter: 'brightness(2.4)', opacity: 0, offset: 1 },
+        ], { duration: OUT, easing: 'ease-in-out', fill: 'forwards' });
+      }
+    } else old?.outro?.(OUT / 1000);
+    // The point of light: it is there from before the orb has quite gone, and stays, glowing, until the next form starts to grow.
+    const seed = document.createElement('div');
+    seed.className = 'ix-seed';
+    stage.appendChild(seed);
+    const glow = seed.animate([{ opacity: 0, transform: 'scale(0.4)' }, { opacity: 1, transform: 'scale(1)', offset: 0.3 }, { opacity: 0.8, transform: 'scale(0.8)', offset: 0.65 }, { opacity: 1, transform: 'scale(1)' }], { duration: 1400, delay: toHumanoid ? OUT * 0.62 : 0, iterations: Infinity, direction: 'alternate', fill: 'backwards' });
+    void glow;
+    // 2. The new form is made meanwhile (nothing shows of it yet)
+    const fresh = look === 'humanoid'
+      ? await import('./humanoid.js').then(({ createHumanoid }) => createHumanoid(stage, { ...options, lines: S.settings.orbLines, style: S.settings.orbStyle, glow: S.settings.orbGlow }))
+      : await import('./orb.js').then(({ createOrb }) => createOrb(stage, options));
+    const added = [...stage.querySelectorAll('canvas')].filter((c) => !before.includes(c));
+    IX.orb = fresh;
+    IX.look = `${look === 'humanoid' ? 'humanoid' : 'classic'}:${strong ? 'high' : 'low'}`;
+    fresh.setState(interactState());
+    applyOrbCap();
+    fresh.start();
+    orbSys?.refreshShortcuts();
+    // 3. The new form grows out of that point of light: the humanoid from its seed, slowly; the orb from a spark that
+    //    swells past its size and settles.
+    const wait = Math.max(0, OUT - 500 - (performance.now() - started));
+    setTimeout(() => { seed.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 700, fill: 'forwards' }); setTimeout(() => seed.remove(), 750); }, wait + (toHumanoid ? 250 : OUT + 100));
+    if (toHumanoid) {
+      fresh.introduce?.(10, { slow: 1.8, delay: wait / 1000 });
+      setTimeout(() => fresh.pulse?.('info'), wait); // a ring of light goes out as the growing begins
+      setTimeout(() => { for (const c of before) c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, fill: 'forwards' }); }, wait + 200); // the point of light becomes the seed
+    }
+    else {
+      for (const c of added) {
+        c.style.transformOrigin = HEART_AT;
+        c.style.mixBlendMode = 'screen';
+        c.animate([
+          { transform: 'scale(0.02)', filter: 'brightness(2.4)', opacity: 0, offset: 0 },
+          { opacity: 1, offset: 0.12 },
+          { transform: 'scale(0.35)', filter: 'brightness(2)', offset: 0.4 },
+          { transform: 'scale(1.1)', filter: 'brightness(1.5)', offset: 0.75 },
+          { transform: 'scale(1)', filter: 'brightness(1)', opacity: 1, offset: 1 },
+        ], { duration: 3400, delay: wait, easing: 'ease-out', fill: 'both' });
+      }
+    }
+    orbSys?.refreshShortcuts();
+    setTimeout(() => { try { old?.dispose(); } catch {} }, Math.max(wait + 900, OUT + 150));
+    setTimeout(() => { IX.switching = false; for (const c of added) c.style.mixBlendMode = ''; }, wait + (toHumanoid ? 6400 : 3600));
+  } catch (err) {
+    IX.switching = false;
+    throw err;
+  }
+}
+
+// Anything can ask for a form: document.dispatchEvent(new CustomEvent('orb:look', { detail: 'humanoid' | 'classic' })).
+document.addEventListener('orb:look', (e) => { switchLook(e.detail).catch((err) => toast(errText(err), 'error')); });
+
 // The humanoid introduces itself the first time it appears in a run of Scorpion: said aloud when the voice is
 // installed, always shown as words under it.
 const HUMANOID_INTRO = "Hello, I'm Scorpion. I'm your assistant, and I run entirely on this computer: your questions, your voice and your files never leave it. Ask me anything, show me with your hands, or just talk.";
@@ -2244,7 +2327,7 @@ function wire() {
   wirePeople();
   const libraryView = initLibrary({ api, $, esc, toast, errText, gb });
   desktopUi = initDesktop({ api, $, esc, toast, errText, setView, S });
-  orbSys = initOrbSystem({ voiceBusy, orbThread: () => OT.thread, api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, insets: () => interactBar?.insets() || { top: 0, right: 0, bottom: 0, left: 0 }, pageGestures: (r) => hands?.handle(r, { globals: false }), handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
+  orbSys = initOrbSystem({ voiceBusy, orbThread: () => OT.thread, api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, insets: () => interactBar?.insets() || { top: 0, right: 0, bottom: 0, left: 0 }, pageGestures: (r) => hands?.handle(r, { globals: false }), switchLook, handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice });

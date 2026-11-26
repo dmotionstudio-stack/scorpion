@@ -395,10 +395,7 @@ const BODY_VERTEX = `
     float h = (position.y + 1.6) / 3.8;
     float band = 0.0;
     float reveal = 1.0;
-    if (uMode < 0.5) reveal = sweep(h, uIntro, band);
-    else if (uMode < 1.5) reveal = sweep(1.0 - h, uIntro, band);
-    else if (uMode < 2.5) reveal = sweep(clamp((position.x + 2.2) / 4.4, -0.3, 1.3), uIntro, band);
-    else if (uMode < 3.5) reveal = sweep(clamp(length(position.xy - vec2(0.0, 0.3)) / 3.0, 0.0, 1.2), uIntro, band);
+    if (uMode < 3.5) reveal = sweep(clamp(length(position.xy - vec2(0.0, 0.3)) / 3.0, 0.0, 1.2), uIntro, band);
     else if (uMode < 4.5) reveal = sweep(aSeed * 0.95, uIntro, band);
     else if (uMode < 5.5) reveal = sweep(fract(atan(position.x, position.z) / 6.2832 + 0.5) * 0.7 + h * 0.3, uIntro, band);
     else reveal = smoothstep(0.0, (uMode > 5.5 && uMode < 8.5) || uMode > 9.5 ? 0.12 : 0.35, uIntro);
@@ -579,12 +576,16 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
   let heartFlash = -10; // when the heart orb last flared (a wave hello)
   let figYaw = 0;
   let idleK = 0; // how much it is idling (looking around on its own)
-  const INTRO_MODES = 11;
-  let introMode = 0, introSide = 1;
-  const randomIntro = () => { introMode = Math.floor(Math.random() * INTRO_MODES); introSide = Math.random() < 0.5 ? -1 : 1; };
+  // The ways it enters (the shader and the motion below know each by its number): out from the heart, dissolve, spiral,
+  // spin-in, jelly pop, fly-in, assemble, grow.
+  const INTRO_MODES = [3, 4, 5, 6, 7, 8, 9, 10];
+  let introMode = 3, introSide = 1;
+  let introRev = false, introSlow = 1; // introRev: playing the grow backwards, the figure folding into its heart (the transformation to the orb)
+  const randomIntro = () => { introMode = INTRO_MODES[Math.floor(Math.random() * INTRO_MODES.length)]; introSide = Math.random() < 0.5 ? -1 : 1; };
   let introAt = -100; // when the figure began drawing itself in
   let running = false, raf = 0, fpsCap = 60, last = 0;
   let viewTarget = null;
+  let frameK = 0; // 0: on the bottom edge of the whole screen; 1: framed whole inside a tile (apps are open)
   const view = { cx: 0.5, cy: 0.5, k: 1 };
   const cam = { yaw: 0, pitch: 0.06, dist: 6.3 };
   const camGoal = { yaw: 0, pitch: 0.06, dist: 6.3 };
@@ -605,7 +606,7 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
     const w = container.clientWidth || 1;
     const h = container.clientHeight || 1;
     if (Math.abs(view.k - 1) < 0.002 && Math.abs(view.cx - 0.5) < 0.002 && Math.abs(view.cy - 0.5) < 0.002) camera.clearViewOffset();
-    else camera.setViewOffset(w / view.k, h / view.k, w / (2 * view.k) - view.cx * w, h / (2 * view.k) - view.cy * h, w, h);
+    else camera.setViewOffset(w * view.k, h * view.k, (w * view.k) / 2 - view.cx * w, (h * view.k) / 2 - view.cy * h, w, h); // the picture at k times its size, its middle at the tile's middle
     camera.updateProjectionMatrix();
   }
   function resize() {
@@ -653,6 +654,7 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
     const ease = (a, b, k) => a + (b - a) * Math.min(1, dt * k);
     for (const k of Object.keys(now)) now[k] = ease(now[k], target[k], 2.5);
     level = ease(level, levelTarget, 12);
+    frameK = ease(frameK, viewTarget ? 1 : 0, 3);
     for (const k of ['yaw', 'pitch', 'dist']) cam[k] = ease(cam[k], camGoal[k], 4);
 
     // Where the head looks: at the pointer or your hand while one is there (for 2.5 s after it stops), else at your face.
@@ -678,7 +680,8 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
     bodyU.uHeart.value = Math.max(0, 1 - (t - heartFlash) / 1.4);
     let introDist = 0, introSpin = 0, sx = 1, sy = 1, pivotY = Y_BOTTOM;
     {
-      const k = Math.max(0, Math.min(1, (t - introAt) / (introMode === 10 ? 3.4 : introMode >= 6 ? 2.6 : 3.4)));
+      const raw = Math.max(0, Math.min(1, (t - introAt) / ((introMode === 10 ? 3.4 : introMode >= 6 ? 2.6 : 3.4) * introSlow)));
+      const k = introRev ? 1 - raw : raw;
       const e = k * k * (3 - 2 * k);
       bodyU.uIntro.value = e;
       bodyU.uMode.value = introMode;
@@ -691,14 +694,14 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
         sy = Math.max(0.001, s * (1 + wob)); sx = Math.max(0.001, s * (1 - wob));
       } else if (introMode === 8) introDist = 10 * (1 - e) ** 2; // it flies in from far away
       else if (introMode === 10) { // it grows from a seed of light on its chest: a thin sprout first, then it fills out
-        const g = 1 - (1 - k) ** 3;
+        const g = 1 - (1 - k) ** 2.2;
         sy = Math.max(0.02, g); sx = Math.max(0.02, g ** 1.8);
         pivotY = -0.62;
       }
-      seedSprite.visible = introMode === 10 && k < 0.98;
+      seedSprite.visible = introMode === 10 && (introRev ? raw < 0.995 : k < 0.98);
       if (seedSprite.visible) {
         seedSprite.scale.setScalar(0.35 + 1.1 * (1 - k) ** 1.5 + 0.12 * Math.sin(t * 12));
-        seedSprite.material.opacity = Math.min(1, 1.1 - k * 1.1);
+        seedSprite.material.opacity = Math.min(1, 1.1 - k * 1.1) * (introRev ? 1 - Math.min(1, Math.max(0, (raw - 0.8) / 0.2)) : 1);
         seedSprite.material.color.copy(bodyU.uRim.value);
       }
     }
@@ -716,15 +719,18 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
     figYaw = ease(figYaw, look.yaw * 0.15 + Math.sin(t * 0.21) * 0.025, 2);
     figure.rotation.y = figYaw + introSpin;
     figure.scale.set(sx, sy, sx);
-    bodyU.uPS.value = Math.max(0.05, Math.min(sx, sy)); // the dots shrink with the figure
+    bodyU.uPS.value = Math.max(0.05, Math.min(sx, sy)) * Math.max(0.3, Math.min(1.7, view.k)); // the dots shrink with the figure, and with a small tile
+    starU.uSize.value = (low ? 3.0 : 2.6) * Math.max(0.45, Math.min(1.7, view.k));
     figure.position.y = Math.sin(t * 1.2) * 0.01 + pivotY * (1 - sy); // it scales about the bottom edge (or the heart, for a seed)
     figure.position.x = 0;
     sky.rotation.y = Math.sin(t * 0.04) * 0.12;
     sky.rotation.z = Math.sin(t * 0.03) * 0.03;
     const cy = cam.yaw + Math.sin(t * 0.15) * 0.05 + look.yaw * 0.08;
     const cp = cam.pitch + Math.sin(t * 0.12) * 0.015;
-    TARGET.y = Y_BOTTOM + HALF_FOV_TAN * (cam.dist + introDist) * 0.97; // the bottom of the body on the bottom edge of the screen, whatever the screen
-    const camDist = cam.dist + introDist;
+    const baseDist = cam.dist + introDist;
+    // On its own: the bottom of the body on the bottom edge of the screen, whatever the screen. In a tile: the whole figure framed.
+    TARGET.y = (Y_BOTTOM + HALF_FOV_TAN * baseDist * 0.97) * (1 - frameK) + 0.55 * frameK;
+    const camDist = baseDist * (1 - 0.06 * frameK);
     camera.position.set(TARGET.x + Math.sin(cy) * Math.cos(cp) * camDist, TARGET.y + Math.sin(cp) * camDist, TARGET.z + Math.cos(cy) * Math.cos(cp) * camDist);
     camera.lookAt(TARGET);
 
@@ -768,7 +774,9 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
     setLines(mode) { if (!(mode in LINES)) mode = 'subtle'; starU.uSky.value = LINES[mode]; sky.visible = mode !== 'off'; },
     // Draws the figure in again from the bottom up.
     // Enters again, in a random way, or in the way asked for (0 to 9).
-    introduce(mode) { if (Number.isInteger(mode) && mode >= 0 && mode < INTRO_MODES) introMode = mode; else randomIntro(); introAt = clock.elapsedTime; },
+    introduce(mode, { slow = 1, delay = 0 } = {}) { introRev = false; introSlow = slow; if (INTRO_MODES.includes(mode)) introMode = mode; else randomIntro(); introAt = clock.elapsedTime + delay; },
+    // The way out, for the transformation into the orb: the figure folds back into the seed of light on its chest.
+    outro(seconds = 2.6) { introRev = true; introMode = 10; introSlow = seconds / 3.4; introAt = clock.elapsedTime; },
     setSatellites() {},
     setRingLook() {},
     spinRings() {},
@@ -781,7 +789,7 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
       const w = container.clientWidth || 1;
       const h = container.clientHeight || 1;
       if (!viewTarget) hand = { x: Math.max(-1, Math.min(1, (tile.cx / w) * 2 - 1)), y: Math.max(-1, Math.min(1, -((tile.cy / h) * 2 - 1))), at: clock.elapsedTime }; // an app opens there: it looks at it
-      viewTarget = { cx: Math.max(0, Math.min(1, tile.cx / w)), cy: Math.max(0, Math.min(1, tile.cy / h)), k: Math.max(0.22, Math.min(1, Math.min(tile.w / w, tile.h / h) * 1.15)) };
+      viewTarget = { cx: Math.max(0, Math.min(1, tile.cx / w)), cy: Math.max(0, Math.min(1, tile.cy / h)), k: Math.max(0.22, Math.min(1.7, Math.min(tile.w / (w * 0.66), tile.h / (h * 0.98)))) }; // as big as the figure (two thirds of the screen's width, all of its height) can be inside the tile
     },
     // The two-hand "zoom into" gesture: closer (amount: 0..1), or back.
     zoomToward(id, amount = 0) { camGoal.dist = 6.3 - Math.min(1, Math.max(0, amount)) * 4; },
@@ -806,6 +814,7 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
       if (running) return;
       running = true;
       clock.getDelta();
+      introRev = false; introSlow = 1;
       randomIntro();
       introAt = clock.elapsedTime + 0.15;
       resize();

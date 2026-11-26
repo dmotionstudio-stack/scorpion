@@ -10,7 +10,7 @@
 //   left (orb-frame.js does the window work), the orb moves to the right.
 // - At sign-in the orb greets the person it recognizes.
 // - The wake word: saying "Scorpion" starts listening.
-import { instantCommand, parseAction, bestApp, parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
+import { instantCommand, parseAction, parseLook, bestApp, parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
 import { intentsFor, matchSpoken } from '/shared/intents.js';
 import { PLATFORM } from './palette.js';
 import { ringLook, siteUrl } from './orb-bubbles.js';
@@ -427,6 +427,15 @@ export function initOrbSystem(ctx) {
       caption(q.say);
       if (q.volume) for (let i = 0; i < (q.volume === 'mute' ? 1 : IS_WINDOWS ? 5 : 2); i++) api.shellVolume(q.volume).catch(() => {});
       if (q.volume !== 'mute' && S.voice?.installed) speaker.say(q.say);
+      return true;
+    }
+    // The orb and the humanoid are two forms of the same thing: "transform into the humanoid", "show me the orb".
+    const lk = ctx.switchLook && parseLook(text, { lang });
+    if (lk) {
+      $('#ix-you').textContent = text;
+      const same = (S.settings.orbLook === 'humanoid' ? 'humanoid' : 'classic') === lk.look;
+      say(same ? lk.same : lk.say);
+      if (!same) ctx.switchLook(lk.look).catch((err) => toast(errText(err), 'error'));
       return true;
     }
     // Open an app, a screenshot, dark or light mode, the battery: at once too. An app that is not in the installed list goes to the model.
