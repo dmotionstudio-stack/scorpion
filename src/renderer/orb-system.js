@@ -10,7 +10,7 @@
 //   left (orb-frame.js does the window work), the orb moves to the right.
 // - At sign-in the orb greets the person it recognizes.
 // - The wake word: saying "Scorpion" starts listening.
-import { instantCommand, parseAction, parseLook, parseSwitch, bestApp, parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
+import { instantCommand, parseAction, parseLook, parseSwitch, parseSoundCheck, bestApp, parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
 import { intentsFor, matchSpoken } from '/shared/intents.js';
 import { PLATFORM } from './palette.js';
 import { ringLook, siteUrl } from './orb-bubbles.js';
@@ -427,6 +427,13 @@ export function initOrbSystem(ctx) {
       caption(q.say);
       if (q.volume) for (let i = 0; i < (q.volume === 'mute' ? 1 : IS_WINDOWS ? 5 : 2); i++) api.shellVolume(q.volume).catch(() => {});
       if (q.volume !== 'mute' && S.voice?.installed) speaker.say(q.say);
+      return true;
+    }
+    // Background noises are ignored; only when asked does Scorpion listen to the room and say what it hears.
+    if (ctx.listenToRoom && parseSoundCheck(text, { lang })) {
+      $('#ix-you').textContent = text;
+      say('Listening to the room for a few seconds.');
+      ctx.listenToRoom().then((line) => say(line)).catch(() => say("I couldn't listen to the room."));
       return true;
     }
     // Scorpion turns its own switches: "turn off hand gestures", "enable face tracking", "turn the wake word on".

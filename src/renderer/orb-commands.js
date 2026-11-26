@@ -88,6 +88,7 @@ const SWITCH_WORDS = {
   sounds: /^(?:the |my |your )?(?:soft sounds|sound effects|chimes|orb sounds|beeps)$/,
   lines: /^(?:the |my |your )?(?:background lines|lines|constellation|stars|background|background animation)$/,
 };
+SWITCH_WORDS.noise = /^(?:the |my |your )?(?:background )?(?:noise|noises|noise blocking|noise filter|noise filtering|noise cancelling|noise cancellation|voice focus|noise reduction)$/;
 const SWITCH_ON = '(?:turn|switch|put|set)(?: it| them)? on|enable|activate|start|begin|use';
 const SWITCH_OFF = '(?:turn|switch|put|set)(?: it| them)? off|disable|deactivate|stop|end|quit|hide';
 function switchKey(words) {
@@ -108,10 +109,20 @@ export function parseSwitch(text, { lang = 'en' } = {}) {
     const key = switchKey(m[2]);
     if (key) return { key, on };
   }
+  // "block background noises" / "stop blocking background noise"
+  if (/^(?:block|filter out|ignore|cancel|cut|mute) (?:the |all )?(?:background )?(?:noise|noises|sounds)$/.test(t)) return { key: 'noise', on: true };
+  if (/^(?:stop (?:blocking|ignoring|filtering|filtering out|cancelling)|unblock|allow|let in|stop muting) (?:the |all )?(?:background )?(?:noise|noises|sounds)$/.test(t)) return { key: 'noise', on: false };
   // "turn the wake word off", "switch hand gestures on"
   m = /^(?:turn|switch|put|set) (.+) (on|off)$/.exec(t);
   if (m) { const key = switchKey(m[1]); if (key) return { key, on: m[2] === 'on' }; }
   return null;
+}
+
+// "What's that noise?", "identify the background noises": the one time Scorpion listens to the room itself, for a few seconds.
+export function parseSoundCheck(text, { lang = 'en' } = {}) {
+  if (String(lang || 'en').toLowerCase().split('-')[0] !== 'en') return false;
+  const t = clean(text).replace(/^(?:hey |ok |okay )?(?:scorpion )?(?:please |can you |could you )?/, '').replace(/ please$/, '').trim();
+  return /^(?:what(?:'s|s| is| are) (?:that|this|those|the) (?:background )?(?:noise|noises|sound|sounds)(?: (?:i hear|you hear|around me|around|in the background|in here|in the room))?|what(?: do|'s|s) (?:you|i) hear(?: around me| in the background| in here)?|(?:identify|detect|analyse|analyze|check|tell me|describe|listen to|listen for) (?:the |any |all )?(?:background )?(?:noises?|sounds?)(?: (?:around me|around|in the background|in here|in the room))?|what(?:'s|s| is) making (?:that|this) (?:noise|sound))$/.test(t);
 }
 
 // More things done without the model: open an installed app by name, a screenshot, dark or light mode, the battery.

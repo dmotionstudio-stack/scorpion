@@ -787,8 +787,9 @@ async function listen(onText) {
   V.onText = onText;
   try {
     if (!(await api.micAccess())) throw Object.assign(new Error('Microphone access denied'), { name: 'NotAllowedError' });
-    // In the orb a short pause already ends a short question or command (quick answers), a long sentence waits a little longer.
-    await recorder.start({ vad: true, onEnd: heard, onLevel: (l) => { V.micLevel = l; }, onPause: speculate, ...(IX.open ? { endMs: 750, endShortMs: 600 } : {}) });
+    // Scorpion waits until you have finished (voice.js endPause): a pause to think does not end your turn. What was heard so far is
+    // transcribed at each pause, which also tells it whether the sentence is finished.
+    await recorder.start({ vad: true, voiceFocus: S.settings.blockNoise !== false, onEnd: heard, onLevel: (l) => { V.micLevel = l; }, onPause: speculate, hint: () => V.specText ?? null });
   } catch (err) {
     micError(err);
     return;
@@ -812,9 +813,12 @@ function timingReport() {
 }
 // At a short pause the speech so far is transcribed already; if the turn then ends, that transcript is used (voice.js canReuse).
 function speculate(pcm) {
-  V.spec = { samples: pcm.length, promise: api.transcribe(pcm).catch(() => null) };
+  V.specText = null;
+  const spec = { samples: pcm.length, promise: api.transcribe(pcm).catch(() => null) };
+  V.spec = spec;
+  spec.promise.then((text) => { if (V.spec === spec) V.specText = text; });
 }
-async function heard(pcm) {
+async function heard(pcm, meta) {
   Object.assign(TM, { t0: performance.now(), text: 0, sent: 0, token: 0, audio: 0, shown: false });
   V.transcribing = true;
   renderVoiceButtons();
@@ -822,7 +826,8 @@ async function heard(pcm) {
   const spec = V.spec;
   V.spec = null;
   try {
-    const early = spec && canReuse(spec.samples, pcm.length) ? await spec.promise : null;
+    // The snapshot's transcript stands when only quiet came after it.
+    const early = spec && (meta ? meta.specOk : canReuse(spec.samples, pcm.length)) ? await spec.promise : null;
     text = early != null ? early : await api.transcribe(pcm);
   } catch (err) { toast(errText(err)); }
   V.transcribing = false;
@@ -944,6 +949,7 @@ async function dictateTurn() {
     if (!(await api.micAccess())) throw Object.assign(new Error('Microphone access denied'), { name: 'NotAllowedError' });
     await recorder.start({
       vad: true,
+      voiceFocus: S.settings.blockNoise !== false,
       keepOpen: true,
       onEnd: (pcm) => { D.queue = D.queue.then(() => dictateHeard(pcm)); },
       onLevel: (l) => { if (l > 0.03) lastSound = performance.now(); },
@@ -1201,6 +1207,11 @@ const SWITCHES = {
     plural: true,
     get: () => S.settings.orbSounds !== false,
     set: async (on) => { S.settings = await api.updateSettings({ orbSounds: on }); },
+  },
+  noise: {
+    name: 'Background noise blocking',
+    get: () => S.settings.blockNoise !== false,
+    set: async (on) => { S.settings = await api.updateSettings({ blockNoise: on }); },
   },
   lines: {
     name: 'The background lines',
@@ -2406,7 +2417,7 @@ function wire() {
   wirePeople();
   const libraryView = initLibrary({ api, $, esc, toast, errText, gb });
   desktopUi = initDesktop({ api, $, esc, toast, errText, setView, S });
-  orbSys = initOrbSystem({ voiceBusy, orbThread: () => OT.thread, api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, insets: () => interactBar?.insets() || { top: 0, right: 0, bottom: 0, left: 0 }, pageGestures: (r) => hands?.handle(r, { globals: false }), switchLook, applySwitch, handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
+  orbSys = initOrbSystem({ voiceBusy, orbThread: () => OT.thread, api, $, S, IX, V, speaker, recorder, toast, errText, listen, sendMessage, setView, closeInteract, openInteract, startFace, stopFace, FX, desktopUi, renderInteract, insets: () => interactBar?.insets() || { top: 0, right: 0, bottom: 0, left: 0 }, pageGestures: (r) => hands?.handle(r, { globals: false }), switchLook, applySwitch, listenToRoom: async () => (await import('./voice-focus.js')).listenToRoom(), handIsMouse, orbFps, runIntent: (it) => palette?.run(it) });
   home = initHome({ api, $, esc, toast, errText, S, setView, newThread, sendMessage, openThread, openInteract, desktopUi });
   hands = initHandControl({ api, $, S, V, IX, orbSys, setView, desktopUi });
   welcome = initWelcome({ api, $, S, speaker, listen, toast, errText, installVoice });

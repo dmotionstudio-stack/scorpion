@@ -2,12 +2,28 @@
 // where Whisper (listening) and Kokoro (speaking) run. Nothing here leaves the
 // computer.
 
+import { isVoiceFrame } from './voice-focus.js';
+
 const RATE = 16000; // what Whisper expects
 
 // Speculative listening: at the first short pause the speech so far is already transcribed, while the recorder waits to see if
 // the turn is over. If it is, the transcript is ready (or nearly) when the turn ends; if you carry on, it is thrown away.
 // The speech is the same when only quiet was added since the snapshot (no more than ~0.9 s of it).
 export const canReuse = (snapshotSamples, finalSamples, rate = RATE) => Boolean(snapshotSamples) && finalSamples >= snapshotSamples && finalSamples - snapshotSamples <= rate * 0.9;
+
+// How long a pause has to be to end your turn. Scorpion waits for you to finish: a person pauses to think, so the quiet that ends a
+// turn is a second and a half or more, longer the longer you have been speaking, longer again when what was said so far trails
+// off ("and", "because", a comma) and a little shorter after a finished sentence. text: what was heard so far (or null).
+const TRAILS_OFF = /(?:^|\s)(?:and|but|so|because|or|then|if|when|while|that|which|who|to|of|for|with|the|a|an|my|your|like|um|uh|er|erm|well|also|plus|than|as|at|in|on|about|into|is|are|was|were|i|we|you|it|they|what|how|why)$/i;
+export function endPause(speechMs, text = null) {
+  let ms = speechMs < 2500 ? 1400 : speechMs < 8000 ? 1700 : 2100;
+  if (typeof text === 'string' && text.trim()) {
+    const t = text.trim();
+    if (/(?:[,;:\u2013\u2014-]|\.\.\.|\u2026)$/.test(t) || (!/[.!?]$/.test(t) && TRAILS_OFF.test(t))) ms += 1200;
+    else if (/[.!?]$/.test(t)) ms -= 300;
+  }
+  return ms;
+}
 
 // Records the microphone at 16 kHz. With `vad` on, it waits for speech, then
 // stops by itself after a pause and hands the audio to onEnd; with keepOpen
@@ -17,7 +33,11 @@ export class Recorder {
 
   // endMs: how long a pause ends your turn (a short turn, under ~3 s, gets endShortMs: quick commands and questions).
   // onPause(pcm): called once per pause (after specMs of quiet) with the speech so far, a copy; the recording goes on.
-  async start({ vad = true, onEnd, onLevel, keepOpen = false, endMs = 800, endShortMs = endMs, onPause = null, specMs = 320 } = {}) {
+  // voiceFocus: only a human voice starts a turn and keeps it going (fans, keyboards, hiss and hum do not); see voice-focus.js.
+  // patient (the default): the turn ends after endPause() of quiet, which waits for you to finish; hint() gives what was heard so
+  // far (the speculative transcript) so a sentence that trails off is given more time. Without it, endMs/endShortMs as before.
+  // onEnd(pcm, { specOk }): specOk is true when nothing but quiet followed the last onPause snapshot (so its transcript stands).
+  async start({ vad = true, onEnd, onLevel, keepOpen = false, endMs = 800, endShortMs = endMs, onPause = null, specMs = 320, voiceFocus = true, patient = true, hint = null } = {}) {
     if (this.ctx) return;
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -31,14 +51,26 @@ export class Recorder {
       throw Object.assign(new Error('The microphone is muted'), { name: 'MicMuted' });
     }
     this.ctx = new AudioContext({ sampleRate: RATE });
-    const source = this.ctx.createMediaStreamSource(this.stream);
+    let source = this.ctx.createMediaStreamSource(this.stream);
+    if (voiceFocus) {
+      // Speech lives between about 90 Hz and 6 kHz: the rumble below and the hiss above are cut before anything listens.
+      const high = this.ctx.createBiquadFilter();
+      high.type = 'highpass'; high.frequency.value = 90; high.Q.value = 0.7;
+      const low = this.ctx.createBiquadFilter();
+      low.type = 'lowpass'; low.frequency.value = 6000; low.Q.value = 0.7;
+      source.connect(high); high.connect(low);
+      source = low;
+    }
     const node = this.ctx.createScriptProcessor(2048, 1, 1); // 128 ms steps: the end of speech is noticed sooner
     this.chunks = [];
     let heard = false;
     let quietMs = 0;
     let spokenMs = 0;
     let noise = 0.01;
+    let voicedRun = 0; // frames in a row that were a voice, before the turn starts
+    let sinceVoiceMs = 1e9; // how long since a voice was last heard, while it goes on
     let paused = false; // onPause already called for this pause
+    let specOk = false; // the speech since the last snapshot is only quiet
     node.onaudioprocess = (e) => {
       const data = new Float32Array(e.inputBuffer.getChannelData(0));
       let sum = 0;
@@ -47,29 +79,38 @@ export class Recorder {
       onLevel?.(level);
       const ms = (data.length / RATE) * 1000;
       if (!vad) { this.chunks.push(data); return; }
-      const loud = level > Math.max(0.02, noise * 3);
+      const loudNow = level > Math.max(0.02, noise * 3);
+      const voiced = !voiceFocus || (loudNow && isVoiceFrame(data, RATE));
+      sinceVoiceMs = voiced && loudNow ? 0 : sinceVoiceMs + ms;
+      // With voice focus, a noise that is loud (a clap, a fan starting) is not a turn, and does not hold one open either.
+      const loud = loudNow && (!voiceFocus || sinceVoiceMs < 500);
       if (!heard) {
         // Learn the room's background level and keep a little audio from just
         // before speech starts, so the first word isn't cut off.
         noise = noise * 0.95 + level * 0.05;
         this.chunks.push(data);
-        if (this.chunks.length > 3) this.chunks.shift();
-        heard = loud;
+        if (this.chunks.length > (voiceFocus ? 5 : 3)) this.chunks.shift();
+        voicedRun = voiced && loudNow ? voicedRun + 1 : loudNow ? Math.max(0, voicedRun - 1) : 0;
+        heard = voiceFocus ? voicedRun >= 2 : loud; // two frames (a quarter of a second) of voice start a turn
         return;
       }
       this.chunks.push(data);
       spokenMs += ms;
       quietMs = loud ? 0 : quietMs + ms;
-      if (loud) paused = false;
-      else if (onPause && !paused && quietMs >= specMs && spokenMs - quietMs > 500) { paused = true; onPause(this.snapshot()); }
+      if (loud) { if (paused) specOk = false; paused = false; }
+      else if (onPause && !paused && quietMs >= specMs && spokenMs - quietMs > 500) { paused = true; specOk = true; onPause(this.snapshot()); }
       // A pause ends your turn: quick, like a person waiting for you to finish (a little shorter after a short sentence).
-      if (quietMs > (spokenMs < 3000 ? endShortMs : endMs) || spokenMs > 30000) {
-        if (!keepOpen) { onEnd?.(this.stop()); return; }
+      const wait = patient ? endPause(spokenMs - quietMs, hint?.() ?? null) : spokenMs < 3000 ? endShortMs : endMs;
+      if (quietMs > wait || spokenMs > 90000) {
+        const meta = { specOk: paused && specOk };
+        if (!keepOpen) { onEnd?.(this.stop(), meta); return; }
         const pcm = this.take();
         heard = false;
         quietMs = 0;
         spokenMs = 0;
-        onEnd?.(pcm);
+        paused = false;
+        specOk = false;
+        onEnd?.(pcm, meta);
       }
     };
     source.connect(node);
