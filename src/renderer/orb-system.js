@@ -501,6 +501,13 @@ export function initOrbSystem(ctx) {
 
   function handleGesture(r) {
     if (!IX.orb) return {};
+    // The humanoid answers the hands: an open palm shown after none was a hello, a thumbs-up a nod.
+    if (IX.orb.react) {
+      const at = performance.now();
+      if (r.pose === 'open' && !O.openSeen && at - (O.lastWave || 0) > 6000) { O.lastWave = at; IX.orb.react('wave'); }
+      O.openSeen = r.pose === 'open';
+      if (r.thumb === 'up') IX.orb.react('nod');
+    }
     if (!handleGlobals(r)) return { rotate: true, zoom: true };
     if (O.away) return ctx.pageGestures?.(r) || { rotate: true, zoom: true }; // a place is open over the orb
     return O.framed ? appGesture(r) : orbGesture(r);

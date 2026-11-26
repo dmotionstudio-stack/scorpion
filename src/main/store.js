@@ -68,6 +68,9 @@ const DEFAULT_SETTINGS = {
   orbSpeakEvents: false, // the orb says PC events out loud (battery, downloads, schedules, check-ins)
   orbApps: true, // while the orb is open, apps open inside it (framed in its panel)
   orbBubbles: null, // the bubbles around the orb (orb-bubbles.js; null: the usual ones)
+  orbStyle: 'hologram', // the humanoid's look: 'hologram', 'glass' or 'wireframe'
+  orbGlow: 'normal', // how strongly it glows: 'soft', 'normal' or 'bright'
+  orbSounds: true, // soft sounds on the orb: a cue when it starts listening, a chime when it finishes thinking
   orbLines: 'subtle', // the humanoid's background lines: 'full', 'subtle' or 'off'
   orbLook: 'classic', // the orb's screen: 'classic' (the 3D sphere) or 'humanoid' (a hologram figure with the orb as its heart)
   performance: 'full', // 'full' | 'balanced' | 'light' (Settings → General → Performance)

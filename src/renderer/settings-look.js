@@ -18,6 +18,9 @@ export function initLookSettings({ $, api, S, setSetting, toast, IX, startWelcom
     $('#perf-battery').checked = Boolean(S.settings.performanceOnBattery);
     $('#perf-now').textContent = perfNote(chosen, S.perf);
     $('#orb-look').value = S.settings.orbLook === 'humanoid' ? 'humanoid' : 'classic';
+    $('#orb-style').value = ['glass', 'wireframe'].includes(S.settings.orbStyle) ? S.settings.orbStyle : 'hologram';
+    $('#orb-glow').value = ['soft', 'bright'].includes(S.settings.orbGlow) ? S.settings.orbGlow : 'normal';
+    $('#orb-sounds').checked = S.settings.orbSounds !== false;
     $('#orb-lines').value = ['full', 'off'].includes(S.settings.orbLines) ? S.settings.orbLines : 'subtle';
     if (document.activeElement !== $('#orb-shortcut')) $('#orb-shortcut').value = S.settings.orbShortcut ?? 'Super+Space';
     const access = S.settings.access || {};
@@ -38,6 +41,13 @@ export function initLookSettings({ $, api, S, setSetting, toast, IX, startWelcom
     S.settings = await api.updateSettings({ orbLook: e.target.value });
     if (IX.open) toast('The new look shows the next time the orb opens.');
   };
+  const applyLook = async () => {
+    S.settings = await api.updateSettings({ orbStyle: $('#orb-style').value, orbGlow: $('#orb-glow').value });
+    IX.orb?.setLook?.({ style: $('#orb-style').value, glow: $('#orb-glow').value }); // at once
+  };
+  $('#orb-style').onchange = applyLook;
+  $('#orb-glow').onchange = applyLook;
+  $('#orb-sounds').onchange = async (e) => { S.settings = await api.updateSettings({ orbSounds: e.target.checked }); };
   $('#orb-lines').onchange = async (e) => {
     S.settings = await api.updateSettings({ orbLines: e.target.value });
     IX.orb?.setLines?.(e.target.value); // at once

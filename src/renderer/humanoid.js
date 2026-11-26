@@ -25,12 +25,12 @@ const Y_BOTTOM = -1.4;
 
 // How each conversation state looks. Values ease toward these targets.
 const STATES = {
-  standby: { listen: 0, swirl: 0, face: 0.45, glow: 0.85, lean: 0, tilt: 0, rings: 0.3, veins: 0.5, wave: 0.5, pulses: 0.5 },
-  listening: { listen: 1, swirl: 0.15, face: 0.8, glow: 1.1, lean: 0.17, tilt: 0.24, rings: 1, veins: 0.7, wave: 1, pulses: 1 },
-  thinking: { listen: 0, swirl: 1, face: 0.6, glow: 1.05, lean: -0.03, tilt: -0.06, rings: 0.6, veins: 0.9, wave: 1.6, pulses: 2 },
-  speaking: { listen: 0, swirl: 0.2, face: 0.9, glow: 1.1, lean: 0.04, tilt: 0, rings: 0.8, veins: 1, wave: 1.2, pulses: 1.3 },
-  acting: { listen: 0, swirl: 0.6, face: 0.7, glow: 1, lean: 0, tilt: 0, rings: 0.5, veins: 0.9, wave: 1.2, pulses: 1.6 },
-  waiting: { listen: 0, swirl: 0.05, face: 0.55, glow: 0.9, lean: 0.06, tilt: 0.08, rings: 0.5, veins: 0.6, wave: 0.7, pulses: 0.7 },
+  standby: { speak: 0, listen: 0, swirl: 0, face: 0.45, glow: 0.85, lean: 0, tilt: 0, rings: 0.3, veins: 0.5, wave: 0.5, pulses: 0.5 },
+  listening: { speak: 0, listen: 1, swirl: 0.15, face: 0.8, glow: 1.1, lean: 0.17, tilt: 0.24, rings: 1, veins: 0.7, wave: 1, pulses: 1 },
+  thinking: { speak: 0, listen: 0, swirl: 1, face: 0.6, glow: 1.05, lean: -0.03, tilt: -0.06, rings: 0.6, veins: 0.9, wave: 1.6, pulses: 2 },
+  speaking: { speak: 1, listen: 0, swirl: 0.2, face: 0.9, glow: 1.1, lean: 0.04, tilt: 0, rings: 0.8, veins: 1, wave: 1.2, pulses: 1.3 },
+  acting: { speak: 0, listen: 0, swirl: 0.6, face: 0.7, glow: 1, lean: 0, tilt: 0, rings: 0.5, veins: 0.9, wave: 1.2, pulses: 1.6 },
+  waiting: { speak: 0, listen: 0, swirl: 0.05, face: 0.55, glow: 0.9, lean: 0.06, tilt: 0.08, rings: 0.5, veins: 0.6, wave: 0.7, pulses: 0.7 },
 };
 
 // ---------- colour ----------
@@ -101,6 +101,16 @@ const faceLight = (x, y, nz) => gauss((y - 0.98) / 0.46, 1) * gauss(x / 0.3, 1) 
 
 // Head moves: a nod (yes, done) or a shake (no, an alert), as angles over time t (seconds since it started).
 export function headGesture(kind, t) {
+  if (kind === 'bow') { // goodbye: down, a pause, and back up
+    if (t < 0 || t > 2.3) return { pitch: 0, yaw: 0, roll: 0 };
+    const k = t < 0.6 ? t / 0.6 : t < 1.4 ? 1 : Math.max(0, 1 - (t - 1.4) / 0.9);
+    return { pitch: 0.42 * k * k * (3 - 2 * k), yaw: 0, roll: 0 };
+  }
+  if (kind === 'wave') { // hello: the head sways side to side, with a small nod
+    if (t < 0 || t > 1.9) return { pitch: 0, yaw: 0, roll: 0 };
+    const fade = Math.sin((Math.min(1, t / 1.9)) * Math.PI) ** 0.6;
+    return { pitch: Math.sin(t * Math.PI * 2.5) * 0.04 * fade, yaw: Math.sin(t * Math.PI * 2.5) * 0.12 * fade, roll: Math.sin(t * Math.PI * 4) * 0.17 * fade };
+  }
   if (t < 0 || t > 1.1) return { pitch: 0, yaw: 0 };
   const fade = 1 - t / 1.1;
   if (kind === 'nod') return { pitch: Math.sin(t * Math.PI * 3.6) * 0.14 * fade, yaw: 0 };
@@ -147,23 +157,39 @@ export function buildBody(q = 1) {
   const grow = (x, y, dir, len, depth) => {
     let px = x, py = y;
     for (let i = 0; i < len; i++) {
-      const nx = px + dir * 0.004 - px * 0.03 + (rand() - 0.5) * 0.04;
+      const nx = px + dir * 0.006 - px * 0.03 + (rand() - 0.5) * 0.05;
       const ny = py - 0.028 - rand() * 0.02;
       if (ny < -0.62) break;
       const sd = rand();
       put(lines, px, py, frontZ(px, py), 0, 0, 1, sd, 1, 1, 2);
-      put(lines, nx, ny, frontZ(nx, ny), 0, 0, 1, sd, 1, 1, depth);
-      if (depth < 1 && rand() < 0.1) grow(nx, ny, (rand() - 0.5) * 3, Math.round(len * 0.35), depth + 1);
+      put(lines, nx, ny, frontZ(nx, ny), 0, 0, 1, sd, 1, 1, 2);
+      if (depth < 2 && rand() < 0.13) grow(nx, ny, (rand() - 0.5) * 3, Math.round(len * 0.45), depth + 1);
       px = nx; py = ny;
     }
   };
-  for (const x of [-0.085, -0.03, 0.035, 0.09]) grow(x, 0.62, -Math.sign(x) * 0.5, 48, 2);
+  for (const x of [-0.1, -0.05, -0.012, 0.02, 0.06, 0.105]) grow(x, 0.62, -Math.sign(x) * 0.5, 56, 0);
   // The knot of light low on the neck's flare.
-  for (let i = 0; i < 260 * q; i++) {
-    const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * 0.12;
+  for (let i = 0; i < 460 * q; i++) {
+    const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * 0.18;
     const x = Math.cos(a) * r, y = -0.62 + Math.sin(a) * r * 0.8;
     put(dots, x, y, frontZ(x, y) + rand() * 0.03, 0, 0, 1, rand(), 0, 0.9, 3);
   }
+  // The heart: three spinning rings of light round the knot on the chest, and a beating core.
+  const HEART = [0, -0.62, frontZ(0, -0.62) + 0.03];
+  for (let k = 0; k < 3; k++) {
+    const tilt = (k / 3) * Math.PI, spin = k * 0.9;
+    const segs = Math.max(40, Math.round(72 * q));
+    for (let i = 0; i < segs; i++) {
+      for (const j of [i, i + 1]) {
+        const a = (j / segs) * Math.PI * 2;
+        let x = Math.cos(a) * 0.2, y = Math.sin(a) * 0.2, z = 0;
+        const y2 = y * Math.cos(tilt) - z * Math.sin(tilt), z2 = y * Math.sin(tilt) + z * Math.cos(tilt);
+        const x3 = x * Math.cos(spin) + z2 * Math.sin(spin), z3 = -x * Math.sin(spin) + z2 * Math.cos(spin);
+        put(lines, HEART[0] + x3, HEART[1] + y2, HEART[2] + z3, 0, 0, 1, k / 3 + 0.01, 0, 0.8, 8);
+      }
+    }
+  }
+  put(dots, HEART[0], HEART[1], HEART[2], 0, 0, 1, 0.5, 0, 1, 9);
   // Dust rising off the crown, and a few larger bubbles drifting round the head.
   for (let i = 0; i < 1500 * q; i++) {
     const a = rand() * Math.PI * 2, h = rand() ** 1.5;
@@ -177,9 +203,15 @@ export function buildBody(q = 1) {
     put(dots, Math.cos(a) * r, y, Math.sin(a) * r * 0.9, 0, 0, 1, rand(), 0, 2.2, 4);
   }
   // Soft sprites for the glow inside the face.
-  for (let i = 0; i < 46; i++) {
-    const x = (rand() - 0.5) * 0.5, y = 0.98 + (rand() - 0.5) * 0.7;
-    put(dots, x, y, frontZ(x, y) - 0.04, 0, 0, 1, rand(), 1, 1, 6);
+  for (let i = 0; i < 150; i++) {
+    const a = rand() * Math.PI * 2, r = Math.sqrt(rand());
+    const x = Math.cos(a) * r * 0.27, y = 0.98 + Math.sin(a) * r * 0.42;
+    put(dots, x, y, frontZ(x, y) - 0.04, 0, 0, 1, rand(), 1, 1 - r * 0.55, 6);
+  }
+  // Two faint hollows of light where eyes would be (they blink now and then).
+  for (const ex of [-0.14, 0.14]) for (let i = 0; i < 3; i++) {
+    const x = ex + (rand() - 0.5) * 0.03, y = 1.13 + (rand() - 0.5) * 0.02;
+    put(dots, x, y, frontZ(x, y) - 0.03, 0, 0, 1, rand(), 1, 1, 7);
   }
   // Dotted rings of light behind the head.
   for (let k = 0; k < 15; k++) {
@@ -219,9 +251,27 @@ export function buildConstellation(q = 1) {
   return { stars, links };
 }
 
+// The glass look's skin: the same body as a faint surface (triangles), for the 'glass' style.
+export function buildGlass(q = 1) {
+  const rows = Math.round(70 * Math.max(0.6, q)), cols = Math.round(56 * Math.max(0.6, q));
+  const pos = [], nrm = [], seed = [], warm = [], glow = [], kind = [], index = [];
+  for (let r = 0; r <= rows; r++) {
+    const y = Y_BOTTOM + (r / rows) * (Y_TOP - 0.003 - Y_BOTTOM);
+    for (let c = 0; c <= cols; c++) {
+      const p = surface(y, (c / cols) * Math.PI * 2);
+      pos.push(p.x, p.y, p.z); nrm.push(p.nx, p.ny, p.nz); seed.push(0.5); warm.push(faceLight(p.x, p.y, p.nz)); glow.push(1); kind.push(10);
+    }
+  }
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const a = r * (cols + 1) + c, b = a + 1, d = a + cols + 1, e = d + 1;
+    index.push(a, b, d, b, e, d);
+  }
+  return { position: new Float32Array(pos), normal: new Float32Array(nrm), seed: new Float32Array(seed), warm: new Float32Array(warm), glow: new Float32Array(glow), kind: new Float32Array(kind), index: new Uint32Array(index) };
+}
+
 // ---------- the shaders ----------
 const BODY_VERTEX = `
-  uniform float uTime, uLevel, uSwirl, uSize, uFace, uRings, uGlow, uVeins, uListen, uIntro;
+  uniform float uTime, uLevel, uSwirl, uSize, uFace, uRings, uGlow, uVeins, uListen, uIntro, uSpeak, uHeart, uStyle;
   uniform vec3 uRot, uPivot, uLine, uRim, uDim, uWarm, uHot;
   attribute vec3 aNormal;
   attribute float aSeed, aWarm, aGlow, aKind;
@@ -233,6 +283,10 @@ const BODY_VERTEX = `
   void main() {
     vec3 p = position;
     float t = uTime;
+    if (aKind > 7.5 && aKind < 8.5) { // the heart rings spin about their own centre
+      vec3 hc = vec3(0.0, -0.62, 0.58);
+      p = hc + rotY(t * (0.8 + aSeed * 1.1)) * (p - hc);
+    }
     float w = aKind > 4.5 && aKind < 5.5 ? 0.0 : smoothstep(0.25, 0.8, p.y);
     float rise = fract(aSeed * 7.0 + t * 0.05 * (1.0 + uSwirl * 2.5));
     if (aKind < 1.5) {
@@ -255,7 +309,7 @@ const BODY_VERTEX = `
     vec3 nv = normalize(normalMatrix * n);
     float fres = 1.0 - abs(dot(nv, normalize(-mv.xyz)));
     float front = smoothstep(-0.35, 0.45, nv.z);
-    float warm = clamp(aWarm * (0.6 + uFace * 1.0 + uLevel * 1.2), 0.0, 1.0);
+    float warm = clamp(aWarm * (0.6 + uFace * 1.0 + uLevel * 0.5), 0.0, 1.0);
     vec3 col = uLine;
     float glow = aGlow;
     vAlpha = 0.85;
@@ -265,13 +319,13 @@ const BODY_VERTEX = `
       glow = aGlow * (0.3 + 0.7 * front) + pow(fres, 2.4) * aGlow * 3.4;
       col = mix(uLine, uRim, clamp(pow(fres, 2.0), 0.0, 1.0));
       col = mix(col, uWarm, warm);
-      glow *= 1.0 + warm * (0.9 + uLevel);
+      glow *= 1.0 + warm * (0.9 + uLevel * 0.35);
     } else if (aKind < 1.5) {
       glow = aGlow * (0.4 + 0.6 * front) + pow(fres, 2.0) * aGlow * 2.0;
     } else if (aKind < 2.5) {
       float flick = 0.8 + 0.2 * sin(t * 9.0 + aSeed * 40.0 + sin(t * 3.1) * 2.0);
       col = uHot;
-      glow = (0.18 + uVeins * 0.34 + uLevel * 0.5) * flick * 1.6;
+      glow = (0.17 + uVeins * 0.3 + uLevel * 0.25 + uSpeak * 0.12) * flick * 1.5;
     } else if (aKind < 3.5) {
       col = mix(uRim, uHot, 0.4 + 0.3 * sin(t * 2.0 + aSeed * 30.0));
       glow = aGlow * (0.8 + 0.2 * sin(t * 3.0 + aSeed * 50.0));
@@ -294,19 +348,52 @@ const BODY_VERTEX = `
       glow = aGlow * (0.5 + uRings * 1.5 * wave + uListen * uLevel * 1.4);
       gl_PointSize = uSize * 1.7 * (9.0 / -mv.z);
       vAlpha = 0.9;
-    } else {
-      // The glow inside the face: big soft sprites.
-      col = uWarm;
-      glow = 0.05 * (0.5 + uFace + uLevel * 1.5) * (1.0 - 0.55 * uListen);
-      gl_PointSize = 60.0 * (0.6 + aSeed * 0.8) * (9.0 / -mv.z);
+    } else if (aKind < 6.5) {
+      // The glow inside the face: many big soft sprites that breathe, thinning out toward the edges.
+      col = mix(uWarm, uHot, 0.25 * aGlow);
+      glow = 0.015 * aGlow * (0.5 + uFace + uLevel * 0.7 + uSpeak * 0.1) * (0.85 + 0.15 * sin(t * 1.3 + aSeed * 6.0)) * (1.0 - 0.55 * uListen);
+      gl_PointSize = 110.0 * (0.55 + aSeed * 0.9) * (9.0 / -mv.z);
       vAlpha = 1.0;
+    } else if (aKind < 7.5) {
+      // An eye hollow: a small warm light that blinks.
+      float blink = 1.0 - 0.92 * exp(-pow((fract(t * 0.17) - 0.5) * 34.0, 2.0));
+      col = uHot;
+      glow = 0.05 * blink * (0.5 + uFace + uLevel * 0.5) * (1.0 - 0.4 * uListen);
+      gl_PointSize = 30.0 * (0.7 + aSeed * 0.6) * (9.0 / -mv.z);
+      vAlpha = 1.0;
+    } else if (aKind < 8.5) {
+      // A ring round the heart.
+      float beat = pow(0.5 + 0.5 * sin(t * 2.3), 6.0);
+      col = mix(uHot, uRim, 0.4);
+      glow = 0.5 + 0.5 * beat + uLevel * 0.6 + uHeart * 1.2;
+      vAlpha = 0.9;
+    } else if (aKind < 9.5) {
+      // The heart's core: it beats, and flares when it says hello.
+      float beat = pow(0.5 + 0.5 * sin(t * 2.3), 6.0);
+      col = uHot;
+      glow = 0.08 * (0.8 + 0.7 * beat + uLevel * 1.0 + uHeart * 2.0);
+      gl_PointSize = 90.0 * (9.0 / -mv.z);
+      vAlpha = 1.0;
+    } else {
+      // The glass look's skin: faint, brighter where the surface turns away.
+      col = mix(mix(uLine, uRim, clamp(pow(fres, 1.6), 0.0, 1.0)), uWarm, warm * 0.6);
+      glow = (0.05 + pow(fres, 2.2) * 0.6) * (0.5 + 0.5 * front);
+      vAlpha = 0.55;
     }
     // The figure draws itself in from the bottom up, with a bright line of light climbing it.
     float h = (position.y + 1.6) / 3.8;
     float edge = uIntro * 1.5 - 0.25;
     float reveal = 1.0 - smoothstep(edge - 0.2, edge, h);
     float band = exp(-pow((h - edge + 0.06) * 14.0, 2.0)) * (1.0 - uIntro) * (aKind > 5.5 ? 0.0 : 0.7);
-    vCol = (col * glow * uGlow + uRim * band * 1.4) * reveal;
+    // While it speaks, light runs up from the chest through the neck into the head, in time with the voice.
+    float ry = -0.5 + mod(t * 1.25, 2.9);
+    float rip = uSpeak * exp(-pow((position.y - ry) * 4.2, 2.0)) * (0.5 + uLevel * 1.0) * (aKind < 2.5 ? 1.0 : (aKind < 3.5 ? 1.3 : 0.0));
+    // The look: hologram (as is), glass (a faint skin, quieter lines) or wireframe (the lines alone, no face light).
+    float sk = 1.0;
+    if (aKind < 0.5) sk = uStyle > 1.5 ? 0.85 : (uStyle > 0.5 ? 0.55 : 1.0);
+    else if (aKind > 5.5 && aKind < 7.5) sk = uStyle > 1.5 ? 0.0 : (uStyle > 0.5 ? 0.5 : 1.0);
+    else if (aKind > 3.5 && aKind < 4.5) sk = uStyle > 1.5 ? 0.5 : 1.0;
+    vCol = (col * glow * uGlow + uRim * band * 1.4 + uHot * rip * 0.3) * reveal * sk;
   }`;
 const LINE_FRAGMENT = 'varying vec3 vCol; varying float vAlpha; void main() { gl_FragColor = vec4(vCol, vAlpha); }';
 const POINT_FRAGMENT = `
@@ -359,8 +446,14 @@ const LINK_VERTEX = `
 // How strong the constellation of lines behind the figure is: full, subtle (dim) or off.
 const LINES = { full: 1, subtle: 0.3, off: 0 };
 
-export function createHumanoid(container, { accent, quality = 'high', lines = 'subtle' } = {}) {
+// The look (Settings → General → Orb look): hologram, glass or wireframe, and how strongly it glows.
+const STYLES = { hologram: 0, glass: 1, wireframe: 2 };
+const GLOWS = { soft: 0.7, normal: 1, bright: 1.35 };
+
+export function createHumanoid(container, { accent, quality = 'high', lines = 'subtle', style = 'hologram', glow = 'normal' } = {}) {
   if (!(lines in LINES)) lines = 'subtle';
+  if (!(style in STYLES)) style = 'hologram';
+  if (!(glow in GLOWS)) glow = 'normal';
   const low = quality === 'low';
   const q = low ? 0.45 : 1;
   let pal = humanoidPalette(accent);
@@ -383,7 +476,7 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
 
   // ---- the figure ----
   const bodyU = {
-    uTime: { value: 0 }, uLevel: { value: 0 }, uSwirl: { value: 0 }, uSize: { value: low ? 1.7 : 1.35 }, uFace: { value: 0.5 }, uRings: { value: 0.3 }, uGlow: { value: 1 }, uVeins: { value: 0.5 }, uListen: { value: 0 }, uIntro: { value: 0 },
+    uTime: { value: 0 }, uLevel: { value: 0 }, uSwirl: { value: 0 }, uSize: { value: low ? 1.7 : 1.35 }, uFace: { value: 0.5 }, uRings: { value: 0.3 }, uGlow: { value: 1 }, uVeins: { value: 0.5 }, uListen: { value: 0 }, uIntro: { value: 0 }, uSpeak: { value: 0 }, uHeart: { value: 0 }, uStyle: { value: 0 },
     uRot: { value: new THREE.Vector3() }, uPivot: { value: NECK_PIVOT.clone() },
     uLine: { value: toColor(pal.line) }, uRim: { value: toColor(pal.rim) }, uDim: { value: toColor(pal.dim) }, uWarm: { value: toColor(pal.warm) }, uHot: { value: toColor(pal.hot) },
   };
@@ -404,6 +497,14 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
   // ---- the constellation ----
   const con = buildConstellation(q);
   const starU = { uTime: bodyU.uTime, uSize: { value: low ? 3.0 : 2.6 }, uStir: { value: 0 }, uRim: bodyU.uRim, uIntro: bodyU.uIntro, uSky: { value: LINES[lines] } };
+  const glassData = buildGlass(q);
+  const glassGeo = geometry(null, [['position', glassData.position, 3], ['aNormal', glassData.normal, 3], ['aSeed', glassData.seed, 1], ['aWarm', glassData.warm, 1], ['aGlow', glassData.glow, 1], ['aKind', glassData.kind, 1]]);
+  glassGeo.setIndex(new THREE.BufferAttribute(glassData.index, 1));
+  const glassMat = makeMat(BODY_VERTEX, LINE_FRAGMENT, bodyU);
+  glassMat.side = THREE.DoubleSide;
+  const glass = new THREE.Mesh(glassGeo, glassMat);
+  glass.frustumCulled = false;
+  figure.add(glass);
   const stars = new THREE.Points(geometry(null, [
     ['position', new Float32Array(con.stars.flatMap((s) => [s.x, s.y, s.z])), 3],
     ['aSeed', new Float32Array(con.stars.map((s) => s.seed)), 1],
@@ -444,6 +545,11 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
   const look = { yaw: 0, pitch: 0 };
   let gesture = { kind: null, at: -10 };
   let pulseT = -1, pulsesLeft = 0;
+  let styleName = style, glowK = GLOWS[glow];
+  let perfLevel = 0, perfEma = 0, perfSlow = 0, useBloom = true, detailShare = 1; // frames dropping: bloom off first, then fewer pixels
+  const ratio = () => Math.min(FULL_RATIO, Math.max(0.5, FULL_RATIO * detailShare * (perfLevel >= 2 ? 0.7 : 1)));
+  let heartFlash = -10; // when the heart orb last flared (a wave hello)
+  let idleK = 0; // how much it is idling (looking around on its own)
   let introAt = -100; // when the figure began drawing itself in
   let running = false, raf = 0, fpsCap = 60, last = 0;
   let viewTarget = null;
@@ -500,7 +606,16 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
     if (!running) return;
     raf = requestAnimationFrame(frame);
     if (time - last < 1000 / fpsCap - 2) return;
+    const interval = time - last;
     last = time;
+    // Frames slower than the pace asked for, for three seconds in a row: lighten up (once, then once more), never back.
+    if (interval < 500 && perfLevel < 2 && !document.hidden) {
+      perfEma = perfEma ? perfEma * 0.92 + interval * 0.08 : interval;
+      if (perfEma > (1000 / fpsCap) * 1.7) {
+        perfSlow += interval / 1000;
+        if (perfSlow > 3) { perfLevel += 1; perfSlow = 0; perfEma = 0; useBloom = false; renderer.setPixelRatio(ratio()); resize(); }
+      } else perfSlow = Math.max(0, perfSlow - interval / 1000);
+    }
     const dt = Math.min(0.05, clock.getDelta());
     const t = clock.elapsedTime;
     const ease = (a, b, k) => a + (b - a) * Math.min(1, dt * k);
@@ -510,24 +625,32 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
 
     // Where the head looks: at the pointer or your hand while one is there (for 2.5 s after it stops), else at your face.
     const handNow = hand && t - hand.at < 2.5 ? hand : null;
-    const goal = handNow ? { yaw: handNow.x * 0.6, pitch: -handNow.y * 0.35 } : { yaw: gaze[0] * 0.45, pitch: -gaze[1] * 0.25 };
+    const idle = !handNow && Math.abs(gaze[0]) < 0.02 && Math.abs(gaze[1]) < 0.02 && stateName === 'standby';
+    idleK = ease(idleK, idle ? 1 : 0, 0.8);
+    // alone, it looks around slowly: now to one side, now to the other, now up
+    const wander = { yaw: (Math.sin(t * 0.23) * 0.2 + Math.sin(t * 0.61 + 1.3) * 0.08) * idleK, pitch: (Math.sin(t * 0.17 + 0.6) * 0.07 + Math.sin(t * 0.43) * 0.025) * idleK };
+    const goal = handNow ? { yaw: handNow.x * 0.6, pitch: -handNow.y * 0.35 } : { yaw: gaze[0] * 0.45 + wander.yaw, pitch: -gaze[1] * 0.25 + wander.pitch };
     look.yaw = ease(look.yaw, goal.yaw, handNow ? 5 : 2.5);
     look.pitch = ease(look.pitch, goal.pitch, handNow ? 5 : 2.5);
     const gest = headGesture(gesture.kind, t - gesture.at);
     const bob = stateName === 'speaking' ? Math.sin(t * 7) * 0.03 * level : 0;
     const yaw = look.yaw + gest.yaw + Math.sin(t * 0.37) * 0.03;
     const pitch = look.pitch + now.lean * 0.6 + gest.pitch + bob + Math.sin(t * 0.29) * 0.015;
-    const roll = now.tilt * (0.6 + 0.4 * Math.sin(t * 0.5)) * 0.5 - yaw * 0.08;
+    const roll = now.tilt * (0.6 + 0.4 * Math.sin(t * 0.5)) * 0.5 - yaw * 0.08 + (gest.roll || 0);
     bodyU.uRot.value.set(pitch, yaw, roll);
     bodyU.uTime.value = t;
     bodyU.uLevel.value = level;
     bodyU.uSwirl.value = now.swirl;
     bodyU.uListen.value = now.listen;
+    bodyU.uSpeak.value = now.speak;
+    bodyU.uHeart.value = Math.max(0, 1 - (t - heartFlash) / 1.4);
     { const k = Math.max(0, Math.min(1, (t - introAt) / 3.4)); bodyU.uIntro.value = k * k * (3 - 2 * k); }
     if (Math.abs(now.listen - listenK) > 0.004) { listenK = now.listen; recolour(); }
     bodyU.uFace.value = now.face;
     bodyU.uRings.value = now.rings + level * 0.4;
-    bodyU.uGlow.value = (now.glow + level * 0.3) * (1 - 0.45 * now.listen);
+    bodyU.uGlow.value = (now.glow + level * 0.3) * (1 - 0.45 * now.listen) * glowK * (useBloom ? 1 : 1.25);
+    bodyU.uStyle.value = STYLES[styleName];
+    glass.visible = styleName === 'glass';
     bodyU.uVeins.value = now.veins;
     starU.uStir.value = now.swirl;
     linkU.uPulses.value = now.pulses + level;
@@ -559,8 +682,8 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
     if (viewTarget) { view.cx = ease(view.cx, viewTarget.cx, 4); view.cy = ease(view.cy, viewTarget.cy, 4); view.k = ease(view.k, viewTarget.k, 4); }
     else { view.cx = ease(view.cx, 0.5, 4); view.cy = ease(view.cy, 0.5, 4); view.k = ease(view.k, 1, 4); }
     applyView();
-    bloom.strength = (0.8 + level * 0.35 + (now.glow - 0.85) * 0.3) * (1 - 0.45 * now.listen);
-    composer.render();
+    bloom.strength = (0.8 + level * 0.35 + (now.glow - 0.85) * 0.3) * (1 - 0.45 * now.listen) * glowK * (styleName === 'wireframe' ? 0.5 : 1);
+    if (useBloom) composer.render(); else renderer.render(scene, camera);
   }
 
   const api = {
@@ -573,6 +696,12 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
     setGaze(x, y) { gaze[0] = Math.max(-1, Math.min(1, x || 0)); gaze[1] = Math.max(-1, Math.min(1, y || 0)); },
     setLevel(v) { levelTarget = Math.max(0, Math.min(1, v)); },
     setAccent(color) { pal = humanoidPalette(color); recolour(); },
+    // A reaction: 'wave' (hello), 'bow' (goodbye) or 'nod' (a thumbs-up).
+    react(kind) {
+      if (clock.elapsedTime - gesture.at < 1.2) return;
+      act(['wave', 'bow', 'nod', 'shake'].includes(kind) ? kind : 'nod');
+      if (kind === 'wave') heartFlash = clock.elapsedTime;
+    },
     // 'full' | 'subtle' | 'off': the constellation of lines behind the figure.
     setLines(mode) { if (!(mode in LINES)) mode = 'subtle'; starU.uSky.value = LINES[mode]; sky.visible = mode !== 'off'; },
     // Draws the figure in again from the bottom up.
@@ -588,6 +717,7 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
       if (!tile) { viewTarget = null; return; }
       const w = container.clientWidth || 1;
       const h = container.clientHeight || 1;
+      if (!viewTarget) hand = { x: Math.max(-1, Math.min(1, (tile.cx / w) * 2 - 1)), y: Math.max(-1, Math.min(1, -((tile.cy / h) * 2 - 1))), at: clock.elapsedTime }; // an app opens there: it looks at it
       viewTarget = { cx: Math.max(0, Math.min(1, tile.cx / w)), cy: Math.max(0, Math.min(1, tile.cy / h)), k: Math.max(0.22, Math.min(1, Math.min(tile.w / w, tile.h / h) * 1.15)) };
     },
     // The two-hand "zoom into" gesture: closer (amount: 0..1), or back.
@@ -601,7 +731,9 @@ export function createHumanoid(container, { accent, quality = 'high', lines = 's
       if (kind === 'alert') act('shake');
     },
     setFrameCap(fps) { fpsCap = Math.max(10, Number(fps) || 60); },
-    setMaxDetail(share = 1) { renderer.setPixelRatio(Math.min(FULL_RATIO, Math.max(0.5, FULL_RATIO * share))); resize(); },
+    setMaxDetail(share = 1) { detailShare = share; renderer.setPixelRatio(ratio()); resize(); },
+    // The look and the glow, at once.
+    setLook(o = {}) { if (o.style in STYLES) styleName = o.style; if (o.glow in GLOWS) glowK = GLOWS[o.glow]; },
     rotateBy(dx = 0, dy = 0) { camGoal.yaw = Math.max(-1.2, Math.min(1.2, camGoal.yaw - dx)); camGoal.pitch = Math.max(-0.45, Math.min(0.6, camGoal.pitch + dy)); },
     zoomBy(f) { camGoal.dist = Math.max(4, Math.min(14, camGoal.dist * f)); },
     zoomIn() { camGoal.dist = Math.max(4, camGoal.dist * 0.8); },

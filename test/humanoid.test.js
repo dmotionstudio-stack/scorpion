@@ -55,3 +55,31 @@ test('its colours come from the theme: the lines in the theme colour, the light 
   assert.ok(Math.abs(hexToHsl('#ff0000').h) < 0.01 && Math.abs(hexToHsl('#00ff00').h - 1 / 3) < 0.01);
   assert.ok(humanoidPalette('not a colour').line.s > 0, 'a bad colour falls back to the default');
 });
+
+test('it bows to say goodbye and sways its head to say hello, then comes back upright', () => {
+  const bow = [0.2, 0.8, 1.2, 2.0].map((t) => headGesture('bow', t));
+  assert.ok(bow[1].pitch > 0.3 && bow[2].pitch > 0.3, 'it holds the bow');
+  assert.ok(bow[0].pitch < bow[1].pitch && bow[3].pitch < bow[1].pitch, 'down, then up');
+  assert.equal(headGesture('bow', 3).pitch, 0);
+  const wave = [0.2, 0.4, 0.6, 0.9].map((t) => headGesture('wave', t));
+  assert.ok(wave.some((g) => Math.abs(g.roll) > 0.08), 'the head tilts side to side');
+  assert.equal(headGesture('wave', 3).roll, 0);
+});
+
+test('the orb makes a soft sound when it starts listening and when it finishes thinking, and otherwise stays quiet', async () => {
+  const { soundFor } = await import('../src/renderer/orb-sounds.js');
+  assert.equal(soundFor('standby', 'listening'), 'listen');
+  assert.equal(soundFor('thinking', 'speaking'), 'done');
+  assert.equal(soundFor('thinking', 'standby'), 'done');
+  assert.equal(soundFor('speaking', 'standby'), null);
+  assert.equal(soundFor('listening', 'thinking'), null);
+  assert.equal(soundFor('standby', 'standby'), null);
+});
+
+test('the glass skin is a closed grid of triangles on the body', async () => {
+  const { buildGlass } = await import('../src/renderer/humanoid.js');
+  const g = buildGlass(0.6);
+  assert.equal(g.position.length / 3, g.glow.length);
+  assert.ok(g.index.length > 3000 && g.index.length % 3 === 0);
+  assert.ok(Math.max(...g.index) < g.glow.length, 'every triangle uses real points');
+});

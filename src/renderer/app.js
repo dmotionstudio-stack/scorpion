@@ -18,6 +18,7 @@ import { initPalette } from './palette.js';
 import { initSystemSettings } from './settings-system.js';
 import { initAppUpdates } from './settings-app-updates.js';
 import { initClockSettings } from './settings-clock.js';
+import { createOrbSounds, soundFor } from './orb-sounds.js';
 import { initBuildDock } from './build-dock.js';
 import { initModelScan } from './model-scan-ui.js';
 import { commandOf, parseAgentCommand, suggestAgents } from './agent-commands.js';
@@ -854,7 +855,7 @@ async function talkTurn() {
   await listen((text) => {
     if (!V.talk) return;
     if (!text) { talkTurn(); return; } // silence or noise: keep listening
-    if (/^(stop|goodbye|bye|end (the )?conversation)[.!]?$/i.test(text.trim())) { stopTalk(); toast('Conversation ended.'); return; }
+    if (/^(stop|goodbye|bye|end (the )?conversation)[.!]?$/i.test(text.trim())) { IX.orb?.react?.('bow'); stopTalk(); toast('Conversation ended.'); return; }
     if (orbSys?.handleSpoken(text)) { setTimeout(talkTurn, 400); return; }
     sendMessage(text, { spoken: true, orb: IX.open });
   });
@@ -1185,12 +1186,13 @@ async function openInteract(opts = {}) {
       IX.look = kind;
       IX.loading ??= look === 'classic'
         ? import('./orb.js').then(({ createOrb }) => createOrb($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low' }))
-        : import('./humanoid.js').then(({ createHumanoid }) => createHumanoid($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low', lines: S.settings.orbLines }));
+        : import('./humanoid.js').then(({ createHumanoid }) => createHumanoid($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low', lines: S.settings.orbLines, style: S.settings.orbStyle, glow: S.settings.orbGlow }));
       IX.orb = await IX.loading;
       applyOrbCap();
     } else {
       IX.orb.setAccent(accentColor());
       IX.orb.setLines?.(S.settings.orbLines);
+      IX.orb.setLook?.({ style: S.settings.orbStyle, glow: S.settings.orbGlow });
     }
     if (IX.open) IX.orb.start();
   } catch (err) {
@@ -1265,10 +1267,12 @@ function applyPerf(level) {
   if (S.view === 'settings') renderSettings();
 }
 
+const orbSounds = createOrbSounds();
 function tickInteract() {
   const state = interactState();
   const el = $('#interact');
   if (el.dataset.state !== state) {
+    if (S.settings.orbSounds !== false && el.dataset.state) orbSounds.play(soundFor(el.dataset.state, state));
     el.dataset.state = state;
     IX.orb?.setState(state);
     // The model shares the graphics card: fewer orb frames while it writes.
