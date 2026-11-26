@@ -15,7 +15,7 @@ routes = [
 [assets]
 directory = "."          # the pages; .assetsignore keeps the server code and tooling out
 binding = "ASSETS"
-run_worker_first = ["/api/*"]
+run_worker_first = ["/api/*", "/dl/*"]
 
 [vars]
 # Where paid downloads come from. r2://<bucket name> streams them from the private bucket bound below;

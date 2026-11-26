@@ -74,6 +74,20 @@ out of R2 itself (with resume), so the file address never leaves the site.
 With the Worker streaming the files, the bucket needs **no public address**: skip step 1.2's public URL if you only
 sell through the site.
 
+## What GitHub does by itself, once the six secrets are set
+
+| You push | GitHub then |
+|---|---|
+| a tag `v0.1.61` | builds Windows and Mac, publishes the GitHub release, copies the installers to the bucket (`0.1.61/`), sets the website's version, and deploys the website |
+| a tag `os-v0.2` (or runs the Scorpion OS workflow) | builds the OS image, boots it in the QEMU test, copies the ISO to the bucket (`os/`), sets the website's OS version, and deploys the website |
+| any change under `website/` to `main` | deploys the website |
+
+The six secrets (**Settings → Secrets and variables → Actions**): `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+`R2_BUCKET` (the bucket and what goes in it) and `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` (deploying the site). A workflow
+whose secrets are missing skips its Cloudflare steps and says so in a yellow warning on the run's page, so a release never fails
+for want of them. The Windows and Mac installers on the Download page also follow every GitHub release by themselves, with or
+without the bucket.
+
 ## What happens on a release
 
 - **Push a `v*` tag.** The Release workflow builds the installers, publishes the GitHub

@@ -108,6 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write # to start the Website workflow once the site's version is bumped
     env:
       # True once the Cloudflare R2 secrets are set (docs/cloudflare-downloads.md).
       HAS_R2: ${{ secrets.R2_BUCKET != '' && secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
@@ -163,3 +164,12 @@ jobs:
             git commit -am "Website: version $v is on sale"
             git push origin main
           fi
+      # A push made with the workflow's own token does not start other workflows, so start the site's deploy here.
+      - name: Deploy the website
+        if: env.HAS_R2 == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run website.yml --ref main
+      - name: The website was not updated (no Cloudflare R2 secrets)
+        if: env.HAS_R2 != 'true'
+        run: echo "::warning title=Website not updated::The R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET secrets are not set, so the installers were not copied to the website's bucket and the site was not redeployed. See docs/cloudflare-downloads.md. (The free downloads on the Download page still follow this GitHub release.)"

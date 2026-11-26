@@ -198,11 +198,31 @@ internet connection to chat.
   chose (Settings asks before turning it on, and a notice says which model is used).
   Full or Balanced brings your chosen model back. **Light while
   running on battery** switches to Light when you unplug and back when you plug in.
-- **The orb humanoid** (an optional look for the orb's screen, in Settings → General → Orb look; the orb sphere is the
-  default): a hologram figure that fills the screen, drawn in glowing orb-dust in your theme's colour, with Scorpion's orb
-  beating as its heart. It breathes while it waits, leans in and follows you while it listens, its dust swirls while it
-  thinks, and its mouth and heart move with the voice while it speaks. Voice, hand gestures, apps inside the orb and the
-  orb shortcut (Win+Space if Windows lets go of it, otherwise Win+Alt+Space) work the same as with the orb sphere.
+- **The orb humanoid** (a second form of the orb: Settings → General → Orb look, or just say "transform into the
+  humanoid"; the orb sphere is the default): a 3D hologram figure that sits on the bottom edge of the screen, one
+  continuous body of glowing lines in your theme's colour (head, neck and shoulders bend as one), with a soft breathing glow
+  in its face, branching veins down to a spinning, beating heart orb on its chest, and a constellation of stars joined by
+  glowing veins behind it. It is alive:
+  - It **introduces itself** ("Hello, I'm Scorpion…", aloud when the voice is installed) and **enters in one of eight ways at
+    random** (out from its heart, dissolving, a spiral, a spin-in, a jelly pop, a fly-in, assembling itself from scattered
+    points, or growing from a seed of light).
+  - It follows your pointer, hand or face; alone it glances slowly around and blinks. It sways its head hello to an open
+    palm, nods to a thumbs-up and to a command that goes well, shakes its head at an alert, bows when you say "goodbye", and
+    turns to look at an app as it opens. While it **listens** it turns the opposite colour of your theme, leans toward you and
+    rings of sound close in on its head; while it **speaks** light runs up its body in time with the voice.
+  - **Transformation:** "transform into the humanoid" / "show me your humanoid", and "transform into the orb" / "show me the
+    orb" (spoken or typed in the orb) change the form in slow motion: the orb folds into a point of light and the humanoid
+    grows from it, and the other way round.
+  - Settings → General → Orb look: **Humanoid style** (Hologram, Glass or Wireframe), **Glow** (Soft, Normal, Bright),
+    **Background lines** (Subtle, Full or Off) and **Soft sounds** (a short cue when it starts listening, a chime when it
+    finishes thinking). With apps open in the orb it frames its whole figure inside its own tile. If frames keep dropping it
+    turns its glow off and then draws at fewer pixels by itself.
+  - Voice, hand gestures, apps inside the orb and the orb shortcut (Super+Space; Settings → General → Orb) work the same as
+    with the orb sphere. The constellation launcher it replaced is gone.
+- **Scorpion switches itself.** In the orb, say or type "turn off hand gestures", "turn on face tracking", "turn off talk
+  mode", "turn off spoken replies", "turn off text" (the typing box), "turn the wake word on", "turn off soft sounds",
+  "disable the background lines" or "block background noises" (and the opposites); it says what it did, or what it needs
+  first (the voice or face download). English only.
 - **The orb as a voice chat** (on by default once the voice is installed; Settings →
   Voice and hands → *The orb*): the orb's screen is just the orb, the captions and
   Talk. Say "Scorpion" and ask; the answer is spoken, as a conversation (no file or
@@ -432,6 +452,15 @@ if you copy the file from another computer.
 
 After that Scorpion works fully offline.
 
+## Downloads and the website
+
+The public site, **scorpionai.tech**, runs on Cloudflare (a Worker for its checkout, sign-in and downloads, a bucket for the
+big files). Windows and Mac installers are free to download there (the newest GitHub release, always); the editions add
+Scorpion OS, the offline model pack and USB sticks. Pushing a `v*` tag builds the installers, publishes the GitHub release,
+copies them to the bucket and redeploys the site by itself; the Scorpion OS workflow does the same for the OS image. How it is
+wired, and the secrets to set once, are in [docs/cloudflare-downloads.md](docs/cloudflare-downloads.md); the site itself is in
+[website/README.md](website/README.md).
+
 ## Scorpion OS
 
 Scorpion as a whole operating system: Ubuntu 24.04 LTS underneath (its kernel,
@@ -482,6 +511,20 @@ for a break, "delete that" to take back the last sentence, and "stop typing" to
 finish (it also stops after 20 seconds of quiet, or with the same key or sign).
 It types in the language chosen in **Settings → Voice**, and nothing you say
 leaves the computer. Apps running as administrator don't accept it.
+
+### It waits for you, and listens for your voice
+
+- **It waits until you are done.** A pause to think does not end your turn: Scorpion answers after at least a second and a
+  half of quiet, longer the longer you have been speaking, and longer again when your sentence trails off ("and",
+  "because", a comma). (Before, well under a second was enough.)
+- **Voice focus** (on by default; "block background noises" / "stop blocking background noise", or Settings): the microphone's
+  noise suppression is always on, the rumble below 90 Hz and the hiss above 6 kHz are cut, and a turn of listening only
+  starts on a human voice and goes on while there is one. Fans, keyboards, hum and hiss no longer start a turn or hold one open.
+  It is tuned for steady noises: music and a TV can still get through, and a very quiet whisper may be missed.
+- **"What's that noise?"** (or "identify the background noises", "what do you hear?"): the only time Scorpion listens to the
+  room itself. It listens for a few seconds with every filter off and says what it hears: voices, a low hum, clicks or
+  typing, hiss, music or a beep, or very quiet. The categories are coarse (from the shape of the sound, with no sound model),
+  and nothing is kept.
 
 Choose your language, the voice and the speed in **Settings → Voice** (or the
 language menu in Interact). Picking a language with its own voice downloads that

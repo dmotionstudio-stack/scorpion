@@ -1,15 +1,19 @@
 # Scorpion website
 
-The public site for Scorpion: home page, updates, install guide, and a store
-where people pay once and download, or order Scorpion on a USB stick.
+The public site for Scorpion (**scorpionai.tech**): home page, updates, install guide, free downloads of the Windows and
+Mac installers, and a store where people pay once for more (Scorpion OS, the offline model pack) or order Scorpion on a USB
+stick, then sign in to download again.
 
-Plain HTML, CSS and JavaScript with no build step and no npm packages. Payments
-go through Stripe Checkout, so card details never touch this site.
+Plain HTML, CSS and JavaScript with no build step and no npm packages. It runs on Cloudflare (see
+[Cloudflare](#cloudflare-the-site-its-backend-and-the-files)). Payments go through Stripe Checkout, so card details never
+touch this site.
 
 | Page | What it is |
 |---|---|
 | `index.html` | Home: features, privacy, pricing, latest updates |
-| `download.html` | Editions, comparison, USB sticks, checkout dialog |
+| `download.html` | The free Windows and Mac downloads (always the newest release), the editions, comparison, USB sticks, checkout dialog |
+| `features.html`, `orb.html`, `os.html` | What Scorpion does, the ORB (with the live orb), and Scorpion OS |
+| `account.html` | My downloads: sign in with an email and a code to see paid orders and download again (see *Customer sign-in*) |
 | `usb.html` | The USB stick product page: images, both sizes side by side, what is on it, ordering. `assets/usb-*.svg` are the product images; `usb-*-listing.svg` are the same on white for marketplace listings |
 | `updates.html` | News and release notes, filterable |
 | `guide.html` | Install steps (Windows, Mac, USB), requirements, FAQ |
@@ -32,7 +36,9 @@ browser. `CURRENT_VERSION` is the version on sale.
 ## Post an update
 
 Add an entry at the top of [`data/updates.js`](data/updates.js). It shows on the
-Updates page and the newest three show on the home page.
+Updates page and the newest three show on the home page. Each release has its notes in the app's repo
+(`docs/releases/vX.Y.Z.md`); an entry summarizes a few releases that belong together rather than repeating every one. The
+Windows and Mac installers on the Download page need no entry: they follow the newest GitHub release by themselves.
 
 ## Run it locally
 
@@ -48,6 +54,19 @@ test key and card `4242 4242 4242 4242`:
 STRIPE_SECRET_KEY=sk_test_... DOWNLOAD_BASE_URL=https://your-file-host/scorpion node dev-server.mjs
 ```
 
+## Free downloads
+
+The top of the Download page offers the Windows and Mac installers (Apple Silicon and Intel) to everyone, always the newest
+version, with no update to the site needed:
+
+- `GET /api/latest` reads the newest GitHub release (the repo is public; Cloudflare caches the answer for ten minutes; set
+  `GITHUB_TOKEN` for a higher rate limit, `GITHUB_REPO` to point at another repo) and lists its installers. The page
+  (`assets/latest.js`) draws a card for each, with its size. If GitHub cannot be reached it shows a link to the release page.
+- `GET /dl/win`, `/dl/mac-arm`, `/dl/mac-intel` send the visitor to the file: from our own bucket when the release workflow
+  has copied it there (streamed by the Worker), from the GitHub release otherwise.
+- Only these three are free. The OS image, the model pack, Linux packages and USB sticks are in the editions (`/dl/os`
+  and the rest answer 404).
+
 ## How buying works
 
 1. The buyer picks an edition (and, for Standard, Windows, Mac or Linux), optionally a
@@ -58,7 +77,9 @@ STRIPE_SECRET_KEY=sk_test_... DOWNLOAD_BASE_URL=https://your-file-host/scorpion 
    calls `GET /api/order` to show what they bought.
 4. Each download button is `GET /api/download?session_id=...&file=win`. It asks
    Stripe that the order is paid and includes that file, then redirects to
-   `<DOWNLOAD_BASE_URL>/<version>/<file name>`.
+   `<DOWNLOAD_BASE_URL>/<version>/<file name>` (the Scorpion OS image: `<DOWNLOAD_BASE_URL>/os/<file name>`). With
+   `DOWNLOAD_BASE_URL = r2://<bucket>` (the Worker) the bucket stays private and the Worker streams the file itself, with
+   resume, so the address is never shared.
 
 Standard and Complete download the version they bought, forever. Lifetime always
 gets `CURRENT_VERSION`. USB orders show up in the Stripe dashboard with the
@@ -75,12 +96,40 @@ For each version, put these in `<DOWNLOAD_BASE_URL>/<version>/`:
 - `Scorpion-<version>-model-pack.zip` (the `.gguf` files for Complete and Lifetime)
 
 These are the names the builds write (the GitHub release turns the spaces in
-the Windows name into dots, so rename it back). `OS_VERSION` is in
-`data/catalog.js`, since Scorpion OS is versioned apart from the app.
+the Windows name into dots; the release workflow puts it in the bucket under the name above). `OS_VERSION` is in
+`data/catalog.js`, since Scorpion OS is versioned apart from the app, and the Scorpion OS image lives under `os/`.
 
-The redirect reveals the final file address, so anyone a buyer shares it with
-can download too. If that matters, host the files somewhere that issues
-short-lived signed links (S3, R2) and sign them in `api/download.js`.
+You do not upload these by hand: with the Cloudflare secrets set, GitHub copies each release and the OS image to the bucket
+(see below). With a public `https://` `DOWNLOAD_BASE_URL` instead of `r2://`, the redirect reveals the file address, so
+anyone a buyer shares it with can download too; the private bucket does not.
+
+## Cloudflare: the site, its backend and the files
+
+The whole site runs on Cloudflare: `worker.js` is one Worker that serves the `/api` functions and `/dl` (the files are the
+same Web `Request` to `Response` functions used everywhere), the pages go out as static assets (`.assetsignore` keeps the
+server code and tooling out), `wrangler.toml` holds the settings (the custom domains `scorpionai.tech` and
+`www.scorpionai.tech`, the private R2 bucket `DOWNLOADS`, the KV namespace `AUTH_KV` for sign-in).
+
+```bash
+cd website
+npx wrangler deploy                          # once by hand, or let GitHub do it
+npx wrangler secret put STRIPE_SECRET_KEY    # and the other secrets listed under Customer sign-in
+```
+
+GitHub does the rest when you release (the secrets to set once, and the full picture, are in
+[../docs/cloudflare-downloads.md](../docs/cloudflare-downloads.md)):
+
+- a `v*` tag: the Release workflow publishes the GitHub release, copies the installers to the bucket, sets
+  `CURRENT_VERSION` here, and starts the Website workflow;
+- the Scorpion OS workflow: copies the ISO to the bucket, sets `OS_VERSION`, starts the Website workflow;
+- any change under `website/` on `main`: the Website workflow tests the Worker and deploys it.
+
+Each workflow skips its Cloudflare steps, with a yellow warning on its run, when its secrets are not set.
+
+## Other places to run it (Hugging Face, Vercel)
+
+These serve the pages and the checkout, order and download functions, but not what needs the Worker: the `r2://` private
+bucket, the free `/dl` route and sign-in (KV). Cloudflare is the supported home.
 
 ## Deploy (Hugging Face Space)
 

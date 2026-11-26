@@ -36,7 +36,7 @@
 
           <div role="tabpanel" id="tab-win" aria-labelledby="t-win">
             <ol class="steps">
-              <li>Double-click <b>Scorpion Setup 0.1.8.exe</b> from your downloads.</li>
+              <li>Double-click <b>Scorpion Setup x.y.z.exe</b> from your downloads.</li>
               <li>If Windows shows <i>"Windows protected your PC"</i>, click <b>More info</b>, then <b>Run anyway</b>. This appears because the installer isn't signed with a paid certificate.</li>
               <li>Choose where to install. The next page asks how Scorpion keeps its data: <b>Installed</b> (in your Windows profile) or <b>Portable</b> (in a folder next to Scorpion, so it can run from a USB stick). Then click <b>Install</b>.</li>
               <li>Open <b>Scorpion</b> from the Start menu or the desktop shortcut. It talks you through setup the first time.</li>
@@ -47,7 +47,7 @@
 
           <div role="tabpanel" id="tab-mac" aria-labelledby="t-mac" hidden>
             <ol class="steps">
-              <li>Double-click the <b>.dmg</b> for your Mac: <code>Scorpion-0.1.8-arm64.dmg</code> for Apple Silicon, <code>Scorpion-0.1.8.dmg</code> for Intel. (Apple menu, About This Mac: <b>Chip</b> means Apple Silicon, <b>Processor</b> means Intel.)</li>
+              <li>Double-click the <b>.dmg</b> for your Mac: <code>Scorpion-x.y.z-arm64.dmg</code> for Apple Silicon, <code>Scorpion-x.y.z.dmg</code> for Intel (x.y.z is the version number). (Apple menu, About This Mac: <b>Chip</b> means Apple Silicon, <b>Processor</b> means Intel.)</li>
               <li>Drag <b>Scorpion</b> onto the <b>Applications</b> folder.</li>
               <li>Open Scorpion from Applications. The first time, macOS says it could not verify Scorpion. Click <b>Done</b>, not Move to Trash.</li>
               <li>Open <b>System Settings, Privacy &amp; Security</b>, scroll to Security, click <b>Open Anyway</b> next to "Scorpion" was blocked, and enter your Mac password.</li>
@@ -59,8 +59,8 @@
 
           <div role="tabpanel" id="tab-linux" aria-labelledby="t-linux" hidden>
             <ol class="steps">
-              <li><b>Ubuntu, Debian and similar:</b> install the .deb with <code>sudo apt install ./scorpion_0.1.8_amd64.deb</code></li>
-              <li><b>Any other distribution:</b> make the AppImage executable and run it: <code>chmod +x Scorpion-0.1.8.AppImage</code>, then <code>./Scorpion-0.1.8.AppImage</code></li>
+              <li><b>Ubuntu, Debian and similar:</b> install the .deb with <code>sudo apt install ./scorpion_x.y.z_amd64.deb</code></li>
+              <li><b>Any other distribution:</b> make the AppImage executable and run it: <code>chmod +x Scorpion-x.y.z.AppImage</code>, then <code>./Scorpion-x.y.z.AppImage</code></li>
               <li>Open Scorpion from your app menu.</li>
             </ol>
             <p class="muted">Chat, agents, voice, faces, hand gestures and the models work on any distribution. Running the computer for you (apps, windows, volume, Wi-Fi, power) works best on Wayland desktops such as labwc and Sway. Your data is kept in <code>~/.config/Scorpion</code>.</p>

@@ -198,6 +198,9 @@ jobs:
     needs: [iso, boot-test]
     if: startsWith(github.ref, 'refs/tags/os-v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: write # to start the Website workflow once the site knows this OS version
     env:
       HAS_R2: ${{ secrets.R2_BUCKET != '' && secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
     steps:
@@ -221,3 +224,24 @@ jobs:
             [ -e "$f" ] && aws s3 cp "$f" "s3://$R2_BUCKET/os/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" --no-progress
           done
           true
+      # The website names the file from its catalog (scorpion-os-<OS_VERSION>-amd64.iso): keep it in step, then deploy the site.
+      - uses: actions/checkout@v4
+        if: env.HAS_R2 == 'true'
+        with:
+          ref: main
+      - name: Tell the website this OS version, and deploy it
+        if: env.HAS_R2 == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sed -i "s/^export const OS_VERSION = '.*';/export const OS_VERSION = '$SCORPION_OS_VERSION';/" website/data/catalog.js
+          if ! git diff --quiet; then
+            git config user.name 'Scorpion'
+            git config user.email '274588930+dmotionstudio-stack@users.noreply.github.com'
+            git commit -am "Website: Scorpion OS $SCORPION_OS_VERSION is on sale"
+            git push origin main
+          fi
+          gh workflow run website.yml --ref main
+      - name: The website was not updated (no Cloudflare R2 secrets)
+        if: env.HAS_R2 != 'true'
+        run: echo "::warning title=OS image not on the website::The R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET secrets are not set, so the ISO was not copied to the website's bucket. See docs/cloudflare-downloads.md."

@@ -24,6 +24,9 @@ jobs:
       - name: Test the Worker
         if: env.HAS_CLOUDFLARE == 'true'
         run: node --test test/website-worker.test.js
+      - name: Not deployed (no Cloudflare secrets)
+        if: env.HAS_CLOUDFLARE != 'true'
+        run: echo "::warning title=Website not deployed::The CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets are not set. See docs/cloudflare-downloads.md, step 3."
       - name: Deploy
         if: env.HAS_CLOUDFLARE == 'true'
         working-directory: website

@@ -71,7 +71,7 @@ export const EDITIONS = [
     features: [
       'One platform: Windows, Mac or Linux',
       'Chat, agent, voice and memory',
-      'The ORB, hand gestures and the intent wheel',
+      'The ORB and its humanoid, hand gestures and voice commands',
       'Download the model inside the app',
       'The version you buy, yours forever',
     ],

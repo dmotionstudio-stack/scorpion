@@ -85,3 +85,58 @@ test('the OS image comes from its own os/ folder', async () => {
     assert.equal(asked.at(-1), 'os/scorpion-os-0.1-amd64.iso');
   });
 });
+
+// ---- the free downloads: the newest release, for everyone ----
+const RELEASE = {
+  tag_name: 'v0.1.59', published_at: '2026-11-26T09:18:30Z', html_url: 'https://github.com/o/r/releases/tag/v0.1.59',
+  assets: [
+    { name: 'Scorpion-Setup-0.1.59.exe', size: 700e6, browser_download_url: 'https://github.com/o/r/releases/download/v0.1.59/Scorpion-Setup-0.1.59.exe' },
+    { name: 'Scorpion-0.1.59-arm64.dmg', size: 650e6, browser_download_url: 'https://github.com/o/r/releases/download/v0.1.59/Scorpion-0.1.59-arm64.dmg' },
+    { name: 'Scorpion-0.1.59.dmg', size: 660e6, browser_download_url: 'https://github.com/o/r/releases/download/v0.1.59/Scorpion-0.1.59.dmg' },
+    { name: 'latest.yml', size: 400, browser_download_url: 'https://github.com/o/r/releases/download/v0.1.59/latest.yml' },
+  ],
+};
+function withGitHub(fn, release = RELEASE, status = 200) {
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url) => (String(url).startsWith('https://api.github.com/') ? new Response(JSON.stringify(release), { status }) : real(url));
+  return Promise.resolve(fn()).finally(() => { globalThis.fetch = real; });
+}
+
+test('the Download page lists the newest release and its free installers', async () => {
+  await withGitHub(async () => {
+    const res = await worker.fetch(new Request('https://site.test/api/latest'), {});
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.version, '0.1.59');
+    assert.deepEqual(data.files.map((f) => f.key), ['win', 'mac-arm', 'mac-intel']);
+    assert.equal(data.files[0].href, '/dl/win');
+    assert.ok(!JSON.stringify(data).includes('github.com/o/r/releases/download'), 'the page gets our address, not the file host');
+  });
+  await withGitHub(async () => {
+    assert.equal((await worker.fetch(new Request('https://site.test/api/latest'), {})).status, 502, 'GitHub down: the page shows its fallback');
+  }, {}, 500);
+});
+
+test('a free installer comes from the GitHub release, or from our bucket once it is there', async () => {
+  await withGitHub(async () => {
+    process.env.DOWNLOAD_BASE_URL = 'r2://scorpion-downloads';
+    const fromGitHub = await worker.fetch(new Request('https://site.test/dl/mac-arm'), {});
+    assert.equal(fromGitHub.status, 302);
+    assert.equal(fromGitHub.headers.get('Location'), 'https://github.com/o/r/releases/download/v0.1.59/Scorpion-0.1.59-arm64.dmg');
+
+    // In the bucket under the name the release workflow gives it: streamed by us.
+    const bucketWith = { head: async (key) => (key === '0.1.59/Scorpion Setup 0.1.59.exe' ? {} : null), get: bucket.get };
+    const ours = await worker.fetch(new Request('https://site.test/dl/win'), { DOWNLOADS: { head: bucketWith.head, get: async (key) => { const object = await bucket.get('0.1.55/Scorpion Setup 0.1.55.exe'); asked.push(key); return object; } } });
+    assert.equal(ours.status, 200);
+    assert.equal(asked.at(-1), '0.1.59/Scorpion Setup 0.1.59.exe');
+    assert.match(ours.headers.get('Content-Disposition'), /Scorpion%20Setup%200\.1\.59\.exe/);
+  });
+});
+
+test('only the free installers are free: no OS image, no Linux, nothing unknown', async () => {
+  await withGitHub(async () => {
+    for (const key of ['os', 'models', 'linux', 'nope']) {
+      assert.equal((await worker.fetch(new Request(`https://site.test/dl/${key}`), {})).status, 404, key);
+    }
+  });
+});

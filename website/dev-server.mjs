@@ -19,8 +19,8 @@ const types = {
 createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${port}`);
   try {
-    if (url.pathname.startsWith('/api/')) {
-      const name = url.pathname.slice(5).replace(/[^a-z-]/g, '');
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/dl/')) {
+      const name = url.pathname.startsWith('/dl/') ? 'free-download' : url.pathname.slice(5).replace(/[^a-z-]/g, '');
       const mod = await import(pathToFileURL(join(root, 'api', `${name}.js`)).href);
       const handler = mod[req.method];
       if (!handler) { res.writeHead(405).end(); return; }

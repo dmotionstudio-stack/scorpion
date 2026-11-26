@@ -15,6 +15,8 @@ import * as authRequest from './api/auth-request.js';
 import * as authVerify from './api/auth-verify.js';
 import * as checkout from './api/checkout.js';
 import * as download from './api/download.js';
+import * as freeDownload from './api/free-download.js';
+import * as latest from './api/latest.js';
 import * as library from './api/library.js';
 import * as order from './api/order.js';
 import * as stripeWebhook from './api/stripe-webhook.js';
@@ -22,6 +24,7 @@ import * as stripeWebhook from './api/stripe-webhook.js';
 const routes = {
   '/api/checkout': checkout,
   '/api/download': download,
+  '/api/latest': latest, // the newest release and its free installers, for the Download page
   '/api/order': order,
   '/api/auth-request': authRequest,
   '/api/auth-verify': authVerify,
@@ -56,7 +59,8 @@ async function streamFromR2(request, bucket, key) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const mod = routes[url.pathname];
+    // /dl/<win|mac-arm|mac-intel>: the free installers (the newest release), for everyone.
+    const mod = routes[url.pathname] || (url.pathname.startsWith('/dl/') ? freeDownload : null);
     if (!mod) return env?.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', { status: 404 });
     const handler = mod[request.method === 'HEAD' ? 'GET' : request.method];
     if (!handler) return new Response(null, { status: 405 });
