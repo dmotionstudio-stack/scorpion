@@ -844,7 +844,7 @@ export function initOrbSystem(ctx) {
   }
 
   $('#ix-approval-yes').onclick = () => answer(true);
-  $('#ix-guide-btn').onclick = () => toggleGuide();
+  // The guide is not a button on the screen; ? or H opens it.
   $('#ix-guide-close').onclick = () => toggleGuide(false);
   wireTiles();
   wireTitle();
