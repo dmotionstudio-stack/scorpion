@@ -16,7 +16,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-const TARGET = new THREE.Vector3(0, 0.45, 0); // what the camera looks at
+const TARGET = new THREE.Vector3(0, 0.45, 0); // what the camera looks at (its height follows the zoom: the figure always sits on the bottom edge)
+const HALF_FOV_TAN = Math.tan((40 / 2) * Math.PI / 180);
 const HEAD_CENTRE_Y = 1.25;
 const NECK_PIVOT = new THREE.Vector3(0, 0.35, -0.04); // where the head bends, at the base of the neck
 const Y_TOP = 1.97;
@@ -24,12 +25,12 @@ const Y_BOTTOM = -1.4;
 
 // How each conversation state looks. Values ease toward these targets.
 const STATES = {
-  standby: { swirl: 0, face: 0.45, glow: 0.85, lean: 0, tilt: 0, rings: 0.3, veins: 0.5, wave: 0.5, pulses: 0.5 },
-  listening: { swirl: 0.15, face: 0.7, glow: 1, lean: 0.1, tilt: 0.1, rings: 1, veins: 0.7, wave: 1, pulses: 1 },
-  thinking: { swirl: 1, face: 0.6, glow: 1.05, lean: -0.03, tilt: -0.06, rings: 0.6, veins: 0.9, wave: 1.6, pulses: 2 },
-  speaking: { swirl: 0.2, face: 0.9, glow: 1.1, lean: 0.04, tilt: 0, rings: 0.8, veins: 1, wave: 1.2, pulses: 1.3 },
-  acting: { swirl: 0.6, face: 0.7, glow: 1, lean: 0, tilt: 0, rings: 0.5, veins: 0.9, wave: 1.2, pulses: 1.6 },
-  waiting: { swirl: 0.05, face: 0.55, glow: 0.9, lean: 0.06, tilt: 0.08, rings: 0.5, veins: 0.6, wave: 0.7, pulses: 0.7 },
+  standby: { listen: 0, swirl: 0, face: 0.45, glow: 0.85, lean: 0, tilt: 0, rings: 0.3, veins: 0.5, wave: 0.5, pulses: 0.5 },
+  listening: { listen: 1, swirl: 0.15, face: 0.8, glow: 1.1, lean: 0.17, tilt: 0.24, rings: 1, veins: 0.7, wave: 1, pulses: 1 },
+  thinking: { listen: 0, swirl: 1, face: 0.6, glow: 1.05, lean: -0.03, tilt: -0.06, rings: 0.6, veins: 0.9, wave: 1.6, pulses: 2 },
+  speaking: { listen: 0, swirl: 0.2, face: 0.9, glow: 1.1, lean: 0.04, tilt: 0, rings: 0.8, veins: 1, wave: 1.2, pulses: 1.3 },
+  acting: { listen: 0, swirl: 0.6, face: 0.7, glow: 1, lean: 0, tilt: 0, rings: 0.5, veins: 0.9, wave: 1.2, pulses: 1.6 },
+  waiting: { listen: 0, swirl: 0.05, face: 0.55, glow: 0.9, lean: 0.06, tilt: 0.08, rings: 0.5, veins: 0.6, wave: 0.7, pulses: 0.7 },
 };
 
 // ---------- colour ----------
@@ -201,7 +202,7 @@ export function buildConstellation(q = 1) {
   const stars = [];
   for (let i = 0; i < n; i++) {
     const z = -(2.6 + rand() * 6.5);
-    stars.push({ x: (rand() * 2 - 1) * (6 + -z * 0.95), y: 0.5 + (rand() * 2 - 1) * (3.6 + -z * 0.55), z, seed: rand() });
+    stars.push({ x: (rand() * 2 - 1) * (6 + -z * 0.95), y: 1.7 + (rand() * 2 - 1) * (3.6 + -z * 0.55), z, seed: rand() });
   }
   const seen = new Set();
   const links = [];
@@ -220,7 +221,7 @@ export function buildConstellation(q = 1) {
 
 // ---------- the shaders ----------
 const BODY_VERTEX = `
-  uniform float uTime, uLevel, uSwirl, uSize, uFace, uRings, uGlow, uVeins;
+  uniform float uTime, uLevel, uSwirl, uSize, uFace, uRings, uGlow, uVeins, uListen;
   uniform vec3 uRot, uPivot, uLine, uRim, uDim, uWarm, uHot;
   attribute vec3 aNormal;
   attribute float aSeed, aWarm, aGlow, aKind;
@@ -239,6 +240,7 @@ const BODY_VERTEX = `
       p.y += sin(p.x * 9.0 + t * 1.5 + p.z * 4.0) * 0.004 * (1.0 + uSwirl * 3.0);
       p.y += sin(p.x * 14.0 + t * 1.2) * 0.012 * aWarm;
       p.y += sin(p.x * 22.0 - t * 6.0) * 0.012 * uLevel * aWarm;
+      p.y += sin(p.x * 30.0 + t * 9.0) * 0.006 * uListen * (0.3 + uLevel * 2.0) * smoothstep(0.3, 1.0, p.y);
       p *= 1.0 + 0.005 * sin(t * 1.2);
     } else if (aKind > 3.5 && aKind < 4.5) {
       p.y += rise * 0.4;
@@ -284,15 +286,18 @@ const BODY_VERTEX = `
     } else if (aKind < 5.5) {
       // The dotted rings: a wave goes out from the head along them.
       float r = length(position.xy - vec2(0.0, 1.25));
-      float wave = exp(-pow(r - mod(t * 0.7, 4.8) - 0.9, 2.0) * 3.0);
+      float front = mix(mod(t * 0.7, 4.8) + 0.9, 5.7 - mod(t * 1.5, 4.8), uListen);
+      float wave = exp(-pow(r - front, 2.0) * mix(3.0, 5.0, uListen));
+      float wave2 = uListen * exp(-pow(r - (5.7 - mod(t * 1.5 + 2.4, 4.8)), 2.0) * 5.0);
+      wave = max(wave, wave2);
       col = mix(uDim, uRim, wave * uRings);
-      glow = aGlow * (0.5 + uRings * 1.5 * wave);
+      glow = aGlow * (0.5 + uRings * 1.5 * wave + uListen * uLevel * 1.4);
       gl_PointSize = uSize * 1.7 * (9.0 / -mv.z);
       vAlpha = 0.9;
     } else {
       // The glow inside the face: big soft sprites.
       col = uWarm;
-      glow = 0.05 * (0.5 + uFace + uLevel * 1.5);
+      glow = 0.05 * (0.5 + uFace + uLevel * 1.5) * (1.0 - 0.55 * uListen);
       gl_PointSize = 60.0 * (0.6 + aSeed * 0.8) * (9.0 / -mv.z);
       vAlpha = 1.0;
     }
@@ -369,7 +374,7 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
 
   // ---- the figure ----
   const bodyU = {
-    uTime: { value: 0 }, uLevel: { value: 0 }, uSwirl: { value: 0 }, uSize: { value: low ? 1.7 : 1.35 }, uFace: { value: 0.5 }, uRings: { value: 0.3 }, uGlow: { value: 1 }, uVeins: { value: 0.5 },
+    uTime: { value: 0 }, uLevel: { value: 0 }, uSwirl: { value: 0 }, uSize: { value: low ? 1.7 : 1.35 }, uFace: { value: 0.5 }, uRings: { value: 0.3 }, uGlow: { value: 1 }, uVeins: { value: 0.5 }, uListen: { value: 0 },
     uRot: { value: new THREE.Vector3() }, uPivot: { value: NECK_PIVOT.clone() },
     uLine: { value: toColor(pal.line) }, uRim: { value: toColor(pal.rim) }, uDim: { value: toColor(pal.dim) }, uWarm: { value: toColor(pal.warm) }, uHot: { value: toColor(pal.hot) },
   };
@@ -412,6 +417,12 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
   const pulseRing = new THREE.Mesh(new THREE.RingGeometry(0.98, 1, 128), pulseMat);
   pulseRing.position.set(0, HEAD_CENTRE_Y, -0.95);
   figure.add(pulseRing);
+  const listenRings = [0, 1, 2].map(() => {
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 128), new THREE.MeshBasicMaterial({ color: toColor(pal.warm), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, side: THREE.DoubleSide }));
+    m.position.set(0, HEAD_CENTRE_Y, -0.9);
+    figure.add(m);
+    return m;
+  });
 
   // ---- living ----
   let target = STATES.standby;
@@ -426,17 +437,20 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
   let running = false, raf = 0, fpsCap = 60, last = 0;
   let viewTarget = null;
   const view = { cx: 0.5, cy: 0.5, k: 1 };
-  const cam = { yaw: 0, pitch: 0.06, dist: 8.6 };
-  const camGoal = { yaw: 0, pitch: 0.06, dist: 8.6 };
+  const cam = { yaw: 0, pitch: 0.06, dist: 6.3 };
+  const camGoal = { yaw: 0, pitch: 0.06, dist: 6.3 };
   const clock = new THREE.Clock();
   const act = (kind) => { gesture = { kind, at: clock.elapsedTime }; };
 
+  let listenK = 0;
+  const mixC = (target, a, b, k) => target.copy(toColor(a)).lerp(toColor(b), k);
   function recolour() {
-    bodyU.uLine.value.copy(toColor(pal.line));
-    bodyU.uRim.value.copy(toColor(pal.rim));
-    bodyU.uDim.value.copy(toColor(pal.dim));
-    bodyU.uWarm.value.copy(toColor(pal.warm));
-    bodyU.uHot.value.copy(toColor(pal.hot));
+    // listening turns the figure to the opposite colour (the theme colour moves inside)
+    mixC(bodyU.uLine.value, pal.line, { ...pal.warm, s: 1, l: 0.46 }, listenK);
+    mixC(bodyU.uRim.value, pal.rim, { ...pal.warm, s: 1, l: 0.58 }, listenK);
+    mixC(bodyU.uDim.value, pal.dim, { ...pal.warm, s: 1, l: 0.34 }, listenK);
+    mixC(bodyU.uWarm.value, pal.warm, { ...pal.line, s: 1, l: 0.46 }, listenK);
+    mixC(bodyU.uHot.value, pal.hot, { ...pal.line, s: 1, l: 0.6 }, listenK);
   }
   function applyView() {
     const w = container.clientWidth || 1;
@@ -468,7 +482,7 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
   const endDrag = () => { drag = null; };
   el.addEventListener('pointerup', endDrag);
   el.addEventListener('pointercancel', endDrag);
-  el.addEventListener('dblclick', () => { camGoal.yaw = 0; camGoal.pitch = 0.06; camGoal.dist = 8.6; });
+  el.addEventListener('dblclick', () => { camGoal.yaw = 0; camGoal.pitch = 0.06; camGoal.dist = 6.3; });
   el.addEventListener('wheel', (e) => { e.preventDefault(); camGoal.dist = Math.max(4, Math.min(14, camGoal.dist * (e.deltaY > 0 ? 1.08 : 0.92))); }, { passive: false });
 
   function frame(time) {
@@ -497,9 +511,11 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
     bodyU.uTime.value = t;
     bodyU.uLevel.value = level;
     bodyU.uSwirl.value = now.swirl;
+    bodyU.uListen.value = now.listen;
+    if (Math.abs(now.listen - listenK) > 0.004) { listenK = now.listen; recolour(); }
     bodyU.uFace.value = now.face;
     bodyU.uRings.value = now.rings + level * 0.4;
-    bodyU.uGlow.value = now.glow + level * 0.3;
+    bodyU.uGlow.value = (now.glow + level * 0.3) * (1 - 0.45 * now.listen);
     bodyU.uVeins.value = now.veins;
     starU.uStir.value = now.swirl;
     linkU.uPulses.value = now.pulses + level;
@@ -511,6 +527,7 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
     sky.rotation.z = Math.sin(t * 0.03) * 0.03;
     const cy = cam.yaw + Math.sin(t * 0.15) * 0.05 + look.yaw * 0.08;
     const cp = cam.pitch + Math.sin(t * 0.12) * 0.015;
+    TARGET.y = Y_BOTTOM + HALF_FOV_TAN * cam.dist * 0.97; // the bottom of the body on the bottom edge of the screen, whatever the screen
     camera.position.set(TARGET.x + Math.sin(cy) * Math.cos(cp) * cam.dist, TARGET.y + Math.sin(cp) * cam.dist, TARGET.z + Math.cos(cy) * Math.cos(cp) * cam.dist);
     camera.lookAt(TARGET);
 
@@ -521,14 +538,20 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
       pulseMat.opacity = Math.max(0, 0.9 * (1 - p));
       if (p >= 1) { pulsesLeft -= 1; pulseT = pulsesLeft > 0 ? 0 : -1; if (pulseT < 0) pulseMat.opacity = 0; }
     }
+    for (let i = 0; i < listenRings.length; i++) {
+      const ph = (t * 0.55 + i / listenRings.length) % 1; // 0 far out, 1 at the head
+      listenRings[i].scale.setScalar(0.75 + (1 - ph) * (2.6 + level * 1.4));
+      listenRings[i].material.opacity = now.listen * Math.sin(ph * Math.PI) * (0.22 + level * 0.35);
+      listenRings[i].material.color.copy(bodyU.uLine.value).multiplyScalar(0.8);
+    }
     if (viewTarget) { view.cx = ease(view.cx, viewTarget.cx, 4); view.cy = ease(view.cy, viewTarget.cy, 4); view.k = ease(view.k, viewTarget.k, 4); }
     else { view.cx = ease(view.cx, 0.5, 4); view.cy = ease(view.cy, 0.5, 4); view.k = ease(view.k, 1, 4); }
     applyView();
-    bloom.strength = 0.8 + level * 0.35 + (now.glow - 0.85) * 0.3;
+    bloom.strength = (0.8 + level * 0.35 + (now.glow - 0.85) * 0.3) * (1 - 0.45 * now.listen);
     composer.render();
   }
 
-  return {
+  const api = {
     setState(name) {
       const next = STATES[name] ? name : 'standby';
       if (next === 'acting' && stateName !== 'acting') act('nod'); // a command is starting: "on it"
@@ -552,7 +575,7 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
       viewTarget = { cx: Math.max(0, Math.min(1, tile.cx / w)), cy: Math.max(0, Math.min(1, tile.cy / h)), k: Math.max(0.22, Math.min(1, Math.min(tile.w / w, tile.h / h) * 1.15)) };
     },
     // The two-hand "zoom into" gesture: closer (amount: 0..1), or back.
-    zoomToward(id, amount = 0) { camGoal.dist = 8.6 - Math.min(1, Math.max(0, amount)) * 4; },
+    zoomToward(id, amount = 0) { camGoal.dist = 6.3 - Math.min(1, Math.max(0, amount)) * 4; },
     // 'info' | 'ok' | 'alert': a ring spreads out, and it nods (ok) or shakes its head (alert).
     pulse(kind = 'info') {
       pulseMat.color.copy(kind === 'alert' ? new THREE.Color('#ff4d4d') : kind === 'ok' ? new THREE.Color('#3fd48a') : toColor(pal.rim));
@@ -567,7 +590,7 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
     zoomBy(f) { camGoal.dist = Math.max(4, Math.min(14, camGoal.dist * f)); },
     zoomIn() { camGoal.dist = Math.max(4, camGoal.dist * 0.8); },
     zoomOut() { camGoal.dist = Math.min(14, camGoal.dist * 1.25); },
-    resetView() { camGoal.yaw = 0; camGoal.pitch = 0.06; camGoal.dist = 8.6; },
+    resetView() { camGoal.yaw = 0; camGoal.pitch = 0.06; camGoal.dist = 6.3; },
     start() {
       if (running) return;
       running = true;
@@ -585,4 +608,6 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
       renderer.domElement.remove();
     },
   };
+  renderer.domElement.__orb = api; // for the screenshot tests
+  return api;
 }

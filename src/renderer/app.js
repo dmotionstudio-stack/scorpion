@@ -1143,6 +1143,20 @@ const accentColor = () => {
 };
 const STATE_LABEL = { standby: 'Standby', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', acting: 'Working', waiting: 'Waiting for you' };
 
+// The humanoid introduces itself the first time it appears in a run of Scorpion: said aloud when the voice is
+// installed, always shown as words under it.
+const HUMANOID_INTRO = "Hello, I'm Scorpion. I'm your assistant, and I run entirely on this computer: your questions, your voice and your files never leave it. Ask me anything, show me with your hands, or just talk.";
+function introduceHumanoid() {
+  IX.introduced = true;
+  setTimeout(() => {
+    if (!IX.open || speaker.playing || recorder.active) return;
+    $('#ix-reply').textContent = HUMANOID_INTRO;
+    IX.orb?.pulse?.('ok');
+    if (S.voice?.installed) { api.warmVoice(); speaker.say(HUMANOID_INTRO); }
+    setTimeout(() => { if ($('#ix-reply').textContent === HUMANOID_INTRO) $('#ix-reply').textContent = ''; }, 16000);
+  }, 1200);
+}
+
 // opts.desktop: the orb as the Windows desktop (under the taskbar, quiet until
 // spoken to); opts.signin: just signed in, so greet the person.
 async function openInteract(opts = {}) {
@@ -1184,6 +1198,7 @@ async function openInteract(opts = {}) {
   if (S.settings.chatModel) api.warmOrb?.().catch(() => {}); // its prompt and tools are read now, so the first question is not slowed by them
   // A fresh install (no chats yet): the spoken first start, once.
   if (!S.settings.welcomeDone && !S.threads?.length) welcome?.start();
+  else if (S.settings.orbLook === 'humanoid' && !IX.introduced && !opts?.signin) introduceHumanoid();
   // Hands and listening only when asked for (G, the Gestures and Talk
   // buttons), or from the start when Settings says so.
   if (G.wanted) startGestures();
