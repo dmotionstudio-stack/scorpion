@@ -33,29 +33,59 @@ function speechLevel(t) {
   return syllable * phrase * 0.8;
 }
 
-// ——— Hero: the orb rises over the horizon, follows the pointer, and drifts
-// through its states as if mid-conversation.
+// ——— Hero: the orb rises over the horizon, follows the pointer, and drifts through its states as if mid-conversation. Now and
+// then it folds into a point of light and becomes the humanoid, which stands on the horizon, and later turns back into the orb
+// (the same transformation as the app's: forms-core.js).
 const heroBox = document.querySelector('[data-hero-orb]');
-const hero = heroBox && mount(heroBox, { frameCap: 50 });
-if (hero) {
-  const cycle = ['standby', 'listening', 'thinking', 'speaking'];
-  let step = 0;
-  let state = 'standby';
-  if (!reduceMotion) {
-    setInterval(() => {
-      step = (step + 1) % cycle.length;
-      state = cycle[step];
-      hero.setState(state);
-    }, 4200);
-    const t0 = performance.now();
-    setInterval(() => {
-      const t = (performance.now() - t0) / 1000;
-      hero.setLevel(state === 'speaking' ? speechLevel(t) : state === 'listening' ? speechLevel(t * 0.8) * 0.5 : 0);
-    }, 50);
+const heroHuman = document.querySelector('[data-hero-humanoid]');
+if (heroBox && heroHuman) {
+  const { createForms } = await import('./forms-core.js');
+  let forms = null;
+  try {
+    forms = await createForms({
+      containers: { orb: heroBox, humanoid: heroHuman },
+      start: 'orb',
+      frameCap: 50,
+      orbOrigin: '50% 50%', // the orb's centre is on the horizon; the humanoid's heart is a little above it
+      orbLift: () => heroHuman.clientHeight * 0.19,
+    });
+  } catch (err) {
+    console.warn('Orb unavailable:', err.message);
+    heroBox.classList.add('orb-fallback');
   }
-  addEventListener('pointermove', (e) => {
-    hero.setGaze((e.clientX / innerWidth) * 2 - 1, -((e.clientY / innerHeight) * 2 - 1));
-  }, { passive: true });
+  if (forms) {
+    heroBox.classList.add('orb-ready');
+    const cycle = ['standby', 'listening', 'thinking', 'speaking'];
+    let step = 0;
+    let state = 'standby';
+    if (!reduceMotion) {
+      setInterval(() => {
+        step = (step + 1) % cycle.length;
+        state = cycle[step];
+        forms.setState(state);
+      }, 4200);
+      const t0 = performance.now();
+      setInterval(() => {
+        const t = (performance.now() - t0) / 1000;
+        forms.setLevel(state === 'speaking' ? speechLevel(t) : state === 'listening' ? speechLevel(t * 0.8) * 0.5 : 0);
+      }, 50);
+      // The orb for a while, then the humanoid for a while, over and over (only while the hero is on screen).
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      (async () => {
+        for (;;) {
+          await sleep(9000);
+          while (!forms.visible || document.hidden) await sleep(1000);
+          await forms.transform('humanoid');
+          await sleep(12000);
+          while (!forms.visible || document.hidden) await sleep(1000);
+          await forms.transform('orb');
+        }
+      })();
+    }
+    addEventListener('pointermove', (e) => {
+      forms.setGaze((e.clientX / innerWidth) * 2 - 1, -((e.clientY / innerHeight) * 2 - 1));
+    }, { passive: true });
+  }
 }
 
 // ——— ORB section: pick a state, point at the shortcuts, spin and zoom.

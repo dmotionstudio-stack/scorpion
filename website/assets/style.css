@@ -143,6 +143,16 @@ code { font-family: var(--mono); font-size: .9em; background: var(--panel-2); pa
   mask-composite: intersect;
 }
 .hero-orb canvas { display: block; }
+/* The humanoid stands on the horizon: its box ends there, so the figure rises from the line the way the orb does. */
+.hero-humanoid {
+  position: absolute; left: 50%; bottom: var(--horizon); transform: translateX(-50%);
+  width: min(1400px, 180vw); height: calc(var(--orb-h) * .78); pointer-events: none; z-index: 1; mix-blend-mode: screen;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 10%, #000 52%), linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to bottom, transparent 10%, #000 52%), linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent);
+  mask-composite: intersect;
+}
+.hero-humanoid canvas { display: block; }
 /* The horizon: a bright line with flares, and darkness below it hiding the orb's lower half */
 .horizon { position: absolute; left: 0; right: 0; bottom: 88px; height: 0; z-index: 2; pointer-events: none; }
 .horizon::before {

@@ -33,6 +33,7 @@
 
       <div class="hero-stage" aria-hidden="true">
         <div class="hero-orb" data-hero-orb></div>
+        <div class="hero-humanoid" data-hero-humanoid></div>
         <div class="horizon"></div>
         <div class="below-horizon"></div>
       </div>
@@ -51,39 +52,6 @@
           <div class="stat"><strong>22</strong><span>languages it understands and answers in</span></div>
           <div class="stat"><strong>4</strong><span>ways to run it: app, USB, desktop or a whole OS</span></div>
           <div class="stat"><strong>12</strong><span>built-in agents, plus your own</span></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section orb-section" id="forms">
-      <div class="wrap orb-layout" data-forms>
-        <div>
-          <span class="eyebrow">One assistant, two forms</span>
-          <h2>Meet the orb, and the humanoid.</h2>
-          <p class="lead">Scorpion can show itself as a holographic orb or as a living humanoid, and change between the two when you ask. It listens, thinks and speaks, follows your hand and face, and reacts. Move your pointer over it.</p>
-          <div class="state-buttons" role="group" aria-label="State">
-            <button class="chip" data-forms-state-btn="standby" aria-pressed="true">Standby</button>
-            <button class="chip" data-forms-state-btn="listening" aria-pressed="false">Listening</button>
-            <button class="chip" data-forms-state-btn="thinking" aria-pressed="false">Thinking</button>
-            <button class="chip" data-forms-state-btn="speaking" aria-pressed="false">Speaking</button>
-          </div>
-          <div class="forms-actions">
-            <button type="button" class="btn btn-gold" data-forms-switch>Transform into the orb</button>
-            <button type="button" class="btn" data-forms-replay>Replay its entrance</button>
-          </div>
-          <ul class="checks">
-            <li>It enters in a different way each time: from its heart, dissolving, a spiral, a spin, a jelly pop, a fly-in, or growing from a seed of light</li>
-            <li>It sways its head hello to an open palm, nods to a thumbs-up, and bows when you say goodbye</li>
-            <li>Say "transform into the humanoid" or "show me the orb", and it changes in slow motion</li>
-            <li>It waits until you have finished, and listens for your voice, not the room</li>
-          </ul>
-          <p class="orb-hint" data-forms-hint>Say "show me the orb" to change it back.</p>
-        </div>
-        <div class="orb-stage" data-forms-stage>
-          <span class="orb-hud" data-forms-state>Standby</span>
-          <div class="orb-caption" aria-live="polite">
-            <span class="say" data-forms-say></span>
-          </div>
         </div>
       </div>
     </section>
@@ -159,7 +127,6 @@
 
   <script type="module" src="assets/site.js"></script>
   <script type="module" src="assets/orb-site.js"></script>
-  <script type="module" src="assets/forms-site.js"></script>
   <script type="module">
     import { EDITIONS, formatPrice } from './data/catalog.js';
     import { UPDATES, updateId } from './data/updates.js';
