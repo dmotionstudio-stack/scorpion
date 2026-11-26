@@ -27,7 +27,9 @@ export async function GET(request) {
   const match = files.find((f) => f.key === key);
   if (!match) return json({ error: 'That file is not part of this order.' }, 403);
 
-  // Files live at <DOWNLOAD_BASE_URL>/<version>/<file name>.
-  const target = `${base.replace(/\/+$/, '')}/${encodeURIComponent(version)}/${encodeURIComponent(match.file)}`;
+  // Files live at <DOWNLOAD_BASE_URL>/<version>/<file name>; the Scorpion OS image, which has a version of its own, at
+  // <DOWNLOAD_BASE_URL>/os/<file name> (the release workflows copy them there).
+  const folder = key === 'os' ? 'os' : version;
+  const target = `${base.replace(/\/+$/, '')}/${encodeURIComponent(folder)}/${encodeURIComponent(match.file)}`;
   return new Response(null, { status: 302, headers: { Location: target, 'Cache-Control': 'no-store' } });
 }

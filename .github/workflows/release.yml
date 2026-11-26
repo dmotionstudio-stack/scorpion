@@ -108,6 +108,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # True once the Cloudflare R2 secrets are set (docs/cloudflare-downloads.md).
+      HAS_R2: ${{ secrets.R2_BUCKET != '' && secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -129,3 +132,34 @@ jobs:
           notes="docs/releases/${GITHUB_REF_NAME}.md"
           if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
           gh release create "$GITHUB_REF_NAME" dist/*.exe dist/*.exe.blockmap dist/latest.yml dist/*.dmg --title "Scorpion ${GITHUB_REF_NAME#v}" "$@"
+      # The website's downloads come from Cloudflare R2 (a GitHub release holds files up to 2 GB; this is also where
+      # the big Scorpion OS image goes). Files go to <bucket>/<version>/ under the names the website's catalog uses.
+      - name: Copy the installers to Cloudflare R2
+        if: env.HAS_R2 == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: 'true'
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          put() { aws s3 cp "$1" "s3://$R2_BUCKET/$v/$2" --endpoint-url "$R2_ENDPOINT" --no-progress; }
+          for f in dist/*.exe; do put "$f" "Scorpion Setup $v.exe"; done
+          for f in dist/*arm64.dmg; do put "$f" "Scorpion-$v-arm64.dmg"; done
+          for f in dist/*.dmg; do case "$f" in *arm64.dmg) ;; *) put "$f" "Scorpion-$v.dmg";; esac; done
+      # Only after the files are there: the website sells (and Lifetime downloads) this version.
+      - name: Point the website at this version
+        if: env.HAS_R2 == 'true'
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          git fetch --depth=1 origin main
+          git checkout -B main origin/main
+          sed -i "s/^export const CURRENT_VERSION = '.*';/export const CURRENT_VERSION = '$v';/" website/data/catalog.js
+          if ! git diff --quiet; then
+            git config user.name 'Scorpion'
+            git config user.email '274588930+dmotionstudio-stack@users.noreply.github.com'
+            git commit -am "Website: version $v is on sale"
+            git push origin main
+          fi

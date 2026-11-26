@@ -1,0 +1,17 @@
+api
+lib
+hf-space
+github-pages
+node_modules
+Dockerfile
+.dockerignore
+dev-server.mjs
+package.json
+package-lock.json
+README.md
+worker.js
+wrangler.toml
+.assetsignore
+.env
+.env.*
+.wrangler

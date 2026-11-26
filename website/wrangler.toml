@@ -1,0 +1,25 @@
+# Deploys the website to Cloudflare: the pages as static assets, and /api/* through worker.js.
+#   cd website && npx wrangler deploy
+# (docs/cloudflare-downloads.md has the whole setup, secrets included.)
+name = "scorpion-website"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"] # process.env for the settings and secrets
+
+[assets]
+directory = "."          # the pages; .assetsignore keeps the server code and tooling out
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+[vars]
+# Where paid downloads come from. r2://<bucket name> streams them from the private bucket bound below;
+# an https address (a public bucket or a custom domain) redirects the buyer there instead.
+DOWNLOAD_BASE_URL = "r2://scorpion-downloads"
+# SITE_URL = "https://your-site.example"   # optional: the public address, for Stripe's return links
+
+# The bucket the release workflows fill (the same name as above).
+[[r2_buckets]]
+binding = "DOWNLOADS"
+bucket_name = "scorpion-downloads"
+
+# Secrets are not kept here:  npx wrangler secret put STRIPE_SECRET_KEY
