@@ -21,12 +21,14 @@ function header() {
       <a class="brand" href="index.html"><img src="assets/icon.png" alt="" width="32" height="32">Scorpion</a>
       <nav class="nav" id="site-nav" aria-label="Main">
         ${links}
+        <a class="mobile-only-link" href="account.html"${here === 'account.html' ? ' aria-current="page"' : ''}>My downloads</a>
         <span class="nav-mobile-actions">
           <a class="btn btn-sm btn-outline-gold" href="usb.html">Order USB</a>
           <a class="btn btn-gold btn-sm" href="download.html">Download</a>
         </span>
       </nav>
       <div class="header-actions">
+        <a class="header-link" href="account.html">My downloads</a>
         <a class="btn btn-sm btn-outline-gold" href="usb.html">Order USB</a>
         <a class="btn btn-gold btn-sm" href="download.html">Download</a>
       </div>
@@ -51,6 +53,7 @@ function footer() {
             <li><a href="os.html">Scorpion OS</a></li>
             <li><a href="download.html">Pricing and download</a></li>
             <li><a href="usb.html">The USB stick</a></li>
+            <li><a href="account.html">My downloads</a></li>
           </ul>
         </div>
         <div>

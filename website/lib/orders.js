@@ -112,3 +112,28 @@ export function filesForOrder(metadata = {}) {
   ];
   return { version, files };
 }
+
+// What a signed-in or just-paid customer sees of one paid order: what they bought and where to download it.
+// `session` is a Stripe Checkout Session.
+export function orderView(session, id = session.id) {
+  const meta = session.metadata || {};
+  const edition = findEdition(meta.edition);
+  const stick = findStick(meta.usb);
+  const { version, files } = filesForOrder(meta);
+  const shipping = session.shipping_details || session.collected_information?.shipping_details || null;
+  return {
+    id,
+    created: session.created ? new Date(session.created * 1000).toISOString() : null,
+    email: session.customer_details?.email || null,
+    edition: edition ? { name: edition.name, lifetime: edition.lifetime } : null,
+    version,
+    files: files.map(({ key, label, file }) => ({
+      label,
+      file,
+      href: `/api/download?session_id=${encodeURIComponent(id)}&file=${encodeURIComponent(key)}`,
+    })),
+    usb: stick
+      ? { name: stick.name, shipTo: shipping?.address?.city ? `${shipping.name}, ${shipping.address.city}, ${shipping.address.country}` : null }
+      : null,
+  };
+}

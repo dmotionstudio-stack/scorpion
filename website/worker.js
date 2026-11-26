@@ -1,4 +1,4 @@
-// The website's backend on Cloudflare: one Worker that serves the three /api functions (checkout, order, download).
+// The website's backend on Cloudflare: one Worker that serves the /api functions (checkout, order, download, and sign-in).
 // The pages and assets are served by Cloudflare itself (wrangler.toml, [assets]); only /api/* reaches this file.
 //
 // The API files are plain Web Request -> Response functions, so they run here unchanged. Secrets and settings
@@ -8,11 +8,27 @@
 // bucket). With DOWNLOAD_BASE_URL = r2://<bucket name> and the bucket bound as DOWNLOADS (wrangler.toml), the bucket
 // stays private and this Worker streams the file itself, after the payment check.
 
+// Signing in (My downloads) is five more: an emailed code, the check of it, signing out, the list of paid orders,
+// and the Stripe webhook that feeds that list. They keep their data in the KV namespace bound as AUTH_KV.
+import * as authLogout from './api/auth-logout.js';
+import * as authRequest from './api/auth-request.js';
+import * as authVerify from './api/auth-verify.js';
 import * as checkout from './api/checkout.js';
 import * as download from './api/download.js';
+import * as library from './api/library.js';
 import * as order from './api/order.js';
+import * as stripeWebhook from './api/stripe-webhook.js';
 
-const routes = { '/api/checkout': checkout, '/api/download': download, '/api/order': order };
+const routes = {
+  '/api/checkout': checkout,
+  '/api/download': download,
+  '/api/order': order,
+  '/api/auth-request': authRequest,
+  '/api/auth-verify': authVerify,
+  '/api/auth-logout': authLogout,
+  '/api/library': library,
+  '/api/stripe-webhook': stripeWebhook,
+};
 
 // Streams a file out of the bound R2 bucket (with resume support), as a download.
 async function streamFromR2(request, bucket, key) {
@@ -44,7 +60,7 @@ export default {
     if (!mod) return env?.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', { status: 404 });
     const handler = mod[request.method === 'HEAD' ? 'GET' : request.method];
     if (!handler) return new Response(null, { status: 405 });
-    const response = await handler(request);
+    const response = await handler(request, env); // env carries the KV namespace (AUTH_KV)
     // A private bucket: the download function names the file as r2://<bucket>/<path>; we stream it.
     const to = response.headers.get('Location');
     if (response.status === 302 && to?.startsWith('r2://') && env?.DOWNLOADS) {

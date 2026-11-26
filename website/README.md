@@ -113,3 +113,22 @@ refund promise in the Download page FAQ matches your policy.
 Unsplash (https://unsplash.com/photos/black-thumb-drive-9Eid2zc_Veo), free to use
 under the Unsplash license. It's a stand-in: replace it with a photo of the real
 Scorpion stick when you have one.
+
+## Customer sign-in (My downloads)
+
+`account.html` lets a customer sign in with their email and a 6-digit code (no password) and see every paid
+order with its download links, whenever they want to download again.
+
+- **How it works:** `POST /api/auth-request` emails a code (only to an address that has paid; the answer is the
+  same either way), `POST /api/auth-verify` checks it and sets a signed cookie for 30 days, `GET /api/library`
+  lists the signed-in customer's orders, `POST /api/auth-logout` signs out. A code works once for 10 minutes, five
+  wrong guesses throw it away, and requests are rate limited. The code itself is never stored, only a hash.
+- **Where the orders come from:** a Stripe webhook (`POST /api/stripe-webhook`) and the payment-success page add
+  each paid order to an index in KV (by lowercase email); Stripe is asked too when the index can't be trusted yet.
+- **Setup:** `AUTH_KV` (KV namespace, created by `wrangler deploy`), and the secrets `RESEND_API_KEY`,
+  `SESSION_SECRET`, `STRIPE_WEBHOOK_SECRET`, plus `MAIL_FROM` (see `.env.example`). Resend must have the sending
+  domain verified. In Stripe add a webhook to `https://<your site>/api/stripe-webhook` for
+  `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
+- Without those, the page says signing in isn't switched on yet. Only the Worker keeps its data in KV; the local
+  preview server (`node dev-server.mjs`) keeps it in memory, so try it with `STRIPE_API_BASE` and
+  `RESEND_API_BASE` pointed at fakes (see `test/website-auth.test.js` for what the fakes answer).

@@ -59,7 +59,7 @@
       box.innerHTML = `
         <span class="eyebrow">Thank you</span>
         <h1 style="font-size:2.4rem">${data.edition ? `Scorpion ${escapeHtml(data.edition.name)} is yours.` : 'Your USB stick is on its way.'}</h1>
-        <p class="lead">${data.email ? `A receipt is on its way to ${escapeHtml(data.email)}. ` : ''}${data.edition ? 'Bookmark this page: these links keep working, so you can download again any time.' : ''}</p>
+        <p class="lead">${data.email ? `A receipt is on its way to ${escapeHtml(data.email)}. ` : ''}${data.edition ? 'These links keep working. You can also sign in any time with this email at <a href="account.html">My downloads</a> to download again.' : ''}</p>
         ${data.edition ? `
           <h3 style="margin-top:28px">Your downloads${data.version ? `, version ${escapeHtml(data.version)}` : ''}</h3>
           <div class="files">${files}</div>

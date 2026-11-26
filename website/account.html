@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My downloads: Scorpion</title>
+  <meta name="description" content="Sign in with your email and a one-time code to download Scorpion again, any time.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="site-header" data-site-header></header>
+
+  <main class="section">
+    <div class="wrap" style="max-width:760px">
+      <span class="eyebrow">My downloads</span>
+      <h1 style="font-size:clamp(2rem,4vw,2.8rem)">Get your downloads again.</h1>
+
+      <div data-view="loading"><p class="muted">One moment...</p></div>
+
+      <!-- 1. the email -->
+      <form class="card account-card" data-view="email" hidden novalidate>
+        <p class="lead" style="font-size:1.02rem">Enter the email you bought with. We'll send you a 6-digit code. No password needed.</p>
+        <label class="field"><span class="label">Email address</span>
+          <input class="input" type="email" name="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required></label>
+        <div data-error></div>
+        <button class="btn btn-gold btn-block" type="submit">Email me a code</button>
+      </form>
+
+      <!-- 2. the code -->
+      <form class="card account-card" data-view="code" hidden novalidate>
+        <p class="lead" style="font-size:1.02rem">We sent a 6-digit code to <b data-sent-to></b>. It works for 10 minutes.</p>
+        <label class="field"><span class="label">Your code</span>
+          <input class="input code-input" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="7" placeholder="000000" required></label>
+        <div data-error></div>
+        <button class="btn btn-gold btn-block" type="submit">Sign in</button>
+        <p class="note" style="margin-top:14px">
+          Nothing arrived? Check your spam folder, then
+          <button class="linklike" type="button" data-resend>send a new code</button>
+          (<span data-wait></span>), or
+          <button class="linklike" type="button" data-change>use another email</button>.
+        </p>
+        <p class="note">No code is sent to an address that hasn't bought Scorpion.</p>
+      </form>
+
+      <!-- 3. the downloads -->
+      <div data-view="library" hidden>
+        <p class="muted">Signed in as <b data-who></b>. <button class="linklike" type="button" data-signout>Sign out</button></p>
+        <div data-orders></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer" data-site-footer></footer>
+
+  <script type="module" src="assets/site.js"></script>
+  <script type="module" src="assets/account.js"></script>
+</body>
+</html>
