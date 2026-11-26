@@ -68,6 +68,7 @@ const DEFAULT_SETTINGS = {
   orbSpeakEvents: false, // the orb says PC events out loud (battery, downloads, schedules, check-ins)
   orbApps: true, // while the orb is open, apps open inside it (framed in its panel)
   orbBubbles: null, // the bubbles around the orb (orb-bubbles.js; null: the usual ones)
+  orbLines: 'subtle', // the humanoid's background lines: 'full', 'subtle' or 'off'
   orbLook: 'classic', // the orb's screen: 'classic' (the 3D sphere) or 'humanoid' (a hologram figure with the orb as its heart)
   performance: 'full', // 'full' | 'balanced' | 'light' (Settings → General → Performance)
   performanceOnBattery: false, // Light while running on battery

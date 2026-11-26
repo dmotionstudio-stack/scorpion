@@ -221,7 +221,7 @@ export function buildConstellation(q = 1) {
 
 // ---------- the shaders ----------
 const BODY_VERTEX = `
-  uniform float uTime, uLevel, uSwirl, uSize, uFace, uRings, uGlow, uVeins, uListen;
+  uniform float uTime, uLevel, uSwirl, uSize, uFace, uRings, uGlow, uVeins, uListen, uIntro;
   uniform vec3 uRot, uPivot, uLine, uRim, uDim, uWarm, uHot;
   attribute vec3 aNormal;
   attribute float aSeed, aWarm, aGlow, aKind;
@@ -301,7 +301,12 @@ const BODY_VERTEX = `
       gl_PointSize = 60.0 * (0.6 + aSeed * 0.8) * (9.0 / -mv.z);
       vAlpha = 1.0;
     }
-    vCol = col * glow * uGlow;
+    // The figure draws itself in from the bottom up, with a bright line of light climbing it.
+    float h = (position.y + 1.6) / 3.8;
+    float edge = uIntro * 1.5 - 0.25;
+    float reveal = 1.0 - smoothstep(edge - 0.2, edge, h);
+    float band = exp(-pow((h - edge + 0.06) * 14.0, 2.0)) * (1.0 - uIntro) * (aKind > 5.5 ? 0.0 : 0.7);
+    vCol = (col * glow * uGlow + uRim * band * 1.4) * reveal;
   }`;
 const LINE_FRAGMENT = 'varying vec3 vCol; varying float vAlpha; void main() { gl_FragColor = vec4(vCol, vAlpha); }';
 const POINT_FRAGMENT = `
@@ -321,7 +326,7 @@ const STAR_FRAGMENT = `
   }`;
 const LINK_FRAGMENT = 'varying vec3 vCol; void main() { gl_FragColor = vec4(vCol, 0.9); }';
 const STAR_VERTEX = `
-  uniform float uTime, uSize, uStir;
+  uniform float uTime, uSize, uStir, uIntro, uSky;
   uniform vec3 uRim;
   attribute float aSeed;
   varying vec3 vCol;
@@ -333,10 +338,10 @@ const STAR_VERTEX = `
     gl_Position = projectionMatrix * mv;
     gl_PointSize = uSize * (0.5 + aSeed * 1.1) * (11.0 / -mv.z);
     float twinkle = 0.5 + 0.5 * sin(t * (1.0 + aSeed * 2.0) + aSeed * 60.0);
-    vCol = uRim * (0.4 + 0.9 * twinkle);
+    vCol = uRim * (0.4 + 0.9 * twinkle) * smoothstep(0.3, 1.0, uIntro) * min(1.0, uSky * 1.6);
   }`;
 const LINK_VERTEX = `
-  uniform float uTime, uStir, uPulses;
+  uniform float uTime, uStir, uPulses, uIntro, uSky;
   uniform vec3 uDim, uHot;
   attribute float aSeed, aAlong, aPhase;
   varying vec3 vCol;
@@ -348,10 +353,14 @@ const LINK_VERTEX = `
     // A pulse of light runs along the vein, now and then.
     float pos = fract(t * (0.12 + 0.06 * uPulses) + aPhase);
     float pulse = exp(-pow((pos - aAlong) * 6.0, 2.0)) * smoothstep(0.35, 0.0, abs(fract(aPhase * 7.0 + t * 0.05) - 0.5) - 0.1);
-    vCol = mix(uDim * 0.9, uHot, clamp(pulse * uPulses, 0.0, 1.0)) * (0.7 + 2.4 * pulse * uPulses);
+    vCol = mix(uDim * 0.9, uHot, clamp(pulse * uPulses, 0.0, 1.0)) * (0.7 + 2.4 * pulse * uPulses) * smoothstep(0.3, 1.0, uIntro) * uSky;
   }`;
 
-export function createHumanoid(container, { accent, quality = 'high' } = {}) {
+// How strong the constellation of lines behind the figure is: full, subtle (dim) or off.
+const LINES = { full: 1, subtle: 0.3, off: 0 };
+
+export function createHumanoid(container, { accent, quality = 'high', lines = 'subtle' } = {}) {
+  if (!(lines in LINES)) lines = 'subtle';
   const low = quality === 'low';
   const q = low ? 0.45 : 1;
   let pal = humanoidPalette(accent);
@@ -374,7 +383,7 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
 
   // ---- the figure ----
   const bodyU = {
-    uTime: { value: 0 }, uLevel: { value: 0 }, uSwirl: { value: 0 }, uSize: { value: low ? 1.7 : 1.35 }, uFace: { value: 0.5 }, uRings: { value: 0.3 }, uGlow: { value: 1 }, uVeins: { value: 0.5 }, uListen: { value: 0 },
+    uTime: { value: 0 }, uLevel: { value: 0 }, uSwirl: { value: 0 }, uSize: { value: low ? 1.7 : 1.35 }, uFace: { value: 0.5 }, uRings: { value: 0.3 }, uGlow: { value: 1 }, uVeins: { value: 0.5 }, uListen: { value: 0 }, uIntro: { value: 0 },
     uRot: { value: new THREE.Vector3() }, uPivot: { value: NECK_PIVOT.clone() },
     uLine: { value: toColor(pal.line) }, uRim: { value: toColor(pal.rim) }, uDim: { value: toColor(pal.dim) }, uWarm: { value: toColor(pal.warm) }, uHot: { value: toColor(pal.hot) },
   };
@@ -394,12 +403,12 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
 
   // ---- the constellation ----
   const con = buildConstellation(q);
-  const starU = { uTime: bodyU.uTime, uSize: { value: low ? 3.0 : 2.6 }, uStir: { value: 0 }, uRim: bodyU.uRim };
+  const starU = { uTime: bodyU.uTime, uSize: { value: low ? 3.0 : 2.6 }, uStir: { value: 0 }, uRim: bodyU.uRim, uIntro: bodyU.uIntro, uSky: { value: LINES[lines] } };
   const stars = new THREE.Points(geometry(null, [
     ['position', new Float32Array(con.stars.flatMap((s) => [s.x, s.y, s.z])), 3],
     ['aSeed', new Float32Array(con.stars.map((s) => s.seed)), 1],
   ]), makeMat(STAR_VERTEX, STAR_FRAGMENT, starU));
-  const linkU = { uTime: bodyU.uTime, uStir: starU.uStir, uPulses: { value: 0.5 }, uDim: bodyU.uDim, uHot: bodyU.uHot };
+  const linkU = { uTime: bodyU.uTime, uStir: starU.uStir, uPulses: { value: 0.5 }, uDim: bodyU.uDim, uHot: bodyU.uHot, uIntro: bodyU.uIntro, uSky: starU.uSky };
   const linkPos = [], linkSeed = [], linkAlong = [], linkPhase = [];
   for (const [i, j, ph] of con.links) {
     for (const [s, along] of [[con.stars[i], 0], [con.stars[j], 1]]) { linkPos.push(s.x, s.y, s.z); linkSeed.push(s.seed); linkAlong.push(along); linkPhase.push(ph); }
@@ -411,6 +420,7 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
   sky.add(stars, links);
   for (const o of [stars, links]) o.frustumCulled = false;
   scene.add(sky);
+  sky.visible = lines !== 'off';
 
   // A ring that spreads out behind the head for a pulse (alerts, confirmations).
   const pulseMat = new THREE.MeshBasicMaterial({ color: toColor(pal.rim), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
@@ -434,6 +444,7 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
   const look = { yaw: 0, pitch: 0 };
   let gesture = { kind: null, at: -10 };
   let pulseT = -1, pulsesLeft = 0;
+  let introAt = -100; // when the figure began drawing itself in
   let running = false, raf = 0, fpsCap = 60, last = 0;
   let viewTarget = null;
   const view = { cx: 0.5, cy: 0.5, k: 1 };
@@ -512,6 +523,7 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
     bodyU.uLevel.value = level;
     bodyU.uSwirl.value = now.swirl;
     bodyU.uListen.value = now.listen;
+    { const k = Math.max(0, Math.min(1, (t - introAt) / 3.4)); bodyU.uIntro.value = k * k * (3 - 2 * k); }
     if (Math.abs(now.listen - listenK) > 0.004) { listenK = now.listen; recolour(); }
     bodyU.uFace.value = now.face;
     bodyU.uRings.value = now.rings + level * 0.4;
@@ -561,6 +573,10 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
     setGaze(x, y) { gaze[0] = Math.max(-1, Math.min(1, x || 0)); gaze[1] = Math.max(-1, Math.min(1, y || 0)); },
     setLevel(v) { levelTarget = Math.max(0, Math.min(1, v)); },
     setAccent(color) { pal = humanoidPalette(color); recolour(); },
+    // 'full' | 'subtle' | 'off': the constellation of lines behind the figure.
+    setLines(mode) { if (!(mode in LINES)) mode = 'subtle'; starU.uSky.value = LINES[mode]; sky.visible = mode !== 'off'; },
+    // Draws the figure in again from the bottom up.
+    introduce() { introAt = clock.elapsedTime; },
     setSatellites() {},
     setRingLook() {},
     spinRings() {},
@@ -595,6 +611,7 @@ export function createHumanoid(container, { accent, quality = 'high' } = {}) {
       if (running) return;
       running = true;
       clock.getDelta();
+      introAt = clock.elapsedTime + 0.15;
       resize();
       raf = requestAnimationFrame(frame);
     },

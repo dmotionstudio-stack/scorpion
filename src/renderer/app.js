@@ -1147,14 +1147,16 @@ const STATE_LABEL = { standby: 'Standby', listening: 'Listening', thinking: 'Thi
 // installed, always shown as words under it.
 const HUMANOID_INTRO = "Hello, I'm Scorpion. I'm your assistant, and I run entirely on this computer: your questions, your voice and your files never leave it. Ask me anything, show me with your hands, or just talk.";
 function introduceHumanoid() {
-  IX.introduced = true;
+  // It draws itself in every time; the words (and the voice) at most once every ten minutes.
+  if (Date.now() - (IX.introducedAt || 0) < 10 * 60 * 1000) return;
+  IX.introducedAt = Date.now();
   setTimeout(() => {
     if (!IX.open || speaker.playing || recorder.active) return;
     $('#ix-reply').textContent = HUMANOID_INTRO;
     IX.orb?.pulse?.('ok');
     if (S.voice?.installed) { api.warmVoice(); speaker.say(HUMANOID_INTRO); }
     setTimeout(() => { if ($('#ix-reply').textContent === HUMANOID_INTRO) $('#ix-reply').textContent = ''; }, 16000);
-  }, 1200);
+  }, 2200);
 }
 
 // opts.desktop: the orb as the Windows desktop (under the taskbar, quiet until
@@ -1183,11 +1185,12 @@ async function openInteract(opts = {}) {
       IX.look = kind;
       IX.loading ??= look === 'classic'
         ? import('./orb.js').then(({ createOrb }) => createOrb($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low' }))
-        : import('./humanoid.js').then(({ createHumanoid }) => createHumanoid($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low' }));
+        : import('./humanoid.js').then(({ createHumanoid }) => createHumanoid($('#ix-stage'), { accent: accentColor(), quality: strong ? 'high' : 'low', lines: S.settings.orbLines }));
       IX.orb = await IX.loading;
       applyOrbCap();
     } else {
       IX.orb.setAccent(accentColor());
+      IX.orb.setLines?.(S.settings.orbLines);
     }
     if (IX.open) IX.orb.start();
   } catch (err) {
@@ -1198,7 +1201,7 @@ async function openInteract(opts = {}) {
   if (S.settings.chatModel) api.warmOrb?.().catch(() => {}); // its prompt and tools are read now, so the first question is not slowed by them
   // A fresh install (no chats yet): the spoken first start, once.
   if (!S.settings.welcomeDone && !S.threads?.length) welcome?.start();
-  else if (S.settings.orbLook === 'humanoid' && !IX.introduced && !opts?.signin) introduceHumanoid();
+  else if (S.settings.orbLook === 'humanoid') introduceHumanoid();
   // Hands and listening only when asked for (G, the Gestures and Talk
   // buttons), or from the start when Settings says so.
   if (G.wanted) startGestures();

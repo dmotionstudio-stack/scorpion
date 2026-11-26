@@ -18,6 +18,7 @@ export function initLookSettings({ $, api, S, setSetting, toast, IX, startWelcom
     $('#perf-battery').checked = Boolean(S.settings.performanceOnBattery);
     $('#perf-now').textContent = perfNote(chosen, S.perf);
     $('#orb-look').value = S.settings.orbLook === 'humanoid' ? 'humanoid' : 'classic';
+    $('#orb-lines').value = ['full', 'off'].includes(S.settings.orbLines) ? S.settings.orbLines : 'subtle';
     if (document.activeElement !== $('#orb-shortcut')) $('#orb-shortcut').value = S.settings.orbShortcut ?? 'Super+Space';
     const access = S.settings.access || {};
     for (const box of document.querySelectorAll('[data-access]')) box.checked = Boolean(access[box.dataset.access]);
@@ -36,6 +37,10 @@ export function initLookSettings({ $, api, S, setSetting, toast, IX, startWelcom
   $('#orb-look').onchange = async (e) => {
     S.settings = await api.updateSettings({ orbLook: e.target.value });
     if (IX.open) toast('The new look shows the next time the orb opens.');
+  };
+  $('#orb-lines').onchange = async (e) => {
+    S.settings = await api.updateSettings({ orbLines: e.target.value });
+    IX.orb?.setLines?.(e.target.value); // at once
   };
   // The orb shortcut is tried as soon as you finish typing it (Enter, or click away).
   const applyShortcut = async () => {
