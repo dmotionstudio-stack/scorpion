@@ -5,8 +5,16 @@
 // voice; after that no network is ever used (remote loading stays off).
 import fs from 'node:fs';
 import path from 'node:path';
+import { KOKORO_LANGUAGES, hasKokoroVoice, phonemes, voiceFor } from './g2p/index.js';
 
 const WHISPER = { id: 'onnx-community/whisper-base', dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' } };
+// The better listener (Settings → Voice): Whisper Small, one download beside the base one. On noisy French, Spanish, Italian and
+// Portuguese speech it makes about a quarter of the mistakes (2% of words wrong against 8%), and takes about three times as long to
+// understand a sentence (3 s on a fast computer, against 1 s), so it is a choice and not the default.
+const WHISPER_SMALL = { id: 'onnx-community/whisper-small', dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' } };
+export const LISTENER_SMALL_BYTES = 260 * 1024 ** 2;
+export const LISTENERS = ['base', 'small'];
+const listenerModel = (level) => (level === 'small' ? WHISPER_SMALL : WHISPER);
 const KOKORO = { id: 'onnx-community/Kokoro-82M-v1.0-ONNX', dtype: 'q8' };
 // Files that must be present for each model to load offline.
 const REQUIRED = {
@@ -31,20 +39,21 @@ export const VOICES = [
 ];
 
 // The languages Scorpion listens to (Whisper code), replies in, and speaks:
-// 'kokoro' (English), an MMS voice code (one ~38 MB download each), or
+// 'kokoro' (the main voice model: English, and French, Spanish, Italian, Portuguese, Hindi and Haitian Creole through the letters-to-sounds
+// rules in g2p/, with Kokoro's own voices for them, which need no download), an MMS voice code (one ~38 MB download each), or
 // 'system' (the computer's own voice for that language, if it has one).
-// Haitian Creole has no ready-made MMS voice yet, so the French one stands in.
+// Haitian Creole has no voice of its own anywhere: it is spoken with Kokoro's French voice, saying Creole sounds (g2p/ht.js).
 export const LANGUAGES = [
   { id: 'en', name: 'English', native: 'English', speech: 'kokoro' },
-  { id: 'fr', name: 'French', native: 'Français', speech: 'fra' },
-  { id: 'ht', name: 'Haitian Creole', native: 'Kreyòl ayisyen', speech: 'fra', approximate: true },
-  { id: 'es', name: 'Spanish', native: 'Español', speech: 'spa' },
-  { id: 'pt', name: 'Portuguese', native: 'Português', speech: 'por' },
+  { id: 'fr', name: 'French', native: 'Français', speech: 'kokoro' },
+  { id: 'ht', name: 'Haitian Creole', native: 'Kreyòl ayisyen', speech: 'kokoro', approximate: true },
+  { id: 'es', name: 'Spanish', native: 'Español', speech: 'kokoro' },
+  { id: 'pt', name: 'Portuguese', native: 'Português', speech: 'kokoro' },
   { id: 'de', name: 'German', native: 'Deutsch', speech: 'deu' },
-  { id: 'it', name: 'Italian', native: 'Italiano', speech: 'system' },
+  { id: 'it', name: 'Italian', native: 'Italiano', speech: 'kokoro' },
   { id: 'ru', name: 'Russian', native: 'Русский', speech: 'rus' },
   { id: 'ar', name: 'Arabic', native: 'العربية', speech: 'ara' },
-  { id: 'hi', name: 'Hindi', native: 'हिन्दी', speech: 'hin' },
+  { id: 'hi', name: 'Hindi', native: 'हिन्दी', speech: 'kokoro' },
   { id: 'vi', name: 'Vietnamese', native: 'Tiếng Việt', speech: 'vie' },
   { id: 'ko', name: 'Korean', native: '한국어', speech: 'kor' },
   { id: 'ro', name: 'Romanian', native: 'Română', speech: 'ron' },
@@ -57,6 +66,24 @@ export const LANGUAGES = [
   { id: 'uk', name: 'Ukrainian', native: 'Українська', speech: 'system' },
   { id: 'id', name: 'Indonesian', native: 'Bahasa Indonesia', speech: 'system' },
   { id: 'sw', name: 'Swahili', native: 'Kiswahili', speech: 'system' },
+  // More languages: listened to by Whisper, answered in by the chat model, spoken by the computer's own voice for that language when it
+  // has one (Windows: Settings, Time & language, Speech; macOS and Scorpion OS have their own).
+  { id: 'el', name: 'Greek', native: 'Ελληνικά', speech: 'system' },
+  { id: 'he', name: 'Hebrew', native: 'עברית', speech: 'system' },
+  { id: 'th', name: 'Thai', native: 'ไทย', speech: 'system' },
+  { id: 'bn', name: 'Bengali', native: 'বাংলা', speech: 'system' },
+  { id: 'ur', name: 'Urdu', native: 'اردو', speech: 'system' },
+  { id: 'fa', name: 'Persian', native: 'فارسی', speech: 'system' },
+  { id: 'cs', name: 'Czech', native: 'Čeština', speech: 'system' },
+  { id: 'sv', name: 'Swedish', native: 'Svenska', speech: 'system' },
+  { id: 'da', name: 'Danish', native: 'Dansk', speech: 'system' },
+  { id: 'no', name: 'Norwegian', native: 'Norsk', speech: 'system', bcp: 'nb' },
+  { id: 'fi', name: 'Finnish', native: 'Suomi', speech: 'system' },
+  { id: 'hu', name: 'Hungarian', native: 'Magyar', speech: 'system' },
+  { id: 'ca', name: 'Catalan', native: 'Català', speech: 'system' },
+  { id: 'ta', name: 'Tamil', native: 'தமிழ்', speech: 'system' },
+  { id: 'tl', name: 'Filipino', native: 'Filipino', speech: 'system', bcp: 'fil' },
+  { id: 'ms', name: 'Malay', native: 'Bahasa Melayu', speech: 'system' },
 ];
 export const MMS_VOICE_BYTES = 38 * 1024 ** 2;
 const mmsId = (code) => `Xenova/mms-tts-${code}`;
@@ -69,7 +96,7 @@ export function languageOf(value) {
 
 let dir = null;
 let transformers = null;
-let asr = null;
+const asrs = new Map(); // listener level -> loaded Whisper pipeline
 let tts = null;
 let installing = null;
 const mms = new Map(); // MMS voice code -> loaded pipeline
@@ -115,6 +142,8 @@ export function voiceStatus() {
     installed,
     installing: Boolean(installing),
     voices: VOICES,
+    languageVoices: Object.fromEntries(Object.entries(KOKORO_LANGUAGES).map(([id, l]) => [id, l.voices])),
+    listeners: { small: { ready: smallReady(), bytes: LISTENER_SMALL_BYTES } },
     languages: LANGUAGES.map((l) => ({ ...l, voiceReady: l.speech === 'kokoro' ? installed : l.speech === 'system' ? true : mmsReady(l.speech) })),
     bytes: VOICE_DOWNLOAD_BYTES,
     fast: installed && fastReady(),
@@ -172,7 +201,7 @@ export function installVoice(onProgress) {
       fs.rmSync(dir, { recursive: true, force: true });
       fs.mkdirSync(dir, { recursive: true });
       await lib(true);
-      asr = await loadAsr(report, true);
+      asrs.set('base', await loadAsr('base', report, true));
       tts = await loadTts(report, true);
       fs.writeFileSync(marker(), JSON.stringify({ whisper: WHISPER.id, kokoro: KOKORO.id, at: new Date().toISOString() }));
       onProgress?.({ done: true });
@@ -195,16 +224,52 @@ export async function uninstallVoice() {
 }
 
 export async function unloadVoice() {
-  await asr?.dispose?.().catch(() => {});
-  asr = null;
+  for (const a of asrs.values()) await a?.dispose?.().catch(() => {});
+  asrs.clear();
   tts = null;
   for (const p of mms.values()) await p?.dispose?.().catch(() => {});
   mms.clear();
 }
 
-async function loadAsr(progress_callback, download = false) {
+async function loadAsr(level = 'base', progress_callback, download = false) {
   const { pipeline } = await lib(download);
-  return pipeline('automatic-speech-recognition', WHISPER.id, { dtype: WHISPER.dtype, device: 'cpu', progress_callback });
+  const m = listenerModel(level);
+  return pipeline('automatic-speech-recognition', m.id, { dtype: m.dtype, device: 'cpu', progress_callback });
+}
+
+// Written once Whisper Small has downloaded AND loaded, so a download cut off halfway never counts.
+const smallMarker = () => path.join(dir, 'listener-small.json');
+export const smallReady = () => Boolean(dir) && fs.existsSync(smallMarker()) && fs.existsSync(path.join(dir, WHISPER_SMALL.id, 'onnx', 'decoder_model_merged_quantized.onnx'));
+let smallInstalling = null;
+export function installListener(level, onProgress) {
+  if (level !== 'small') return Promise.resolve();
+  if (!voiceStatus().installed) return Promise.reject(new Error('Install the voice first.'));
+  if (smallReady()) return Promise.resolve();
+  smallInstalling ??= (async () => {
+    writableDir({ copySystem: true });
+    const totals = new Map();
+    const report = (p) => {
+      if (p.status !== 'progress' && p.status !== 'done') return;
+      totals.set(p.file, { loaded: p.loaded ?? p.total ?? 0, total: p.total ?? 0 });
+      let loaded = 0, total = 0;
+      for (const t of totals.values()) { loaded += t.loaded; total += t.total; }
+      onProgress?.({ loaded, total: Math.max(total, LISTENER_SMALL_BYTES), done: false });
+    };
+    try {
+      fs.rmSync(path.join(dir, WHISPER_SMALL.id), { recursive: true, force: true });
+      asrs.set('small', await loadAsr('small', report, true));
+      fs.writeFileSync(smallMarker(), JSON.stringify({ model: WHISPER_SMALL.id, at: new Date().toISOString() }));
+      onProgress?.({ done: true });
+    } catch (err) {
+      fs.rmSync(path.join(dir, WHISPER_SMALL.id), { recursive: true, force: true });
+      fs.rmSync(smallMarker(), { force: true });
+      throw err;
+    } finally {
+      transformers.env.allowRemoteModels = false;
+      smallInstalling = null;
+    }
+  })();
+  return smallInstalling;
 }
 
 // Written once the faster voice has downloaded AND loaded, so a download cut off halfway never counts (the file alone would).
@@ -246,13 +311,14 @@ export function installFastVoice(onProgress) {
 // Load both models ahead of time (they take a few seconds), so the first
 // spoken sentence or transcription doesn't wait for them.
 let warming = null;
-export function warmUp(language = 'en') {
+export function warmUp(language = 'en', listener = 'base') {
   if (!voiceStatus().installed || installing) return Promise.resolve();
   const code = languageOf(language).speech;
   warming ??= (async () => {
     if (code === 'kokoro') tts ??= await loadTts();
     else if (mmsReady(code) && !mms.has(code)) mms.set(code, await loadMms(code));
-    asr ??= await loadAsr();
+    const level = listener === 'small' && smallReady() ? 'small' : 'base';
+    if (!asrs.has(level)) asrs.set(level, await loadAsr(level));
   })().catch(() => {}).finally(() => { warming = null; });
   return warming;
 }
@@ -262,9 +328,11 @@ function needInstalled() {
 }
 
 // pcm: 16 kHz mono Float32Array from the microphone.
-export async function transcribe(pcm, language = 'en') {
+export async function transcribe(pcm, language = 'en', { listener = 'base' } = {}) {
   needInstalled();
-  asr ??= await loadAsr();
+  const level = listener === 'small' && smallReady() ? 'small' : 'base';
+  if (!asrs.has(level)) asrs.set(level, await loadAsr(level));
+  const asr = asrs.get(level);
   const audio = pcm instanceof Float32Array ? pcm : new Float32Array(pcm);
   if (audio.length < 16000 * 0.3 || loudness(audio) < 0.004) return ''; // silence: Whisper would invent words
   const out = await asr(audio, { language: languageOf(language).id, task: 'transcribe', chunk_length_s: 30, stride_length_s: 5 });
@@ -292,14 +360,21 @@ export async function speak(text, { voice = 'af_heart', speed = 1, language = 'e
   const spoken = speakable(text, lang.id);
   if (!spoken) return { sampleRate: 24000, audio: new Float32Array(0) };
   if (lang.speech !== 'kokoro') {
-    if (lang.speech === 'system' || !mmsReady(lang.speech)) return { system: true, text: spoken, lang: lang.id };
+    if (lang.speech === 'system' || !mmsReady(lang.speech)) return { system: true, text: spoken, lang: lang.bcp ?? lang.id };
     if (!mms.has(lang.speech)) mms.set(lang.speech, await loadMms(lang.speech));
     const out = await mms.get(lang.speech)(spoken);
     return { sampleRate: out.sampling_rate, audio: out.audio };
   }
   tts ??= await loadTts();
+  const rate = Math.min(Math.max(Number(speed) || 1, 0.5), 2);
+  // French, Spanish, Italian, Portuguese, Hindi and Haitian Creole: our own letters-to-sounds rules, then one of Kokoro's voices for the language.
+  if (hasKokoroVoice(lang.id)) {
+    const ids = tts.tokenizer(phonemes(lang.id, spoken), { truncation: true }).input_ids;
+    const out = await tts.generate_from_ids(ids, { voice: voiceFor(lang.id, voice), speed: rate });
+    return { sampleRate: out.sampling_rate, audio: out.audio };
+  }
   const known = VOICES.some((v) => v.id === voice) ? voice : 'af_heart';
-  const out = await tts.generate(spoken, { voice: known, speed: Math.min(Math.max(Number(speed) || 1, 0.5), 2) });
+  const out = await tts.generate(spoken, { voice: known, speed: rate });
   return { sampleRate: out.sampling_rate, audio: out.audio };
 }
 

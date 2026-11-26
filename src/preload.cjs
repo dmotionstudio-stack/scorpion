@@ -231,6 +231,7 @@ contextBridge.exposeInMainWorld('scorpion', {
   transcribe: invoke('voice:transcribe'),
   speak: invoke('voice:speak'),
   installFastVoice: invoke('voice:installFast'),
+  installListener: invoke('voice:installListener'),
   micAccess: invoke('voice:micAccess'),
   warmVoice: invoke('voice:warm'),
   warmOrb: invoke('orb:warm'),

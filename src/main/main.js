@@ -843,7 +843,7 @@ async function phoneVoice(chatId, file) {
   fs.writeFileSync(tmp, file.bytes);
   try {
     const { pcm } = await decodeInWindow('speech', tmp);
-    const heard = (await voice.transcribe(pcm, store.getSettings().voiceLanguage)).trim();
+    const heard = (await voice.transcribe(pcm, store.getSettings().voiceLanguage, { listener: store.getSettings().listenQuality })).trim();
     if (!heard) return 'I could not hear any words in that voice message.';
     return phoneTurn(chatId, heard, { heard });
   } finally {
@@ -2118,7 +2118,7 @@ function registerIpc() {
     return { name: p ? list.find((m) => m.path === p)?.name || null : null, chat: list.find((m) => m.path === chat)?.name || null };
   });
   h('orb:warm', () => { warmUp({ spoken: true, orb: true }).catch(() => {}); return true; });
-  h('voice:warm', () => { voice.warmUp(store.getSettings().voiceLanguage); warmUp({ spoken: true }).catch(() => {}); return true; });
+  h('voice:warm', () => { voice.warmUp(store.getSettings().voiceLanguage, store.getSettings().listenQuality); warmUp({ spoken: true }).catch(() => {}); return true; });
   h('voice:installFast', async () => {
     await voice.installFastVoice((p) => send('voice:download', { ...p, fast: true }));
     return voice.voiceStatus();
@@ -2128,10 +2128,15 @@ function registerIpc() {
     return voice.voiceStatus();
   });
   h('voice:uninstall', async () => { await voice.uninstallVoice(); return voice.voiceStatus(); });
-  h('voice:transcribe', async (pcm) => voice.transcribe(pcm, store.getSettings().voiceLanguage));
+  h('voice:transcribe', async (pcm) => voice.transcribe(pcm, store.getSettings().voiceLanguage, { listener: store.getSettings().listenQuality }));
+  h('voice:installListener', async (level) => {
+    await voice.installListener(level, (p) => send('voice:download', { ...p, listener: level }));
+    return voice.voiceStatus();
+  });
   h('voice:speak', async (text) => {
     const s = store.getSettings();
-    return voice.speak(text, { voice: s.voiceName, speed: s.voiceSpeed, language: s.voiceLanguage });
+    // the voice chosen for this language (English: voiceName); a language without a choice uses its first voice
+    return voice.speak(text, { voice: s.languageVoices?.[s.voiceLanguage] || s.voiceName, speed: s.voiceSpeed, language: s.voiceLanguage });
   });
   // macOS asks the user once; Windows uses its own privacy setting.
   // Interact takes over the whole screen (no title bar or taskbar).

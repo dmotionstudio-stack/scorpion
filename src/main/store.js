@@ -48,7 +48,9 @@ const DEFAULT_SETTINGS = {
   theme: 'classic', // classic | hellfire | bloodmoon | smoke | molten | bone
   glass: 'auto', // 'auto' (native glass where the OS supports it) or 'off'
   voiceSpeak: false, // read replies aloud
-  voiceName: 'af_heart', // Kokoro voice id
+  voiceName: 'af_heart', // Kokoro voice id (English)
+  listenQuality: 'base', // 'base' (Whisper Base, built in) or 'small' (Whisper Small: fewer mistakes, about three times slower; a download)
+  languageVoices: {}, // the voice chosen for each other language that has several: { es: 'em_alex' } (voice.js, g2p/index.js)
   voiceSpeed: 1, // 0.5–2
   voiceLanguage: 'en', // the language you speak and Scorpion replies in (see voice.js LANGUAGES)
   backgrounds: [], // pictures added for the desktop background (paths)

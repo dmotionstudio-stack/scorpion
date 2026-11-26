@@ -13,7 +13,7 @@
 import { instantCommand, parseAction, parseLook, parseSwitch, parseSoundCheck, bestApp, parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
 import { intentsFor, matchSpoken } from '/shared/intents.js';
 import { PLATFORM } from './palette.js';
-import { ringLook, siteUrl } from './orb-bubbles.js';
+import { bubbleItems, ringLook, siteUrl } from './orb-bubbles.js';
 import { arrange, ensureWeights, resizeWeights, insertApp, removeApp, moveItem, swapItems, cellAt, sideOfRect, modeOf, MODES, GAP } from '/shared/tiles.js';
 
 // The least a tile may be dragged down to (CSS pixels): app windows have a smallest size of their own.
@@ -41,9 +41,9 @@ export function initOrbSystem(ctx) {
   // As Settings arranges them (orb-bubbles.js): places, your own, open windows.
   // The orb as a voice chat (Settings → Voice and hands): the voice is installed and the setting is on.
   const voiceOnly = () => S.settings.orbVoiceOnly !== false && Boolean(S.voice?.installed);
-  // Voice only: no shortcuts around the orb (apps, places, windows).
-  // No bubbles around the orb: the apps are tiles, and Scorpion's taskbar on the orb's screen has the rest.
-  const items = () => [];
+  // The apps around the orb (Scorpion's places, your own bubbles, the open windows: orb-bubbles.js), for the orb sphere only: the
+  // humanoid has none. Apps still open as tiles beside the orb, and Scorpion's taskbar on the orb's screen has the rest.
+  const items = () => (S.settings.orbLook === 'humanoid' ? [] : bubbleItems(S.settings.orbBubbles, PLACES, O.windows));
   const showShortcuts = () => {
     IX.orb?.setRingLook?.(ringLook(S.settings.orbBubbles));
     IX.orb?.setSatellites(items());

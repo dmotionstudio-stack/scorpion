@@ -987,6 +987,47 @@ function stopTalk() {
 }
 
 // ---- languages ----
+// What the voice test says, in each language.
+const SAMPLE = {
+  en: "Hi, I'm Scorpion. This is how I sound. I run entirely on your computer.",
+  fr: "Bonjour, je suis Scorpion. Voici ma voix. Je fonctionne entièrement sur votre ordinateur.",
+  es: "Hola, soy Scorpion. Así suena mi voz. Funciono por completo en tu ordenador.",
+  it: "Ciao, sono Scorpion. Questa è la mia voce. Funziono interamente sul tuo computer.",
+  pt: "Olá, eu sou o Scorpion. Esta é a minha voz. Funciono inteiramente no seu computador.",
+  hi: "नमस्ते, मैं स्कॉर्पियन हूँ। यह मेरी आवाज़ है। मैं पूरी तरह आपके कंप्यूटर पर चलता हूँ।",
+  ht: "Bonjou, mwen se Scorpion. Men vwa m. Mwen mache nèt sou òdinatè ou.",
+  de: "Hallo, ich bin Scorpion. So klinge ich. Ich laufe vollständig auf deinem Computer.",
+  ru: "Здравствуйте, я Scorpion. Вот мой голос. Я работаю полностью на вашем компьютере.",
+  ar: "مرحبا، أنا سكوربيون. هذا هو صوتي. أعمل بالكامل على جهاز الكمبيوتر الخاص بك.",
+  vi: "Xin chào, tôi là Scorpion. Đây là giọng của tôi. Tôi chạy hoàn toàn trên máy tính của bạn.",
+  ko: "안녕하세요, 저는 스콜피온입니다. 이것이 제 목소리입니다. 저는 완전히 당신의 컴퓨터에서 실행됩니다.",
+  ro: "Bună, sunt Scorpion. Aceasta este vocea mea. Rulez în întregime pe calculatorul tău.",
+  yo: "Báwo ni, èmi ni Scorpion. Èyí ni ohùn mi. Mo ń ṣiṣẹ́ pátápátá lórí kọ̀ǹpútà rẹ.",
+  zh: "你好，我是Scorpion。这是我的声音。我完全在你的电脑上运行。",
+  ja: "こんにちは、私はScorpionです。これが私の声です。私は完全にあなたのコンピューター上で動いています。",
+  nl: "Hallo, ik ben Scorpion. Dit is mijn stem. Ik draai volledig op jouw computer.",
+  pl: "Cześć, jestem Scorpion. To jest mój głos. Działam w całości na twoim komputerze.",
+  tr: "Merhaba, ben Scorpion. Bu benim sesim. Tamamen senin bilgisayarında çalışıyorum.",
+  uk: "Привіт, я Scorpion. Це мій голос. Я працюю повністю на вашому комп'ютері.",
+  id: "Halo, saya Scorpion. Ini suara saya. Saya berjalan sepenuhnya di komputer Anda.",
+  sw: "Habari, mimi ni Scorpion. Hii ni sauti yangu. Ninafanya kazi kabisa kwenye kompyuta yako.",
+  el: "Γεια σου, είμαι ο Scorpion. Αυτή είναι η φωνή μου. Λειτουργώ εξ ολοκλήρου στον υπολογιστή σου.",
+  he: "שלום, אני Scorpion. זה הקול שלי. אני פועל כולו במחשב שלך.",
+  th: "สวัสดี ฉันคือ Scorpion นี่คือเสียงของฉัน ฉันทำงานทั้งหมดบนคอมพิวเตอร์ของคุณ",
+  bn: "হ্যালো, আমি Scorpion। এটি আমার কণ্ঠস্বর। আমি সম্পূর্ণ আপনার কম্পিউটারে চলি।",
+  ur: "ہیلو، میں Scorpion ہوں۔ یہ میری آواز ہے۔ میں مکمل طور پر آپ کے کمپیوٹر پر چلتا ہوں۔",
+  fa: "سلام، من Scorpion هستم. این صدای من است. من کاملاً روی رایانه شما اجرا می‌شوم.",
+  cs: "Ahoj, jsem Scorpion. Tohle je můj hlas. Běžím celý na vašem počítači.",
+  sv: "Hej, jag är Scorpion. Det här är min röst. Jag körs helt på din dator.",
+  da: "Hej, jeg er Scorpion. Det er min stemme. Jeg kører helt på din computer.",
+  no: "Hei, jeg er Scorpion. Dette er stemmen min. Jeg kjører helt på datamaskinen din.",
+  fi: "Hei, olen Scorpion. Tämä on minun ääneni. Toimin kokonaan tietokoneellasi.",
+  hu: "Szia, én Scorpion vagyok. Ez az én hangom. Teljesen a számítógépeden futok.",
+  ca: "Hola, sóc Scorpion. Aquesta és la meva veu. Funciono completament al teu ordinador.",
+  ta: "வணக்கம், நான் Scorpion. இது என் குரல். நான் முழுவதும் உங்கள் கணினியில் இயங்குகிறேன்.",
+  tl: "Kumusta, ako si Scorpion. Ito ang boses ko. Tumatakbo ako nang buo sa computer mo.",
+  ms: "Hai, saya Scorpion. Ini suara saya. Saya berjalan sepenuhnya di komputer anda.",
+};
 function currentLanguage() {
   const langs = S.voice?.languages || [];
   const v = String(S.settings.voiceLanguage || 'en').toLowerCase();
@@ -1003,6 +1044,8 @@ function languageNote(l) {
   if (V.langDownload) return `Downloading the ${l.name} voice… ${Math.min(100, Math.round(((V.langDownload.loaded || 0) / (V.langDownload.total || 1)) * 100))}%`;
   if (l.id === 'en') return 'Scorpion listens, replies and speaks in English.';
   const base = `Scorpion listens to ${l.name} and replies in ${l.name}.`;
+  if (l.id === 'ht') return `${base} Haitian Creole has no voice of its own anywhere, so Scorpion reads it with a French voice, saying Creole sounds (not French spelling): understandable, with a French accent.${!/qwen3\.5/i.test(S.settings.chatModel || '') ? ' Tip: Qwen3.5 4B (Models) writes the best Creole of the models here.' : ''}`;
+  if (l.speech === 'kokoro') return `${base} Its voice is built in, nothing to download.`;
   if (l.speech === 'system') return `${base} It speaks with your computer's ${l.name} voice, if one is installed (Windows: Settings → Time & language → Speech).`;
   const tip = l.id === 'ht' && !/qwen3\.5/i.test(S.settings.chatModel || '') ? ' Tip: Qwen3.5 4B (Models) writes the best Creole of the models here.' : '';
   if (l.approximate) return `${base} There is no ${l.name} voice yet, so the French voice reads the replies: understandable, but with a French accent.${tip}`;
@@ -1049,13 +1092,22 @@ function renderVoiceSettings() {
   $('#voice-options').classList.toggle('hidden', !v.installed);
   if (!v.installed) return;
   $('#voice-speak').checked = Boolean(S.settings.voiceSpeak);
-  $('#voice-name').innerHTML = v.voices.map((o) => `<option value="${o.id}"${o.id === S.settings.voiceName ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
+  const here = currentLanguage();
+  const voices = v.languageVoices?.[here.id] || v.voices; // the voices for this language (English: Kokoro's English ones)
+  const chosen = here.id === 'en' ? S.settings.voiceName : S.settings.languageVoices?.[here.id] || voices[0]?.id;
+  $('#voice-name').innerHTML = voices.map((o) => `<option value="${o.id}"${o.id === chosen ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
   const speed = Number(S.settings.voiceSpeed ?? 1);
   $('#voice-speed').value = String(speed);
   $('#voice-speed-val').textContent = `${speed.toFixed(2)}×`;
   $('#voice-language').innerHTML = languageOptions();
+  const listenNow = S.settings.listenQuality === 'small' && v.listeners?.small?.ready ? 'small' : 'base';
+  $('#voice-listen').value = V.listenDownload ? 'small' : listenNow;
+  $('#voice-listen').disabled = Boolean(V.listenDownload);
+  $('#voice-listen-note').textContent = V.listenDownload
+    ? `Downloading the better listener… ${gb(V.listenDownload.loaded || 0)} of about ${gb(V.listenDownload.total || v.listeners?.small?.bytes || 0)}`
+    : listenNow === 'small' ? 'Better listening is on: fewer mistakes, in every language, and about three times as long to understand a sentence.' : 'Standard listening is quick. Better listening makes fewer mistakes, most of all in Haitian Creole, French and Spanish.';
   const lang = currentLanguage();
-  $('#voice-name-row').classList.toggle('hidden', lang.id !== 'en');
+  $('#voice-name-row').classList.toggle('hidden', !(lang.id === 'en' || (v.languageVoices?.[lang.id]?.length > 1)));
   $('#voice-language-note').textContent = languageNote(lang);
 }
 
@@ -1089,6 +1141,7 @@ function wireVoice() {
     if (e.target.closest('#voice-fast')) installFastVoice();
   };
   api.onVoiceDownload((p) => {
+    if (p.listener) { V.listenDownload = p.done ? null : p; if (S.view === 'settings') renderVoiceSettings(); return; }
     if (p.fast) { V.fastDownload = p.done ? null : p; if (S.view === 'settings') renderVoiceSettings(); return; }
     if (p.lang) {
       if (p.done || !V.langDownload) return;
@@ -1107,14 +1160,36 @@ function wireVoice() {
     S.settings = await api.updateSettings({ voiceSpeak: e.target.checked });
     renderVoiceButtons();
   };
+  $('#voice-listen').onchange = async (e) => {
+    const level = e.target.value;
+    if (level === 'small' && !S.voice?.listeners?.small?.ready) {
+      if (!confirm(`Download the better listener? It is about ${gb(S.voice?.listeners?.small?.bytes || 0)}, one time. It makes about a quarter of the mistakes in French, Spanish, Haitian Creole and the other languages, but takes about three times as long to understand a sentence.`)) { renderVoiceSettings(); return; }
+      V.listenDownload = { loaded: 0, total: S.voice?.listeners?.small?.bytes };
+      renderVoiceSettings();
+      try {
+        S.voice = await api.installListener('small');
+        toast('The better listener is on.');
+      } catch (err) {
+        V.listenDownload = null;
+        toast(`The better listener could not be downloaded: ${errText(err)}`, 8000);
+        renderVoiceSettings();
+        return;
+      }
+      V.listenDownload = null;
+    }
+    S.settings = await api.updateSettings({ listenQuality: level });
+    api.warmVoice?.();
+    renderVoiceSettings();
+  };
   $('#voice-name').onchange = async (e) => {
-    S.settings = await api.updateSettings({ voiceName: e.target.value });
-    speaker.say('Hi, I\'m Scorpion. This is how I sound.');
+    const lang = currentLanguage();
+    S.settings = await api.updateSettings(lang.id === 'en' ? { voiceName: e.target.value } : { languageVoices: { ...(S.settings.languageVoices || {}), [lang.id]: e.target.value } });
+    speaker.say(SAMPLE[lang.id] || SAMPLE.en);
   };
   $('#voice-speed').oninput = (e) => { $('#voice-speed-val').textContent = `${Number(e.target.value).toFixed(2)}×`; };
   $('#voice-speed').onchange = async (e) => { S.settings = await api.updateSettings({ voiceSpeed: Number(e.target.value) }); };
   $('#voice-language').onchange = (e) => setLanguage(e.target.value);
-  $('#voice-test').onclick = () => speaker.say('Hi, I\'m Scorpion. This is how I sound. I run entirely on your computer.');
+  $('#voice-test').onclick = () => speaker.say(SAMPLE[currentLanguage().id] || SAMPLE.en);
   $('#voice-uninstall').onclick = async () => {
     if (!confirm('Remove the voice models (about 230 MB)? You can install them again any time.')) return;
     stopTalk();

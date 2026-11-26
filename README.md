@@ -66,16 +66,28 @@ internet connection to chat.
   hands-free conversation (talk, it answers aloud, then listens again; say "stop" to
   end), and the speaker button reads every reply aloud. Spoken replies are short and quick, like
   talking to a person, and you can interrupt Scorpion with Space. Listening uses
-  Whisper and speaking uses Kokoro (English) or Meta's MMS voices, all on your
+  Whisper and speaking uses Kokoro (English, French, Spanish, Italian, Portuguese, Hindi and
+  Haitian Creole) or Meta's MMS voices (the other languages with a voice of their own), all on your
   computer: a one-time ~230 MB download (Settings → Voice → Install) plus ~38 MB
-  per extra language voice.
-- **Languages**: English, French, Haitian Creole, Spanish, Portuguese, German,
-  Russian, Arabic, Hindi, Vietnamese, Korean, Romanian and Yoruba with their own
-  voice; Italian, Chinese, Japanese, Dutch, Polish, Turkish, Ukrainian, Indonesian
-  and Swahili use your computer's voice for that language. Scorpion listens in the
-  language you choose and replies in it, typed or spoken. Haitian Creole has no
-  dedicated voice yet, so the French voice reads it (with a French accent), and
-  Qwen3.5 4B writes the best Creole of the models here.
+  per MMS language voice. Kokoro's other languages need no extra download.
+- **Languages** (38): Scorpion listens in the language you choose and replies in it, typed or spoken.
+  - **Natural voices, built in** (Kokoro, no download): English, **French**, **Spanish**, **Italian**, **Portuguese** and **Hindi**,
+    each with its own voices (Settings → Voice → Voice, for the languages that have several). Kokoro knows only English spelling, so for
+    the others Scorpion turns the letters into sounds itself with its own rules (`src/main/g2p/`: one file per language, with numbers
+    spoken as words), and tells the model how to say them. Tested by speaking sentences and listening to them again: French,
+    Spanish, Italian and Portuguese come back word for word.
+  - **Haitian Creole** has no voice anywhere, so it is read with Kokoro's French voice saying Creole sounds (its spelling is nearly
+    phonetic: an en on are nasal vowels, ch is sh, r is the back r), not French spelling as before. Understandable, with a French
+    accent. Qwen3.5 4B writes the best Creole of the models here.
+  - **Meta's MMS voices** (one ~38 MB download each): German, Russian, Arabic, Vietnamese, Korean, Romanian and Yoruba.
+  - **Your computer's own voice** (when it has one for the language): Chinese, Japanese, Dutch, Polish, Turkish, Ukrainian, Indonesian,
+    Swahili, and the newly added Greek, Hebrew, Thai, Bengali, Urdu, Persian, Czech, Swedish, Danish, Norwegian, Finnish, Hungarian,
+    Catalan, Tamil, Filipino and Malay.
+  - **Better listening** (Settings → Voice → Listening): Whisper Small, a one-time ~260 MB download beside the built-in Base. On noisy
+    French, Spanish, Italian and Portuguese speech it makes about a quarter of the mistakes (2% of words wrong against 8%), and takes
+    about three times as long to understand a sentence (3 s on a fast computer, against 1 s), so it is a choice.
+  - Licenses worth knowing: Kokoro (the model behind the natural voices) is Apache-2.0; Meta's MMS voices (German, Russian, Arabic,
+    Vietnamese, Korean, Romanian and Yoruba) are CC BY-NC, non-commercial.
 - **Interact**: a holographic orb that takes over the whole screen for talking face
   to face (Interact in the sidebar, or Ctrl+I). The orb shows what Scorpion is
   doing (standby, listening, thinking, speaking) and pulses with your voice and its
@@ -527,8 +539,8 @@ leaves the computer. Apps running as administrator don't accept it.
   and nothing is kept.
 
 Choose your language, the voice and the speed in **Settings → Voice** (or the
-language menu in Interact). Picking a language with its own voice downloads that
-voice once (~38 MB). The microphone is only used while the microphone or conversation button is listening.
+language menu in Interact). Picking a language with an MMS voice downloads that
+voice once (~38 MB); French, Spanish, Italian, Portuguese, Hindi and Haitian Creole use Kokoro and need nothing. The microphone is only used while the microphone or conversation button is listening.
 Audio never leaves the computer. The page can't use the camera (except for
 Interact's hand gestures, while you have them on) or the screen.
 

@@ -12,7 +12,7 @@ const smallScreen = matchMedia('(max-width: 720px)').matches;
 // containers: { orb, humanoid } (the same element is fine): where each form's canvas goes.
 // start: the form to begin with. orbOrigin / orbLift(): where the orb folds to and grows from, when its box is not the
 // humanoid's (the home page hero): a transform-origin, and how many pixels above that the humanoid's heart is.
-export async function createForms({ containers, start = 'humanoid', frameCap = 50, orbOrigin = '50% 81%', orbLift = () => 0, onChange = () => {} }) {
+export async function createForms({ containers, start = 'humanoid', satellites = [], frameCap = 50, orbOrigin = '50% 81%', orbLift = () => 0, onChange = () => {} }) {
   const box = (which) => containers[which];
   const make = async (which) => {
     const quality = smallScreen ? 'low' : 'high';
@@ -20,7 +20,10 @@ export async function createForms({ containers, start = 'humanoid', frameCap = 5
       const { createHumanoid } = await import('./orb/humanoid.js');
       return createHumanoid(box(which), { accent: ACCENT, quality, lines: 'subtle' });
     }
-    return createOrb(box(which), { accent: ACCENT, quality });
+    // The apps that orbit the orb (not the humanoid), when there is room for the ring.
+    const orb = createOrb(box(which), { accent: ACCENT, quality });
+    if (satellites.length && !smallScreen) orb.setSatellites(satellites.map(({ id, label, kind }) => ({ id, label, kind })));
+    return orb;
   };
 
   let form = start;

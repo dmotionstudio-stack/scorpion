@@ -2,6 +2,7 @@
 // replay of the humanoid's entrance. The work is in forms-core.js.
 
 import { createForms, reduceMotion, speechLevel } from './forms-core.js';
+import { SHORTCUTS } from './orb-shortcuts.js';
 
 const box = document.querySelector('[data-forms]');
 
@@ -30,6 +31,7 @@ async function init() {
     forms = await createForms({
       containers: { orb: stage, humanoid: stage },
       start: 'humanoid',
+      satellites: SHORTCUTS, // the apps around the orb (the humanoid has none)
       onChange: ({ form, busy }) => {
         switchBtn.disabled = busy;
         switchBtn.textContent = form === 'humanoid' ? 'Transform into the orb' : 'Transform into the humanoid';
