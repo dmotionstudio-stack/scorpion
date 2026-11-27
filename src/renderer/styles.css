@@ -87,6 +87,20 @@ code, pre { font-family: var(--mono); }
 .topbar > .chip, .topbar > .home-pill, .topbar > .agent-tag { flex: none; }
 .topbar > .model-switch { flex: 0 1 auto; min-width: 0; }
 .topbar > .spacer { flex: 1 1 0; min-width: 0; }
+/* The message box shrinks with a narrow window too (a tile in the orb): its bar wraps, nothing runs off the right edge. */
+.composer { min-width: 0; }
+.composer > .btn { flex: none; }
+.composer-box { min-width: 0; }
+.composer-box textarea { min-width: 0; width: 100%; box-sizing: border-box; }
+.composer-bar { flex-wrap: wrap; row-gap: 4px; }
+.composer-bar .mode-hint { flex: 1 1 140px; }
+/* As a tile in the orb the top bar is tighter, so it takes less of a small tile. */
+.orb-paged .topbar { gap: 6px 8px; padding: 6px 10px; }
+.orb-paged .topbar .model-switch select { max-width: 130px; }
+.orb-paged .topbar .think-switch > .muted { display: none; }
+.orb-paged .topbar .chip { padding: 3px 10px; }
+.orb-paged .topbar .home-pill { padding: 5px 12px 5px 9px; font-size: 14px; }
+.orb-paged .topbar .model-note { display: none; }
 .model-pill { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .model-pill .status { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .model-pill .status.ready { background: var(--accent); }
