@@ -85,6 +85,10 @@ const DEFAULT_SETTINGS = {
   appsFull: true, // an app's window fills the screen when it opens (Windows; Scorpion OS)
   updatesAnnounced: '', // Scorpion OS: the set of updates last announced (updates.js), so each is said once
   appUpdates: true, // Windows and macOS: look for new versions of Scorpion on GitHub by itself (app-updates.js)
+  appUpdateEvery: 1, // ...every this many days, weeks or months (appUpdateUnit)
+  appUpdateUnit: 'days',
+  appUpdateChecked: 0, // when it last looked (epoch ms), so a restart does not start the wait again
+  appUpdateNotify: true, // a notification when a new version is available and when it needs a restart
   handsAlwaysOn: false, // hand gestures turn on by themselves when Scorpion starts (camera); off: only when asked for (G in the orb, the Gestures button)
   talkAtStart: false, // the orb starts listening (microphone) as soon as it opens; off: only when asked for (the Talk button, the wake word)
   orbTileClip: {}, // per app (its program path): how much of the app's own title bar is cut off inside the orb, in points

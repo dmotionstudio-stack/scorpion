@@ -19,6 +19,14 @@ export function initAppUpdates({ $, api, S, toast, errText }) {
     $('#app-upd-restart').hidden = !U.ready;
     $('#app-upd-download').hidden = U.installs || !U.available?.url;
     $('#app-upd-auto').checked = S.settings.appUpdates !== false;
+    const n = Math.max(1, Math.min(99, Math.round(Number(S.settings.appUpdateEvery)) || 1));
+    const unit = ['days', 'weeks', 'months'].includes(S.settings.appUpdateUnit) ? S.settings.appUpdateUnit : 'days';
+    if (document.activeElement !== $('#app-upd-n')) $('#app-upd-n').value = String(n);
+    $('#app-upd-unit').value = unit;
+    for (const o of $('#app-upd-unit').options) o.textContent = n === 1 ? o.value.slice(0, -1) : o.value; // 1 day, 2 days
+    $('#app-upd-n').disabled = $('#app-upd-unit').disabled = S.settings.appUpdates === false;
+    $('#app-upd-last').textContent = U.lastCheck ? `Last looked ${new Date(U.lastCheck).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : '';
+    $('#app-upd-notify').checked = S.settings.appUpdateNotify !== false;
     $('#app-upd-note').textContent = U.installs
       ? 'New versions download in the background and install when Scorpion restarts. Your chats, models and settings stay as they are.'
       : 'Scorpion tells you when a new version is out and opens its download.';
@@ -33,6 +41,17 @@ export function initAppUpdates({ $, api, S, toast, errText }) {
   $('#app-upd-download').onclick = () => act('download');
   $('#app-upd-auto').onchange = async (e) => {
     try { S.settings = await api.updateSettings({ appUpdates: e.target.checked }); } catch (err) { toast(errText(err), 'error'); }
+    render();
+  };
+  const saveEvery = async () => {
+    const n = Math.max(1, Math.min(99, Math.round(Number($('#app-upd-n').value)) || 1));
+    try { S.settings = await api.updateSettings({ appUpdateEvery: n, appUpdateUnit: $('#app-upd-unit').value }); } catch (err) { toast(errText(err), 'error'); }
+    render();
+  };
+  $('#app-upd-n').onchange = saveEvery;
+  $('#app-upd-unit').onchange = saveEvery;
+  $('#app-upd-notify').onchange = async (e) => {
+    try { S.settings = await api.updateSettings({ appUpdateNotify: e.target.checked }); } catch (err) { toast(errText(err), 'error'); }
     render();
   };
   api.onAppUpdates?.((u) => { U = u; render(); });

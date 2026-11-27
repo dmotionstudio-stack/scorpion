@@ -1,7 +1,9 @@
 // Scorpion's own updates on Windows and macOS, from its GitHub releases:
-// a check 2 minutes after start and every 6 hours (Settings → General →
-// Updates can turn that off; Check now always works), and the state Settings
-// shows. Windows (installed) and a Developer-ID-signed Mac copy: electron-updater downloads the new installer in
+// a check 2 minutes after start when one is due, then whenever the interval the
+// user chose (every N days, weeks or months; Settings → General → Updates, which
+// can also turn it off; Check now always works) has passed since the last one,
+// a notification when a version is available and when it needs a restart, and
+// the state Settings shows. Windows (installed) and a Developer-ID-signed Mac copy: electron-updater downloads the new installer in
 // the background (checked against the release's latest.yml) and it installs
 // when Scorpion quits, or now with "Restart and update". macOS (the disk
 // copies signed with an Apple Developer ID, docs/signing-mac.md, update the same
@@ -12,7 +14,18 @@
 
 export const REPO = { owner: 'dmotionstudio-stack', repo: 'scorpion' };
 const FIRST_CHECK = 2 * 60_000;
-const EVERY = 6 * 3600_000;
+const TICK = 30 * 60_000; // how often it asks whether a look is due (the interval itself is days, weeks or months)
+const DAY = 24 * 3600_000;
+export const UNITS = { days: DAY, weeks: 7 * DAY, months: 30 * DAY };
+
+// How long between looks for a new version, from the settings (appUpdateEvery: a number, appUpdateUnit: days, weeks or months).
+export function updateIntervalMs(settings = {}) {
+  const n = Math.round(Number(settings.appUpdateEvery));
+  const unit = UNITS[settings.appUpdateUnit] ? settings.appUpdateUnit : 'days';
+  return (Number.isFinite(n) && n >= 1 ? Math.min(n, 99) : 1) * UNITS[unit];
+}
+// A look is due when none was made yet, the interval has passed, or the clock was set back.
+export const isCheckDue = (last, now, intervalMs) => !last || last > now || now - last >= intervalMs;
 
 // "0.1.12" > "0.1.9"; a leading v and anything after a dash are ignored.
 export function isNewer(candidate, current) {
@@ -52,8 +65,9 @@ export function appUpdateLine(u = {}) {
 
 // deps: { version, platform, arch, packaged, portable, getSettings, send(channel, payload),
 //         openExternal(url), notify({ title, body, onClick }), fetchJson(url),
+//         saveSettings(patch) (keeps when it last looked),
 //         macSigned() (macOS: resolves true when this copy carries a Developer ID signature) }
-export function createAppUpdates({ version, platform = process.platform, arch = process.arch, packaged, portable, getSettings, send, openExternal, notify, fetchJson, macSigned = async () => false }) {
+export function createAppUpdates({ version, platform = process.platform, arch = process.arch, packaged, portable, getSettings, saveSettings = () => {}, send, openExternal, notify, fetchJson, macSigned = async () => false }) {
   const supported = packaged && (platform === 'win32' || platform === 'darwin') && !process.env.SCORPION_NO_UPDATES;
   // Windows (installed) and a Developer-ID-signed Mac copy: Scorpion installs its updates itself.
   let installs = supported && platform === 'win32' && !portable;
@@ -76,14 +90,14 @@ export function createAppUpdates({ version, platform = process.platform, arch = 
       U.downloading = false; U.progress = null; U.ready = true;
       U.available = { version: info.version, url: null };
       changed();
-      announce(`Scorpion ${info.version} is ready`, 'It installs the next time Scorpion restarts. Click to restart now.', restart);
+      announce(`Scorpion ${info.version} is ready`, 'Restart Scorpion to finish installing it. Click to restart now.', restart);
     });
     updater.on('error', (err) => { U.downloading = false; U.checking = false; U.error = friendly(err); changed(); });
     return updater;
   }
 
   function announce(title, body, onClick) {
-    if (told === title) return;
+    if (told === title || getSettings().appUpdateNotify === false) return;
     told = title;
     notify({ title, body, onClick });
   }
@@ -102,8 +116,10 @@ export function createAppUpdates({ version, platform = process.platform, arch = 
         const result = await up.checkForUpdates();
         const info = result?.updateInfo;
         U.lastCheck = Date.now();
+        saveSettings({ appUpdateChecked: U.lastCheck });
         if (info && isNewer(info.version, version)) {
           U.available = { version: info.version, url: null };
+          if (quiet && !U.ready) announce(`Scorpion ${info.version} is available`, 'It is downloading in the background. You will be told when to restart.');
           if (!U.ready) {
             U.downloading = true; U.progress = 0;
             // Downloads in the background; 'update-downloaded' says when it's in.
@@ -113,6 +129,7 @@ export function createAppUpdates({ version, platform = process.platform, arch = 
       } else {
         const release = await fetchJson(`https://api.github.com/repos/${REPO.owner}/${REPO.repo}/releases/latest`);
         U.lastCheck = Date.now();
+        saveSettings({ appUpdateChecked: U.lastCheck });
         const latest = String(release?.tag_name || '').replace(/^v/i, '');
         if (latest && isNewer(latest, version)) {
           U.available = { version: latest, url: pickDownload(release, { platform, arch }) };
@@ -143,7 +160,14 @@ export function createAppUpdates({ version, platform = process.platform, arch = 
   function start() {
     if (!supported) return;
     clearTimeout(timer);
-    const loop = (wait) => { timer = setTimeout(async () => { if (getSettings().appUpdates !== false) await check({ quiet: true }); loop(EVERY); }, wait); };
+    // Often enough to notice that a day, week or month has passed (also across restarts: the last look is in the settings).
+    const loop = (wait) => {
+      timer = setTimeout(async () => {
+        const s = getSettings();
+        if (s.appUpdates !== false && isCheckDue(s.appUpdateChecked, Date.now(), updateIntervalMs(s))) await check({ quiet: true });
+        loop(TICK);
+      }, wait);
+    };
     loop(FIRST_CHECK);
   }
 

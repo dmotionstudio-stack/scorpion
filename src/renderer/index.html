@@ -342,7 +342,9 @@
                 <button class="btn primary small" type="button" id="app-upd-restart" hidden>Restart and update</button>
                 <button class="btn primary small" type="button" id="app-upd-download" hidden>Download</button>
               </div>
-              <label class="toggle"><input type="checkbox" id="app-upd-auto"><span>Look for new versions by itself (every few hours)</span></label>
+              <label class="toggle"><input type="checkbox" id="app-upd-auto"><span>Look for new versions by itself</span></label>
+              <div class="row" id="app-upd-every-row"><span class="muted small">Every</span><input type="number" id="app-upd-n" min="1" max="99" step="1" aria-label="How many" style="width:64px"><select id="app-upd-unit" aria-label="Days, weeks or months"><option value="days">days</option><option value="weeks">weeks</option><option value="months">months</option></select><span class="muted small" id="app-upd-last"></span></div>
+              <label class="toggle"><input type="checkbox" id="app-upd-notify"><span>Show a notification when a new version is available or needs a restart</span></label>
               <p class="muted small"><span id="app-upd-note"></span> New versions come from Scorpion's releases on GitHub; the check only asks for the newest version number.</p>
             </div>
           </div>

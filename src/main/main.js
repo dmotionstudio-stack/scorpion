@@ -3053,6 +3053,7 @@ app.whenReady().then(async () => {
       packaged: app.isPackaged,
       portable: Boolean(portableDir) && !process.env.SCORPION_DATA_DIR,
       getSettings: store.getSettings,
+      saveSettings: (patch) => { store.updateSettings(patch); },
       send,
       openExternal: (url) => shell.openExternal(url),
       // macOS: only a copy signed with an Apple Developer ID can replace itself (docs/signing-mac.md).
@@ -3062,7 +3063,7 @@ app.whenReady().then(async () => {
       }),
       notify: ({ title, body, onClick }) => {
         if (!Notification.isSupported()) return;
-        const n = new Notification({ title, body, silent: true });
+        const n = new Notification({ title, body, silent: false });
         n.on('click', () => { if (onClick) onClick(); else showWindow(); });
         n.show();
       },

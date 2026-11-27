@@ -435,16 +435,21 @@ delete that folder.
 ### Updates
 
 Scorpion looks for new versions on this repository's GitHub releases a couple of
-minutes after it starts and every six hours (**Settings → General → Updates**
-has **Check now** and a switch to stop it looking by itself). The check only
-asks GitHub for the newest version number.
+minutes after it starts (when a look is due) and then every N days, weeks or
+months, as you choose (**Settings → General → Updates**: the number and the unit,
+**Check now**, a switch to stop it looking by itself, and a switch for the
+notification that says a new version is available and, once it is downloaded,
+that Scorpion needs a restart). The check only asks GitHub for the newest
+version number.
 
 - **Windows (installed):** the new installer downloads in the background and
   installs when Scorpion restarts, or right away with **Restart and update**.
   Chats, models and settings stay as they are.
-- **Mac and portable Windows copies:** Scorpion says a new version is out, and
-  **Download** opens it. The Mac disk images aren't signed, so they can't
-  replace themselves.
+- **Mac (0.1.65 and newer):** the app is signed with an Apple Developer ID and
+  notarized, so it updates itself like Windows (docs/signing-mac.md). A Mac with
+  an older version installs the newest by hand once.
+- **Portable Windows copies:** Scorpion says a new version is out, and
+  **Download** opens it.
 - **Scorpion OS:** the app updates with the system (Settings → This computer).
 
 ### First start: get a model
