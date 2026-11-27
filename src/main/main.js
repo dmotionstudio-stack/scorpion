@@ -3056,6 +3056,11 @@ app.whenReady().then(async () => {
       getSettings: store.getSettings,
       send,
       openExternal: (url) => shell.openExternal(url),
+      // macOS: only a copy signed with an Apple Developer ID can replace itself (docs/signing-mac.md).
+      macSigned: () => new Promise((resolve) => {
+        const bundle = path.resolve(process.execPath, '..', '..', '..');
+        execFileCb('codesign', ['-dv', '--verbose=2', bundle], { timeout: 8000 }, (err, out, errOut) => resolve(!err && /Authority=Developer ID Application/.test(`${out}${errOut}`)));
+      }),
       notify: ({ title, body, onClick }) => {
         if (!Notification.isSupported()) return;
         const n = new Notification({ title, body, silent: true });

@@ -80,3 +80,18 @@ test('up to date, offline, and not where it applies', async () => {
   assert.equal(portable.view().installs, false);
   assert.equal((await portable.check()).available.url, 'https://x/win.exe');
 });
+
+test('macOS: a copy signed with a Developer ID updates itself; an unsigned one, or one that cannot tell, downloads', async () => {
+  const signed = mac({ macSigned: async () => true });
+  const v = await signed.u.check({ quiet: true }); // electron-updater has no feed to read here: the error is swallowed
+  assert.equal(v.installs, true);
+  assert.equal(signed.opened.length, 0);
+  for (const macSigned of [async () => false, async () => { throw new Error('no codesign'); }]) {
+    const m = mac({ macSigned });
+    assert.equal((await m.u.check({ quiet: true })).installs, false);
+    assert.equal(m.u.view().available.url, 'https://x/arm.dmg');
+  }
+  // A portable copy never installs, signed or not.
+  const portable = mac({ portable: true, macSigned: async () => true });
+  assert.equal((await portable.u.check({ quiet: true })).installs, false);
+});

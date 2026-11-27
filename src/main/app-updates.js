@@ -1,11 +1,13 @@
 // Scorpion's own updates on Windows and macOS, from its GitHub releases:
 // a check 2 minutes after start and every 6 hours (Settings → General →
 // Updates can turn that off; Check now always works), and the state Settings
-// shows. Windows (installed): electron-updater downloads the new installer in
+// shows. Windows (installed) and a Developer-ID-signed Mac copy: electron-updater downloads the new installer in
 // the background (checked against the release's latest.yml) and it installs
 // when Scorpion quits, or now with "Restart and update". macOS (the disk
-// images aren't signed, so they can't replace themselves) and portable
-// copies: Scorpion says a new version is out and opens its download.
+// copies signed with an Apple Developer ID, docs/signing-mac.md, update the same
+// way from the release's zip and latest-mac.yml; an unsigned Mac copy can't
+// replace itself) and portable copies: Scorpion says a new version is out and
+// opens its download.
 // Scorpion OS updates the app with the system (updates.js).
 
 export const REPO = { owner: 'dmotionstudio-stack', repo: 'scorpion' };
@@ -49,11 +51,13 @@ export function appUpdateLine(u = {}) {
 }
 
 // deps: { version, platform, arch, packaged, portable, getSettings, send(channel, payload),
-//         openExternal(url), notify({ title, body, onClick }), fetchJson(url) }
-export function createAppUpdates({ version, platform = process.platform, arch = process.arch, packaged, portable, getSettings, send, openExternal, notify, fetchJson }) {
+//         openExternal(url), notify({ title, body, onClick }), fetchJson(url),
+//         macSigned() (macOS: resolves true when this copy carries a Developer ID signature) }
+export function createAppUpdates({ version, platform = process.platform, arch = process.arch, packaged, portable, getSettings, send, openExternal, notify, fetchJson, macSigned = async () => false }) {
   const supported = packaged && (platform === 'win32' || platform === 'darwin') && !process.env.SCORPION_NO_UPDATES;
-  // Windows, installed: Scorpion installs its updates itself.
-  const installs = supported && platform === 'win32' && !portable;
+  // Windows (installed) and a Developer-ID-signed Mac copy: Scorpion installs its updates itself.
+  let installs = supported && platform === 'win32' && !portable;
+  let macKnown = false;
   const U = { supported, installs, current: version, checking: false, downloading: false, progress: null, ready: false, available: null, lastCheck: null, error: null };
   const view = () => ({ ...U, line: appUpdateLine(U) });
   const changed = () => send('app:updates', view());
@@ -88,6 +92,11 @@ export function createAppUpdates({ version, platform = process.platform, arch = 
     if (!supported || U.checking || U.downloading) return view();
     U.checking = true; U.error = null; changed();
     try {
+      if (platform === 'darwin' && !portable && !macKnown) {
+        macKnown = true;
+        installs = await Promise.resolve().then(macSigned).then(Boolean, () => false);
+        U.installs = installs;
+      }
       if (installs) {
         const up = await nsis();
         const result = await up.checkForUpdates();
@@ -119,13 +128,13 @@ export function createAppUpdates({ version, platform = process.platform, arch = 
     return view();
   }
 
-  // Windows: quit and install now (Scorpion starts again afterwards).
+  // Windows and signed Mac copies: quit and install now (Scorpion starts again afterwards).
   function restart() {
     if (!updater || !U.ready) return view();
     setImmediate(() => updater.quitAndInstall(true, true));
     return view();
   }
-  // macOS and portable copies: the new version's download, in the browser.
+  // Unsigned macOS and portable copies: the new version's download, in the browser.
   function download() {
     if (U.available?.url) openExternal(U.available.url);
     return view();

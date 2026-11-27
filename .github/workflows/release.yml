@@ -1,9 +1,10 @@
-# Builds installers for Windows (.exe) and macOS (.dmg, Apple Silicon + Intel).
+# Builds installers for Windows (.exe) and macOS (.dmg + .zip, Apple Silicon + Intel).
 # Run it from the Actions tab, or push a tag like v0.1.0: a tag also publishes
 # them as a GitHub release, with docs/releases/<tag>.md as its notes.
 # Set the input "bundle_model" to ship a model inside the installer (fully offline install).
 # The release also carries latest.yml and the installer's .blockmap: installed
-# Windows copies read them to update themselves (src/main/app-updates.js).
+# Windows copies read them to update themselves (src/main/app-updates.js). So does the Mac, once its builds
+# are signed and notarized with an Apple Developer ID (docs/signing-mac.md): the zips and latest-mac.yml.
 name: Release
 
 on:
@@ -24,15 +25,20 @@ jobs:
         include:
           - os: windows-latest
             target: --win --x64
+            arch: x64
           # npm installs only the llama.cpp binary for the runner's CPU, so each
           # Mac architecture is built on its own runner.
           - os: macos-latest
             target: --mac --arm64
+            arch: arm64
           - os: macos-15-intel
             target: --mac --x64
+            arch: x64
     runs-on: ${{ matrix.os }}
     env:
       # True when a Windows signing account is set up (docs/signing-windows.md): Azure Trusted Signing, or a certificate file.
+      # True when an Apple Developer ID is set up (docs/signing-mac.md): the Mac builds are signed and notarized, and update themselves.
+      MAC_SIGNING: ${{ secrets.MAC_CSC_LINK != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
       WINDOWS_SIGNING: ${{ (secrets.AZURE_CLIENT_SECRET != '' && vars.AZURE_SIGNING_ENDPOINT != '') || secrets.WIN_CSC_LINK != '' }}
     steps:
       - uses: actions/checkout@v4
@@ -46,13 +52,19 @@ jobs:
         if: ${{ github.event.inputs.bundle_model != '' }}
         run: node scripts/fetch-models.mjs resources/models ${{ github.event.inputs.bundle_model }}
       - name: Build installer
-        # macOS output is unsigned unless you add CSC_LINK / CSC_KEY_PASSWORD / APPLE_ID secrets.
+        # macOS is signed with a Developer ID and notarized when docs/signing-mac.md has been followed (MAC_CSC_LINK, MAC_CSC_KEY_PASSWORD,
+        # APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID); with none of them it is signed ad hoc, as before (and then updates by download).
         # Windows is signed when docs/signing-windows.md has been followed: Azure Trusted Signing (AZURE_* secrets and AZURE_SIGNING_* variables)
         # or a certificate file (WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD). With neither, the installer is unsigned, as before.
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -71,6 +83,15 @@ jobs:
           elif [ "$RUNNER_OS" = "Windows" ]; then
             echo "::warning::The Windows installer is NOT signed (no signing account is set up: see docs/signing-windows.md)."
           fi
+          if [ "$RUNNER_OS" = "macOS" ] && [ "$MAC_SIGNING" = "true" ]; then
+            # The Mac's certificate goes only to the Mac jobs (never to the Windows one).
+            export CSC_LINK="$MAC_CSC_LINK" CSC_KEY_PASSWORD="$MAC_CSC_KEY_PASSWORD" CSC_IDENTITY_AUTO_DISCOVERY=true
+            extra="-c.mac.notarize=true"
+            echo "Signing the Mac app with the Developer ID and notarizing it"
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            extra="-c.mac.identity=-"
+            echo "::warning::The Mac app is NOT signed with a Developer ID (docs/signing-mac.md): it is signed ad hoc and updates by download."
+          fi
           npx electron-builder ${{ matrix.target }} --publish never $extra
       # A signed release must really be signed: a certificate or account that was set up wrongly stops the release instead of shipping an
       # installer that Windows warns about (and that the updater would refuse).
@@ -85,6 +106,21 @@ jobs:
             if ($sig.Status -ne 'Valid') { $bad += $f.Name }
           }
           if ($bad.Count) { throw "Not validly signed: $($bad -join ', ')" }
+      # A Developer-ID release must really be signed and notarized: a certificate set up wrongly stops the release instead of shipping a
+      # Mac app that Gatekeeper warns about (and that the updater would refuse to install).
+      - name: Check the Mac signature
+        if: ${{ runner.os == 'macOS' && env.MAC_SIGNING == 'true' }}
+        run: |
+          app=$(ls -d release/mac*/Scorpion.app | head -1)
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv --verbose=2 "$app" 2>&1 | grep -q "Authority=Developer ID Application" || { echo "Not signed with a Developer ID Application certificate"; exit 1; }
+          xcrun stapler validate "$app"
+          spctl -a -t exec -vv "$app"
+      # Each Mac architecture writes its own latest-mac.yml: keep them apart, the release job merges them.
+      - name: Name the Mac update file by architecture
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          if [ -f release/latest-mac.yml ]; then mv release/latest-mac.yml "release/latest-mac-${{ matrix.arch }}.yml"; else echo "::warning::No latest-mac.yml was built"; fi
       # The app as people get it: it starts, its model engine runs in a process
       # of its own, the Windows helper builds, older settings are brought up to
       # date (scripts/smoke-test.mjs). A failure here stops the release.
@@ -93,12 +129,15 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: scorpion-${{ matrix.os }}
-          # Windows also: latest.yml and the blockmap, for its updater.
+          # Windows also: latest.yml and the blockmap, for its updater. The Mac: the zips and update file, for the same.
           path: |
             release/*.exe
             release/*.exe.blockmap
             release/latest.yml
             release/*.dmg
+            release/*.zip
+            release/*.zip.blockmap
+            release/latest-mac-*.yml
           if-no-files-found: error
 
   # A tag (v0.1.8): the three installers become a GitHub release.
@@ -127,12 +166,18 @@ jobs:
           # match, and make sure the file it names is there.
           for f in dist/*' '*; do if [ -e "$f" ]; then mv "$f" "${f// /-}"; fi; done
           ls -la dist
+          # One latest-mac.yml for both Mac architectures (installed, Developer-ID-signed Mac copies read it).
+          if ls dist/latest-mac-*.yml >/dev/null 2>&1; then
+            node scripts/merge-mac-yml.mjs dist/latest-mac-arm64.yml dist/latest-mac-x64.yml dist/latest-mac.yml
+            rm dist/latest-mac-arm64.yml dist/latest-mac-x64.yml
+            grep -q "^version: ${GITHUB_REF_NAME#v}$" dist/latest-mac.yml || { echo "latest-mac.yml isn't version ${GITHUB_REF_NAME#v}"; exit 1; }
+          fi
           want="dist/$(sed -n 's/^path: //p' dist/latest.yml)"
           [ -f "$want" ] || { echo "latest.yml names $want, which isn't here"; exit 1; }
           grep -q "^version: ${GITHUB_REF_NAME#v}$" dist/latest.yml || { echo "latest.yml isn't version ${GITHUB_REF_NAME#v}"; exit 1; }
           notes="docs/releases/${GITHUB_REF_NAME}.md"
           if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
-          gh release create "$GITHUB_REF_NAME" dist/*.exe dist/*.exe.blockmap dist/latest.yml dist/*.dmg --title "Scorpion ${GITHUB_REF_NAME#v}" "$@"
+          gh release create "$GITHUB_REF_NAME" dist/*.exe dist/*.exe.blockmap dist/latest.yml dist/*.dmg dist/*.zip dist/*.zip.blockmap dist/latest-mac.yml --title "Scorpion ${GITHUB_REF_NAME#v}" "$@"
       # The website's downloads come from Cloudflare R2 (a GitHub release holds files up to 2 GB; this is also where
       # the big Scorpion OS image goes). Files go to <bucket>/<version>/ under the names the website's catalog uses.
       - name: Copy the installers to Cloudflare R2

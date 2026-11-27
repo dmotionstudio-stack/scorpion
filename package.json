@@ -1,7 +1,7 @@
 {
   "name": "scorpion",
   "productName": "Scorpion",
-  "version": "0.1.63",
+  "version": "0.1.64",
   "description": "Offline AI assistant and agent. Runs local GGUF models with llama.cpp - no API key, no internet.",
   "type": "module",
   "main": "src/main/main.js",
@@ -121,11 +121,11 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "category": "public.app-category.productivity",
       "icon": "resources/icon.png",
-      "identity": "-",
       "hardenedRuntime": true,
       "entitlements": "resources/entitlements.mac.plist",
       "entitlementsInherit": "resources/entitlements.mac.plist",
