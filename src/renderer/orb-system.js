@@ -776,6 +776,14 @@ export function initOrbSystem(ctx) {
     ctx.recorder.stop();
     renderInteract();
   }
+  // Two claps or a finger snap: the same as hearing its name, if it is not already busy. The humanoid sways its head hello.
+  function wakeBySound(how) {
+    if (!IX.open || O.away || S.settings.wakeSounds === false) return;
+    const busy = V.talk || V.dictating || V.starting || V.transcribing || speaker.busy || O.approval || O.asking || voiceBusy() || (ctx.recorder.active && !O.wakeListening);
+    if (busy) return;
+    IX.orb?.react?.('wave');
+    called(how);
+  }
   // Called by name alone: a greeting, then it listens for the request.
   function called() {
     stopWakeListening();
@@ -874,7 +882,7 @@ export function initOrbSystem(ctx) {
 
   return {
     onOpen, onClose, state, handleSpoken, instant, handleGesture, onApproval, clearApproval, returnToOrb, greeted, scheduleWake, stopWake: stopWakeListening, leave: leaveOrb,
-    toggleGuide, goHome, handleGlobals, togglePause, toggleWake,
+    toggleGuide, goHome, handleGlobals, togglePause, toggleWake, wakeBySound,
     // For the taskbar on the orb's screen: a place (Apps, Files) over the orb, a window into a tile of the orb, the stage.
     openFolder: (dir) => leaveOrb(() => (desktopUi ? desktopUi.showFiles(dir) : api.shellLinkOpen(dir))),
     place: (id) => { const p = PLACES.find((x) => x.id === id); if (p) activate(p); else leaveOrb(() => setView('home')); },

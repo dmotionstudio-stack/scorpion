@@ -524,6 +524,10 @@ finish (it also stops after 20 seconds of quiet, or with the same key or sign).
 It types in the language chosen in **Settings → Voice**, and nothing you say
 leaves the computer. Apps running as administrator don't accept it.
 
+### Wake it with a clap or a snap
+
+With the orb open, **two claps** in a row (a quarter to a second apart), or one loud **finger snap**, wake it like saying its name: the humanoid sways its head hello, greets you and listens. It is plain arithmetic on the microphone's samples (`src/renderer/clap-detector.js`: a very short, loud, hissy burst that dies away at once), so nothing is downloaded. Speech, a fan, music, typing and long noises do not wake it, and one clap alone does not. The microphone is opened with its filters off while the orb is open (they would remove a clap). Say "turn off clapping" or "turn on finger snapping" to switch it, or use the switch in Settings. It needs the voice installed. plain arithmetic on the microphone's samples (: a very short, loud, hissy burst that dies away at once), so nothing is downloaded. Speech, a fan, music, typing and long noises do not wake it, and one clap alone does not. The microphone is opened with its filters off while the orb is open (they would remove a clap). Say "turn off clapping" or "turn on finger snapping" to switch it, or use the switch in Settings. It needs the voice installed.
+
 ### It waits for you, and listens for your voice
 
 - **It waits until you are done.** A pause to think does not end your turn: Scorpion answers after at least a second and a

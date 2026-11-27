@@ -88,6 +88,7 @@ const SWITCH_WORDS = {
   sounds: /^(?:the |my |your )?(?:soft sounds|sound effects|chimes|orb sounds|beeps)$/,
   lines: /^(?:the |my |your )?(?:background lines|lines|constellation|stars|background|background animation)$/,
 };
+SWITCH_WORDS.claps = /^(?:the |my |your )?(?:claps?|clapping|snaps?|snapping|finger snaps?|finger snapping|clap wake|wake sounds?|clapping and snapping|claps and snaps|snaps and claps|wake by claps|waking by claps)$/;
 SWITCH_WORDS.noise = /^(?:the |my |your )?(?:background )?(?:noise|noises|noise blocking|noise filter|noise filtering|noise cancelling|noise cancellation|voice focus|noise reduction)$/;
 const SWITCH_ON = '(?:turn|switch|put|set)(?: it| them)? on|enable|activate|start|begin|use';
 const SWITCH_OFF = '(?:turn|switch|put|set)(?: it| them)? off|disable|deactivate|stop|end|quit|hide';

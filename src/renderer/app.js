@@ -19,6 +19,7 @@ import { initSystemSettings } from './settings-system.js';
 import { initAppUpdates } from './settings-app-updates.js';
 import { initClockSettings } from './settings-clock.js';
 import { createOrbSounds, soundFor } from './orb-sounds.js';
+import { SoundWake } from './clap-detector.js';
 import { initBuildDock } from './build-dock.js';
 import { initModelScan } from './model-scan-ui.js';
 import { commandOf, parseAgentCommand, suggestAgents } from './agent-commands.js';
@@ -1283,6 +1284,11 @@ const SWITCHES = {
     get: () => S.settings.orbSounds !== false,
     set: async (on) => { S.settings = await api.updateSettings({ orbSounds: on }); },
   },
+  claps: {
+    name: 'Waking by claps and snaps',
+    get: () => S.settings.wakeSounds !== false,
+    set: async (on) => { S.settings = await api.updateSettings({ wakeSounds: on }); syncSoundWake(); },
+  },
   noise: {
     name: 'Background noise blocking',
     get: () => S.settings.blockNoise !== false,
@@ -1448,6 +1454,7 @@ async function openInteract(opts = {}) {
   }
   if (!IX.open) return;
   orbSys?.onOpen({ desktop, signin: opts?.signin === true });
+  syncSoundWake();
   if (S.settings.chatModel) api.warmOrb?.().catch(() => {}); // its prompt and tools are read now, so the first question is not slowed by them
   // A fresh install (no chats yet): the spoken first start, once.
   if (!S.settings.welcomeDone && !S.threads?.length) welcome?.start();
@@ -1462,6 +1469,7 @@ async function openInteract(opts = {}) {
 function closeInteract() {
   if (!IX.open) return;
   IX.open = false;
+  soundWake.stop();
   api.setFullScreen(false);
   clearInterval(IX.timer);
   IX.orb?.stop();
@@ -1516,6 +1524,15 @@ function applyPerf(level) {
 }
 
 const orbSounds = createOrbSounds();
+// Two claps or a finger snap wake the orb (clap-detector.js). The microphone is open, with its filters off, only while the orb is.
+const soundWake = new SoundWake((how) => orbSys?.wakeBySound(how));
+async function syncSoundWake() {
+  const want = IX.open && S.settings.wakeSounds !== false && Boolean(S.voice?.installed);
+  if (!want) { soundWake.stop(); return; }
+  if (soundWake.active) return;
+  try { if (await api.micAccess()) await soundWake.start(); } catch { /* no microphone: no waking by sound */ }
+  if (!IX.open) soundWake.stop();
+}
 function tickInteract() {
   const state = interactState();
   const el = $('#interact');

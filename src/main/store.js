@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS = {
   glass: 'auto', // 'auto' (native glass where the OS supports it) or 'off'
   voiceSpeak: false, // read replies aloud
   voiceName: 'af_heart', // Kokoro voice id (English)
+  wakeSounds: true, // two claps or a finger snap wake it, like saying its name (clap-detector.js); the microphone is open while the orb is
   listenQuality: 'base', // 'base' (Whisper Base, built in) or 'small' (Whisper Small: fewer mistakes, about three times slower; a download)
   languageVoices: {}, // the voice chosen for each other language that has several: { es: 'em_alex' } (voice.js, g2p/index.js)
   voiceSpeed: 1, // 0.5–2
