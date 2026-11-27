@@ -599,6 +599,13 @@ export const TOOLS = {
     params: { type: 'object', properties: { name: { type: 'string' } } },
     async run({ name }, { services }) { return services.serverLogs({ name }); },
   },
+  music_player: {
+    access: 'system', noWorkspace: true,
+    description: "Scorpion's own music player: it plays the music files on this computer (the Library and the Music folder) inside Scorpion, with a small player on the screen. action: play (query: a song, an artist, an album, a folder or a kind of music like jazz; leave query empty to shuffle everything), pause, resume, next, previous, stop, shuffle or repeat (query: on, off; repeat also all, one), volume (amount 0 to 100), now_playing, or list (the songs that match query). Use it for anything like play some music, play Bob Marley, next song, pause the music.",
+    params: { type: 'object', properties: { action: { enum: ['play', 'pause', 'resume', 'next', 'previous', 'stop', 'shuffle', 'repeat', 'volume', 'now_playing', 'list'] }, query: { type: 'string' }, amount: { type: 'number' } } },
+    describeAction: ({ action, query }) => `music: ${action}${query ? ` ${query}` : ''}`,
+    async run(args, { services }) { return services.music.run(args); },
+  },
   open_preview: {
     access: 'read',
     description: 'Open a page of a server on this computer in the preview beside the chat (localhost only). With no address, the running server\'s address. Then use check_preview to see it.',

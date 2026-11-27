@@ -64,7 +64,8 @@ export function initBuildDock({ $, api, S, toast, errText, setSetting }) {
     $('#preview-title').textContent = s.loading ? 'Loading…' : s.title || '';
   };
   api.onPreviewState?.(showState);
-  api.onPreviewOpen?.(({ url }) => { $('#preview-url').value = url || ''; open('preview'); });
+  api.onPreviewOpen?.(({ url }) => { if (url || document.activeElement !== $('#preview-url')) $('#preview-url').value = url || ''; open('preview'); });
+  api.onPreviewClose?.(() => { panel.classList.add('hidden'); sendBounds(true); });
 
   // ---- Terminal
   const outBox = $('#dev-out');

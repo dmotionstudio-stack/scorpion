@@ -412,6 +412,7 @@
             <label class="toggle"><input type="checkbox" id="orb-wake"><span>Wake word: say "Scorpion" to start (listens and transcribes on this computer only; needs the voice installed). On by itself when the orb is a voice chat.</span></label>
             <label class="toggle"><input type="checkbox" id="orb-hands"><span>Hand gestures now (uses the camera): point, pick, switch windows and spin the orb with your hands (G)</span></label>
             <label class="toggle"><input type="checkbox" id="orb-face"><span>Face tracking now (uses the camera): know who is talking (F)</span></label>
+            <label class="toggle"><input type="checkbox" id="orb-camview"><span>Show the camera view and tracking status on the screen (turn off to track without showing anything)</span></label>
             <div class="row"><span>Thinking</span><select id="orb-thinking" aria-label="How long the orb thinks before it answers"><option value="off">Off (fastest)</option><option value="low">Quick</option><option value="medium">Normal</option></select></div>
             <p class="muted small" id="orb-model"></p>
             <p class="muted small" id="orb-timing">Last answer: nothing yet. After each spoken answer this shows where the time went.</p>
@@ -489,6 +490,8 @@
               <div class="row"><span>Language</span><select id="voice-language"></select><button class="btn small" id="voice-test" type="button">Test</button></div>
               <div class="row"><span>Listening</span><select id="voice-listen"><option value="base">Standard (built in, quick)</option><option value="small">Better (fewer mistakes, slower, a download)</option></select></div>
               <p class="muted small" id="voice-listen-note"></p>
+              <div class="row"><span>Answer after a pause of</span><select id="voice-pause" aria-label="How long a pause before Scorpion answers"><option value="0">Automatic (waits longer when you trail off)</option><option value="1.5">1.5 seconds</option><option value="2">2 seconds</option><option value="2.5">2.5 seconds</option><option value="3">3 seconds</option><option value="4">4 seconds</option></select></div>
+              <p class="muted small">When you talk with Scorpion, it starts answering once you have been quiet this long.</p>
               <div class="row"><span>Model for talking</span><select id="voice-model"></select></div>
               <p class="muted small" id="voice-model-note"></p>
               <p class="muted small" id="voice-language-note"></p>

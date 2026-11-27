@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import * as helper from './win-helper.js';
+import { TOGGLE_ACTIONS, toggleRisk, parseToggle, windowsToggle } from './toggles.js';
 
 export const supported = process.platform === 'win32';
 
@@ -271,16 +272,18 @@ export function openSettings(page = 'home') {
 // ---------- system controls ----------
 // Volume and media keys are the keyboard's own keys, sent to Windows.
 const KEY = { volume_up: 175, volume_down: 174, mute: 173, play_pause: 179, next_track: 176, previous_track: 177 };
-export const ACTIONS = ['volume_up', 'volume_down', 'set_volume', 'mute', 'play_pause', 'next_track', 'previous_track', 'brightness', 'dark_mode', 'light_mode', 'screenshot', 'lock', 'sleep', 'restart', 'shutdown', 'cancel_shutdown', 'empty_recycle_bin'];
+export const ACTIONS = ['volume_up', 'volume_down', 'set_volume', 'mute', 'play_pause', 'next_track', 'previous_track', 'brightness', 'dark_mode', 'light_mode', 'screenshot', 'lock', 'sleep', 'restart', 'shutdown', 'cancel_shutdown', 'empty_recycle_bin', ...TOGGLE_ACTIONS];
 // How much the user must be asked: none, ask (unless Auto-approve), always.
 export function actionRisk(action) {
   if (['restart', 'shutdown', 'empty_recycle_bin'].includes(action)) return 'always';
   if (['dark_mode', 'light_mode', 'brightness', 'sleep'].includes(action)) return 'ask';
-  return 'none';
+  return toggleRisk(action);
 }
 
 export async function systemControl(action, amount) {
   if (!ACTIONS.includes(action)) throw new Error(`Unknown action. Use one of: ${ACTIONS.join(', ')}`);
+  const toggle = parseToggle(action);
+  if (toggle) return windowsToggle(toggle.setting, toggle.on, { runPs, openSettings });
   const keys = (code, times = 1) => runPs(`$s = New-Object -ComObject WScript.Shell; 1..${Math.max(1, Math.min(50, Math.round(times)))} | ForEach-Object { $s.SendKeys([char]${code}) }`);
   switch (action) {
     case 'volume_up': case 'volume_down': await keys(KEY[action], Math.round((Number(amount) || 10) / 2)); return `Volume ${action === 'volume_up' ? 'up' : 'down'} about ${Math.round((Number(amount) || 10) / 2) * 2}%.`;

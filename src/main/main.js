@@ -55,6 +55,7 @@ import * as appFrame from './orb-frame.js';
 import * as appIcons from './app-icons.js';
 import { startKeyWatch, stopKeyWatch } from './key-watch.js';
 import { createAgentBrowser, browserTools } from './agent-browser.js';
+import { createMusic, scanFolder } from './music.js';
 import { TelegramBot, pairingCode } from './telegram.js';
 import { createRemoteControl, APPROVE_MS } from './remote-control.js';
 import { windowsInput, macInput } from './remote-input.js';
@@ -991,9 +992,28 @@ function connectMcp(server) {
 function mcpView() {
   return (store.getSettings().mcpServers || []).map((s) => ({ ...s, ...mcp.status(s.id), id: s.id, hasEnv: secrets.hasSecret(`mcp:${s.id}:env`), hasHeaders: secrets.hasSecret(`mcp:${s.id}:headers`) }));
 }
-// The agent's own browser window (separate profile), made on first use.
+// The agent's own browser: it works in Scorpion's browser, the pane beside the chat (in the orb, the chat's tile), made on first use.
+// It never opens a window of its own.
 let agentBrowser = null;
-const browser = () => (agentBrowser ??= createAgentBrowser({ BrowserWindow, session }));
+const browserPane = {
+  show() {
+    if (!win || win.isDestroyed() || win.isMinimized() || !win.isVisible()) showWindow();
+    send('preview:open', { url: preview().state().url || '' }); // the chat view and its pane open (in the orb, the chat's tile)
+  },
+  async ensure() {
+    const p = preview();
+    for (let round = 0; round < 2 && !p.isShown(); round++) {
+      this.show();
+      for (let i = 0; i < 30 && !p.isShown(); i++) await new Promise((r) => setTimeout(r, 150));
+    }
+    if (!p.isShown()) throw new Error("Scorpion's browser could not open. Open Scorpion's chat and try again.");
+    return p.webContents();
+  },
+  isOpen: () => preview().isShown(),
+  close() { send('preview:close'); },
+  clearData: () => session.fromPartition('persist:scorpion-preview').clearStorageData(),
+};
+const browser = () => (agentBrowser ??= createAgentBrowser({ pane: browserPane }));
 
 // Tools from outside Scorpion's own table: MCP servers and the agent browser.
 const extraTools = () => ({ ...mcp.mcpTools(), ...(store.getSettings().browserEnabled ? browserTools(browser()) : {}) });
@@ -1195,8 +1215,28 @@ async function loadMainMods() {
 }
 function reloadScreens() { setTimeout(() => { if (win && !win.isDestroyed()) win.webContents.reload(); }, 600); } // after the tool's answer is on its way
 
+// Scorpion's own music player: the songs are in the Library and the Music folder; the player is in the window (music-player.js).
+const musicAllowed = new Set(); // the songs the window may be given a link to: the ones this found
+let musicLast = null; // the player's last report
+let musicFolder = { at: 0, files: [] };
+const music = createMusic({
+  async sources() {
+    if (Date.now() - musicFolder.at > 5 * 60_000) musicFolder = { at: Date.now(), files: scanFolder(app.getPath('music')) };
+    const sources = [{ root: app.getPath('music'), files: musicFolder.files }];
+    try {
+      const items = await library.searchLibrary({ kind: 'music', limit: 20000 });
+      sources.push({ root: '', files: items.map((i) => i.path), tags: new Map(items.map((i) => [i.path, (i.tags || []).map((t) => t.label)])) });
+    } catch { /* no library yet */ }
+    return sources;
+  },
+  send: (cmd) => send('music:cmd', cmd),
+  state: () => musicLast,
+  authorize: (paths) => { if (musicAllowed.size > 5000) musicAllowed.clear(); for (const p of paths) musicAllowed.add(path.resolve(p)); },
+});
+
 function agentServices(settings, signal) {
   return {
+    music,
     startServer({ command, name, cwd }) {
       const s = devServers.start({ command, name, cwd });
       logUnrestricted({ name: 'started server', summary: `${s.command} in ${s.cwd}`, args: {} });
@@ -1961,7 +2001,7 @@ function registerIpc() {
   h('telegram:remove', (chatId) => { updateTelegram({ allowed: tgSettings().allowed.filter((a) => a.chatId !== chatId) }); return telegramView(); });
   // ---- the agent's browser ----
   h('browser:show', () => { browser().show(); return true; });
-  h('browser:close', () => { agentBrowser?.close(); return true; });
+  h('browser:close', () => { browserPane.close(); return true; });
   h('browser:clear', async () => { await browser().clearData(); return true; });
   // ---- MCP tool servers ----
   h('mcp:list', () => mcpView());
@@ -2513,6 +2553,9 @@ function registerIpc() {
   h('dev:run', ({ command } = {}) => devServers.start({ name: `$ ${++termCount}: ${String(command).slice(0, 24)}`, command, cwd: workDir() }));
   h('dev:stop', ({ name } = {}) => devServers.stop(name));
   h('dev:input', ({ name, text } = {}) => { devServers.write(name, String(text ?? '')); return true; });
+  h('music:run', (arg = {}) => music.run(arg));
+  h('music:url', (file) => { const p = path.resolve(String(file || '')); return musicAllowed.has(p) && fs.existsSync(p) ? mediaUrl(p) : null; });
+  h('music:report', (s) => { musicLast = s && typeof s === 'object' ? s : null; return true; });
   h('preview:bounds', (rect = {}) => { preview().setBounds(rect); return true; });
   h('preview:go', ({ url } = {}) => showPreview(url, { web: true }));
   h('preview:nav', ({ action } = {}) => preview().nav(action));

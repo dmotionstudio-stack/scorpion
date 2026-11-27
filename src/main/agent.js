@@ -119,7 +119,7 @@ export function thinkingFor(setting, { mode, spoken, slow = false }) {
 // open; never changing them), a calculator, the web when Online is on, and what it is told to remember. No commands, no writing,
 // other chats or outside servers: fewer tools to read every turn means a faster first
 // word, and what is said in a chat stays out of the orb.
-export const ORB_TOOLS = new Set(['list_files', 'read_file', 'search_files', 'find_files', 'read_document', 'read_spreadsheet', 'open_path', 'search_library', 'calculator', 'list_apps', 'open_app', 'list_windows', 'switch_window', 'close_app', 'windows_settings', 'system_control', 'system_info', 'web_search', 'read_webpage', 'remember']);
+export const ORB_TOOLS = new Set(['list_files', 'read_file', 'search_files', 'find_files', 'read_document', 'read_spreadsheet', 'open_path', 'search_library', 'calculator', 'list_apps', 'open_app', 'list_windows', 'switch_window', 'close_app', 'windows_settings', 'system_control', 'system_info', 'music_player', 'web_search', 'read_webpage', 'remember']);
 
 // A workspace inside a folder the person trusts (Settings, or the Trust chip in Build): file changes
 // and commands there run without asking. Never a system folder, and not what asks 'always'.

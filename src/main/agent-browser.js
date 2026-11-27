@@ -1,12 +1,12 @@
-// The agent's own browser, after OpenClaw's managed browser: a separate
-// Scorpion window with its own profile (cookies, logins), never the user's
-// everyday browser. The agent opens pages, reads them, clicks and types.
+// The agent's own browser, after OpenClaw's managed browser: Scorpion's own browser
+// (the pane beside the chat, or the chat's tile in the orb; its cookies and logins are
+// Scorpion's, never the user's everyday browser), never a window of its own. The agent
+// opens pages, reads them, clicks and types.
 // Every page is untrusted. Typing, and clicks that look like they commit to
 // something (buy, send, delete, sign up…), wait for the user's approval.
 // Downloads, pop-ups and device permissions are refused.
 import { UNTRUSTED } from './web.js';
 
-const PARTITION = 'persist:scorpion-browser';
 const MAX_TEXT = 5000;
 const MAX_ELEMENTS = 80;
 
@@ -69,30 +69,11 @@ export function cleanUrl(url) {
   return parsed.href;
 }
 
-// ---------- the window (Electron) ----------
-export function createAgentBrowser({ BrowserWindow, session, show = true }) {
-  let win = null;
+// ---------- the page (Electron) ----------
+// The agent's pages open in Scorpion's own browser: the pane beside the chat (in the orb, the chat's tile), never a window
+// of their own. pane: { ensure() the page's webContents once the pane is open and has its place, isOpen(), show(), close(), clearData() }.
+export function createAgentBrowser({ pane }) {
   let last = null; // latest scan
-  const ses = session.fromPartition(PARTITION);
-  ses.on('will-download', (e) => e.preventDefault());
-  ses.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
-  ses.setPermissionCheckHandler(() => false);
-
-  function ensure() {
-    if (win && !win.isDestroyed()) return win;
-    win = new BrowserWindow({
-      width: 1200, height: 860, show: false, title: 'Scorpion browser',
-      autoHideMenuBar: true,
-      webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: true },
-    });
-    win.webContents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:/.test(url)) win.loadURL(url).catch(() => {});
-      return { action: 'deny' };
-    });
-    win.webContents.on('will-navigate', (e, url) => { if (!/^https?:/.test(url)) e.preventDefault(); });
-    win.on('closed', () => { win = null; last = null; });
-    return win;
-  }
 
   const settle = (wc, ms = 9000) => new Promise((resolve) => {
     const done = () => setTimeout(resolve, 600);
@@ -102,76 +83,74 @@ export function createAgentBrowser({ BrowserWindow, session, show = true }) {
   });
 
   async function scan() {
-    const w = ensure();
-    last = await w.webContents.executeJavaScript(SCAN_SCRIPT, true);
+    const wc = await pane.ensure();
+    last = await wc.executeJavaScript(SCAN_SCRIPT, true);
     return last;
   }
 
   const element = (ref) => last?.items.find((i) => i.ref === Number(ref)) || null;
 
   async function open(url) {
-    const w = ensure();
-    if (show && !w.isVisible()) w.showInactive();
-    await w.loadURL(cleanUrl(url)).catch((err) => { if (!/ERR_ABORTED/.test(err.message)) throw err; });
-    await settle(w.webContents);
+    const wc = await pane.ensure();
+    await wc.loadURL(cleanUrl(url)).catch((err) => { if (!/ERR_ABORTED/.test(err.message)) throw err; });
+    await settle(wc);
     return describe(await scan());
   }
 
   async function read() {
-    if (!win || win.isDestroyed()) throw new Error('No page is open. Use browser_open first.');
+    if (!pane.isOpen()) throw new Error('No page is open. Use browser_open first.');
     return describe(await scan());
   }
 
   async function click(ref) {
-    const w = ensure();
-    const box = await w.webContents.executeJavaScript(`(() => { const el = document.querySelector('[data-scorpion-ref="${Number(ref)}"]'); if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`, true);
+    const wc = await pane.ensure();
+    const box = await wc.executeJavaScript(`(() => { const el = document.querySelector('[data-scorpion-ref="${Number(ref)}"]'); if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`, true);
     if (!box) throw new Error(`There is no element [${ref}] on the page any more. Call browser_read to see the current page.`);
-    for (const type of ['mouseDown', 'mouseUp']) w.webContents.sendInputEvent({ type, x: box.x, y: box.y, button: 'left', clickCount: 1 });
-    await settle(w.webContents);
+    for (const type of ['mouseDown', 'mouseUp']) wc.sendInputEvent({ type, x: box.x, y: box.y, button: 'left', clickCount: 1 });
+    await settle(wc);
     return describe(await scan(), { maxText: 3000 });
   }
 
   async function type(ref, text, submit) {
-    const w = ensure();
-    const kind = await w.webContents.executeJavaScript(`(() => { const el = document.querySelector('[data-scorpion-ref="${Number(ref)}"]'); if (!el) return null; el.scrollIntoView({ block: 'center' }); el.focus(); if (el.tagName === 'SELECT') return 'select'; if (el.select) el.select(); else document.execCommand('selectAll'); return 'text'; })()`, true);
+    const wc = await pane.ensure();
+    const kind = await wc.executeJavaScript(`(() => { const el = document.querySelector('[data-scorpion-ref="${Number(ref)}"]'); if (!el) return null; el.scrollIntoView({ block: 'center' }); el.focus(); if (el.tagName === 'SELECT') return 'select'; if (el.select) el.select(); else document.execCommand('selectAll'); return 'text'; })()`, true);
     if (!kind) throw new Error(`There is no element [${ref}] on the page any more. Call browser_read to see the current page.`);
     if (kind === 'select') {
-      const ok = await w.webContents.executeJavaScript(`(() => { const el = document.querySelector('[data-scorpion-ref="${Number(ref)}"]'); const want = ${JSON.stringify(String(text))}.toLowerCase(); const o = [...el.options].find((x) => x.text.trim().toLowerCase() === want) || [...el.options].find((x) => x.text.toLowerCase().includes(want)); if (!o) return false; el.value = o.value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`, true);
+      const ok = await wc.executeJavaScript(`(() => { const el = document.querySelector('[data-scorpion-ref="${Number(ref)}"]'); const want = ${JSON.stringify(String(text))}.toLowerCase(); const o = [...el.options].find((x) => x.text.trim().toLowerCase() === want) || [...el.options].find((x) => x.text.toLowerCase().includes(want)); if (!o) return false; el.value = o.value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`, true);
       if (!ok) throw new Error(`No option like "${text}" in that list.`);
     } else {
-      await w.webContents.insertText(String(text));
+      await wc.insertText(String(text));
     }
-    if (submit) for (const t of ['keyDown', 'char', 'keyUp']) w.webContents.sendInputEvent({ type: t, keyCode: 'Enter' });
-    await settle(w.webContents, submit ? 9000 : 1500);
+    if (submit) for (const t of ['keyDown', 'char', 'keyUp']) wc.sendInputEvent({ type: t, keyCode: 'Enter' });
+    await settle(wc, submit ? 9000 : 1500);
     return describe(await scan(), { maxText: 3000 });
   }
 
   async function scroll(direction) {
-    const w = ensure();
-    await w.webContents.executeJavaScript(`window.scrollBy(0, ${direction === 'up' ? -1 : 1} * window.innerHeight * 0.85)`, true);
+    const wc = await pane.ensure();
+    await wc.executeJavaScript(`window.scrollBy(0, ${direction === 'up' ? -1 : 1} * window.innerHeight * 0.85)`, true);
     // Text below the fold: show what's on screen now.
     const page = await scan();
-    const visibleText = await w.webContents.executeJavaScript(`(() => { const out = []; const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n; while ((n = walk.nextNode()) && out.join(' ').length < ${MAX_TEXT}) { const r = n.parentElement?.getBoundingClientRect(); if (r && r.bottom > 0 && r.top < innerHeight && n.textContent.trim()) out.push(n.textContent.trim()); } return out.join(' '); })()`, true);
+    const visibleText = await wc.executeJavaScript(`(() => { const out = []; const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n; while ((n = walk.nextNode()) && out.join(' ').length < ${MAX_TEXT}) { const r = n.parentElement?.getBoundingClientRect(); if (r && r.bottom > 0 && r.top < innerHeight && n.textContent.trim()) out.push(n.textContent.trim()); } return out.join(' '); })()`, true);
     return describe({ ...page, text: visibleText }, { maxText: 3000 });
   }
 
   async function back() {
-    const w = ensure();
-    if (!w.webContents.navigationHistory?.canGoBack?.() && !w.webContents.canGoBack?.()) throw new Error('There is no previous page');
-    (w.webContents.navigationHistory?.goBack ? w.webContents.navigationHistory.goBack() : w.webContents.goBack());
-    await settle(w.webContents);
+    const wc = await pane.ensure();
+    if (!wc.navigationHistory?.canGoBack?.() && !wc.canGoBack?.()) throw new Error('There is no previous page');
+    (wc.navigationHistory?.goBack ? wc.navigationHistory.goBack() : wc.goBack());
+    await settle(wc);
     return describe(await scan(), { maxText: 3000 });
   }
 
   function close() {
-    if (win && !win.isDestroyed()) win.close();
+    pane.close();
+    last = null;
     return 'Closed the browser.';
   }
 
-  const show_ = () => { const w = ensure(); w.show(); w.focus(); };
-  const clearData = () => ses.clearStorageData();
 
-  return { open, read, click, type, scroll, back, close, element, show: show_, clearData, isOpen: () => Boolean(win && !win.isDestroyed()) };
+  return { open, read, click, type, scroll, back, close, element, show: () => pane.show(), clearData: () => pane.clearData(), isOpen: () => pane.isOpen() };
 }
 
 // Tool-table entries (same shape as TOOLS in tools.js).
@@ -179,7 +158,7 @@ export function browserTools(browser) {
   return {
     browser_open: {
       access: 'web', noWorkspace: true,
-      description: 'Open a web page in your own browser window (or search words). Returns the page text and numbered links, buttons and fields. Use it for sites that need clicking, forms or logins; read_webpage is faster for plain reading.',
+      description: 'Open a web page in Scorpion\'s browser, which shows inside Scorpion (or search words). Returns the page text and numbered links, buttons and fields. Use it for sites that need clicking, forms or logins; read_webpage is faster for plain reading.',
       params: { type: 'object', properties: { url: { type: 'string' } } },
       run: ({ url }) => browser.open(url),
     },

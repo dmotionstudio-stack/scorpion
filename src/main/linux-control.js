@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { matchByName, isRunnable as winRunnable, copyPath, ACTIONS, actionRisk } from './windows-control.js';
+import { parseToggle, linuxToggle } from './toggles.js';
 
 export { matchByName, copyPath, ACTIONS, actionRisk };
 export const supported = process.platform === 'linux';
@@ -374,6 +375,8 @@ let pendingPower = null;
 const SINK = '@DEFAULT_AUDIO_SINK@';
 export async function systemControl(action, amount) {
   if (!ACTIONS.includes(action)) throw new Error(`Unknown action. Use one of: ${ACTIONS.join(', ')}`);
+  const toggle = parseToggle(action);
+  if (toggle) return linuxToggle(toggle.setting, toggle.on, { run, openSettings });
   switch (action) {
     case 'volume_up': case 'volume_down': {
       const step = Math.max(1, Math.min(100, Math.round(Number(amount) || 10)));

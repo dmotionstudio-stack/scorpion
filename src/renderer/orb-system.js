@@ -10,7 +10,7 @@
 //   left (orb-frame.js does the window work), the orb moves to the right.
 // - At sign-in the orb greets the person it recognizes.
 // - The wake word: saying "Scorpion" starts listening.
-import { instantCommand, parseAction, parseLook, parseSwitch, parseSoundCheck, bestApp, parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
+import { instantCommand, parseMusic, parseAction, parseLook, parseSwitch, parseSoundCheck, bestApp, parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
 import { intentsFor, matchSpoken } from '/shared/intents.js';
 import { PLATFORM } from './palette.js';
 import { orbT, orbHint } from './orb-text.js';
@@ -452,6 +452,13 @@ export function initOrbSystem(ctx) {
       const same = (S.settings.orbLook === 'humanoid' ? 'humanoid' : 'classic') === lk.look;
       say(same ? lk.same : lk.say);
       if (!same) ctx.switchLook(lk.look).catch((err) => toast(errText(err), 'error'));
+      return true;
+    }
+    // Scorpion's own music player: "play some jazz", "pause the music", "next song".
+    const mu = parseMusic(text, { lang });
+    if (mu) {
+      $('#ix-you').textContent = text;
+      api.musicRun(mu).then((line) => caption(line)).catch((err) => toast(errText(err), 'error'));
       return true;
     }
     // Open an app, a screenshot, dark or light mode, the battery: at once too. An app that is not in the installed list goes to the model.

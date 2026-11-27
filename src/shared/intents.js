@@ -9,6 +9,28 @@
 // process (intent:run). only: the one platform an entry exists on; live:
 // only in Scorpion OS's live session (from the ISO or a USB stick).
 
+// Switches turned on and off by a word ("turn off the camera", "bluetooth on"): the main process flips them (toggles.js). What is said in
+// full is matched before what is left once "turn on" is taken off (matchSpoken), so "turn on Bluetooth" switches it and "Bluetooth" alone
+// still opens its page.
+const TOGGLE_WORDS = {
+  camera: { say: 'the camera', names: ['camera', 'webcam'] },
+  microphone: { say: 'the microphone', names: ['microphone', 'mic'] },
+  wifi: { say: 'Wi-Fi', names: ['wifi', 'wi fi'] },
+  bluetooth: { say: 'Bluetooth', names: ['bluetooth'] },
+  airplane_mode: { say: 'airplane mode', names: ['airplane mode', 'flight mode'] },
+  do_not_disturb: { say: 'do not disturb', names: ['do not disturb', 'focus mode'] },
+  night_light: { say: 'night light', names: ['night light', 'night shift', 'blue light filter'] },
+};
+const TOGGLE_INTENTS = Object.entries(TOGGLE_WORDS).flatMap(([setting, { say, names }]) => ['on', 'off'].map((state) => ({
+  id: `${setting.replace(/_/g, '-')}-${state}`,
+  label: `Turn ${state} ${say}`,
+  group: 'System',
+  keys: names.flatMap((n) => (state === 'on'
+    ? [`${n} on`, `turn on ${n}`, `turn on the ${n}`, `switch on ${n}`, `switch on the ${n}`, `enable ${n}`, `enable the ${n}`]
+    : [`${n} off`, `turn off ${n}`, `turn off the ${n}`, `switch off ${n}`, `switch off the ${n}`, `disable ${n}`, `disable the ${n}`, `block the ${n}`])),
+  run: { main: 'control', arg: `${setting}_${state}` },
+})));
+
 export const INTENTS = [
   // ---- places ----
   { id: 'home', label: 'Home', group: 'Go to', keys: ['home screen', 'start page'], run: { view: 'home' } },
@@ -54,11 +76,12 @@ export const INTENTS = [
   { id: 'screenshot', label: 'Take a screenshot', group: 'System', keys: ['screenshot', 'screen shot', 'capture the screen'], run: { main: 'control', arg: 'screenshot' } },
   { id: 'dark-mode', label: 'Dark mode', group: 'System', keys: ['dark theme', 'night mode'], run: { main: 'control', arg: 'dark_mode' } },
   { id: 'light-mode', label: 'Light mode', group: 'System', keys: ['light theme', 'day mode'], run: { main: 'control', arg: 'light_mode' } },
+  ...TOGGLE_INTENTS,
 ];
 
 // The main process may only run these from intent:run (no restart, shut down
 // or anything else that asks first).
-export const MAIN_CONTROLS = ['lock', 'screenshot', 'dark_mode', 'light_mode'];
+export const MAIN_CONTROLS = ['lock', 'screenshot', 'dark_mode', 'light_mode', ...TOGGLE_INTENTS.map((i) => i.run.arg)];
 
 export const intentsFor = (platform, { live = false } = {}) => INTENTS.filter((i) => (!i.only || i.only === platform) && (!i.live || live));
 export const findIntent = (id, platform, opts) => intentsFor(platform, opts).find((i) => i.id === id) || null;
@@ -104,6 +127,6 @@ const OPENERS = /^(?:please )?(?:open|show(?: me)?|go to|switch to|bring up|take
 export function matchSpoken(text, list) {
   const t = clean(text).replace(/ please$/, '');
   if (!t || t.split(' ').length > 6) return null;
-  const said = [t, t.replace(OPENERS, '')];
-  return list.find((it) => [it.label, ...it.keys].some((n) => said.includes(clean(n)))) || null;
+  const named = (s) => list.find((it) => [it.label, ...it.keys].some((n) => clean(n) === s)) || null;
+  return named(t) || named(t.replace(OPENERS, ''));
 }

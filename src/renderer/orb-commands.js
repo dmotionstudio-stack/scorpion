@@ -76,6 +76,33 @@ export function parseLook(text, { lang = 'en' } = {}) {
   return null;
 }
 
+// Scorpion's own music player: "play some music", "play Bob Marley", "pause the music", "next song", "stop the music", "what's playing".
+// Returns { action, query } for the player (music.js decides what plays) or null. English only. "Play" has to start the sentence, and
+// the other words are specific (the music, the song), so a bare "stop" or "next" is still what it was.
+const MUSIC_NOUN = '(?:the |this |my |that )?(?:music|song|songs|track|tracks|playback|playing|tune|tunes)';
+export function parseMusic(text, { lang = 'en' } = {}) {
+  if (String(lang || 'en').toLowerCase().split('-')[0] !== 'en') return null;
+  const t = clean(text).replace(/^(?:hey |ok |okay )?(?:scorpion )?(?:please |can you |could you |would you )?/, '').replace(/ please$/, '').trim();
+  if (!t || t.split(' ').length > 12) return null;
+  if (new RegExp(`^(?:pause|hold)(?: ${MUSIC_NOUN})$`).test(t)) return { action: 'pause' };
+  if (new RegExp(`^(?:resume|continue|unpause|keep playing|carry on)(?: ${MUSIC_NOUN})?$`).test(t) || /^(?:play|start) (?:the )?(?:music|song) again$/.test(t)) return { action: 'resume' };
+  if (new RegExp(`^(?:stop|end|turn off|switch off|quit)(?: ${MUSIC_NOUN})$`).test(t)) return { action: 'stop' };
+  if (/^(?:next|skip)(?: (?:the |this |that )?(?:song|track|tune|one))$|^skip$/.test(t)) return { action: 'next' };
+  if (/^(?:previous|last|go back(?: to the previous)?|play the previous|play the last)(?: (?:the |this |that )?(?:song|track|tune|one))$|^(?:previous|play previous)$/.test(t)) return { action: 'previous' };
+  if (/^(?:what(?:s| is) (?:this song|playing|this track|the song playing|currently playing)|what song is (?:this|playing)|who(?:s| is) this by|what am i listening to)$/.test(t)) return { action: 'now_playing' };
+  const shuffle = /^(?:turn |switch )?(shuffle|repeat)(?: (?:mode|the music))?( on| off| all| one)?$|^(?:turn |switch )(on|off) (shuffle|repeat)$/.exec(t);
+  if (shuffle) { const word = shuffle[1] || shuffle[4]; const v = (shuffle[2] || (shuffle[3] ? ` ${shuffle[3]}` : ' on')).trim(); return { action: word, query: v }; }
+  if (t !== 'play' && /^(?:play|put on|start playing|start)(?: (?:me|us))?(?: (?:some|any|the|my|a bit of|a little))?(?: (?:music|songs|tunes|something|anything|a song|a tune))?(?: for me)?$/.test(t)) return { action: 'play', query: '' };
+  const m = /^(?:play|put on|start playing|i want to hear|i want to listen to|let me hear)(?: me)? (.{2,80})$/.exec(t);
+  if (m) {
+    if (/^(?:a game|games?|a video|videos?|a movie|movies?|chess|cards|a bit|dead|along|around|back|again|it|that|this|with|the game|the video|the movie)$/.test(m[1])) return null;
+    const q = m[1].trim(); // music.js drops the filler words (some, the, songs by…) and keeps the names
+    if (!q) return null;
+    return { action: 'play', query: q };
+  }
+  return null;
+}
+
 // Switches Scorpion turns on and off itself: "turn off hand gestures", "enable face tracking", "turn the wake word on",
 // "stop face tracking", "start talk mode". Returns { key, on } or null. English only. The switches are listed in app.js (applySwitch).
 const SWITCH_WORDS = {
@@ -90,6 +117,7 @@ const SWITCH_WORDS = {
 };
 SWITCH_WORDS.claps = /^(?:the |my |your )?(?:claps?|clapping|snaps?|snapping|finger snaps?|finger snapping|clap wake|wake sounds?|clapping and snapping|claps and snaps|snaps and claps|wake by claps|waking by claps)$/;
 SWITCH_WORDS.noise = /^(?:the |my |your )?(?:background )?(?:noise|noises|noise blocking|noise filter|noise filtering|noise cancelling|noise cancellation|voice focus|noise reduction)$/;
+SWITCH_WORDS.camview = /^(?:the |my |your )?(?:camera|tracking|hand|hands|face|gesture)(?: tracking| gesture| gestures)? (?:view|preview|feed|display|window|panel)$|^(?:the )?(?:camera|tracking) (?:on screen|on the screen)$|^(?:the )?(?:camera|tracking) (?:status|overlay)$/;
 const SWITCH_ON = '(?:turn|switch|put|set)(?: it| them)? on|enable|activate|start|begin|use';
 const SWITCH_OFF = '(?:turn|switch|put|set)(?: it| them)? off|disable|deactivate|stop|end|quit|hide';
 function switchKey(words) {
@@ -110,6 +138,9 @@ export function parseSwitch(text, { lang = 'en' } = {}) {
     const key = switchKey(m[2]);
     if (key) return { key, on };
   }
+  // "show the camera view" (and "hide" is an off word above): only for the camera view, so "show me the orb" is still the orb.
+  m = /^show(?: me)? (.+)$/.exec(t);
+  if (m && switchKey(m[1]) === 'camview') return { key: 'camview', on: true };
   // "block background noises" / "stop blocking background noise"
   if (/^(?:block|filter out|ignore|cancel|cut|mute) (?:the |all )?(?:background )?(?:noise|noises|sounds)$/.test(t)) return { key: 'noise', on: true };
   if (/^(?:stop (?:blocking|ignoring|filtering|filtering out|cancelling)|unblock|allow|let in|stop muting) (?:the |all )?(?:background )?(?:noise|noises|sounds)$/.test(t)) return { key: 'noise', on: false };

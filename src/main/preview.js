@@ -13,6 +13,8 @@ export function createPreview({ WebContentsView, session, getWindow, openExterna
   let attached = false;
   let bounds = { x: 0, y: 0, width: 0, height: 0 };
   let wanted = false; // the pane is open
+  let agentAt = 0; // when the agent last used the page: a download it starts by a click is refused
+  let guarded = false;
   const consoleLog = [];
 
   const wc = () => view?.webContents;
@@ -30,6 +32,7 @@ export function createPreview({ WebContentsView, session, getWindow, openExterna
     c.setWindowOpenHandler(({ url }) => { if (/^https?:/i.test(url)) c.loadURL(url).catch(() => {}); else if (/^(mailto|tel):/i.test(url)) openExternal(url); return { action: 'deny' }; });
     c.on('will-navigate', (e, url) => { if (!/^https?:/i.test(url) && url !== 'about:blank') { e.preventDefault(); if (/^(mailto|tel):/i.test(url)) openExternal(url); } });
     c.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+    if (!guarded) { guarded = true; c.session.on('will-download', (e) => { if (Date.now() - agentAt < 20_000) e.preventDefault(); }); }
     for (const ev of ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading', 'page-title-updated']) c.on(ev, emit);
     // The page's own console (an error here is what the agent should fix). Electron's event shape changed between versions.
     c.on('console-message', (...args) => {
@@ -80,6 +83,9 @@ export function createPreview({ WebContentsView, session, getWindow, openExterna
       return state();
     },
     state,
+    // The agent's browser works in this same page (browser_open, browser_click…): open and in its place, and the page itself.
+    isShown: () => wanted && attached && Boolean(view && !view.webContents.isDestroyed()),
+    webContents: () => { agentAt = Date.now(); ensure(); return wc(); },
     consoleLog: () => consoleLog.slice(),
     // What the agent sees: the page's text and controls, and what its console complained about.
     async snapshot(describe, scan) {

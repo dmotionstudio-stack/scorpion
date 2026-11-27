@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS = {
   allowedFolders: [], // other folders the user chose "Always allow" for
   trustedFolders: [], // folders Scorpion may build in without asking: file changes and commands inside them run by themselves (Build mode); never system folders
   online: false, // Online mode: web search and page reading for the agent
-  browserEnabled: true, // in Online mode, the agent may also use its own browser window
+  browserEnabled: true, // in Online mode, the agent may also use Scorpion's browser (the panel beside the chat, in the orb its tile)
   // 'full' = every file on the computer (the default on Windows and macOS: changes and commands still ask first);
   // 'ask' = the workspace and folders you allowed (the default on Scorpion OS).
   fileAccess: process.platform === 'win32' || process.platform === 'darwin' ? 'full' : 'ask',
@@ -71,6 +71,8 @@ const DEFAULT_SETTINGS = {
   orbSpeakEvents: false, // the orb says PC events out loud (battery, downloads, schedules, check-ins)
   orbApps: true, // while the orb is open, apps open inside it (framed in its panel)
   orbBubbles: null, // the bubbles around the orb (orb-bubbles.js; null: the usual ones)
+  talkPauseSec: 2.5, // talking with Scorpion (the orb, the Talk button): it answers after this many seconds of quiet once you stop; 0: it decides (voice.js endPause)
+  trackingShown: true, // hand gestures and face tracking show their camera view and status on the screen; off: they work, nothing of them shows
   blockNoise: true, // listening focuses on a human voice and ignores background noise (voice-focus.js)
   orbStyle: 'hologram', // the humanoid's look: 'hologram', 'glass' or 'wireframe'
   orbGlow: 'normal', // how strongly it glows: 'soft', 'normal' or 'bright'

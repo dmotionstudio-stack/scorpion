@@ -1053,3 +1053,17 @@ body.ix-voice-only .ix-ask, body.ix-voice-only .ix-facecam, body.ix-voice-only .
 .itb-at-left .itb-item, .itb-at-right .itb-item { min-width: 0; }
 @keyframes itb-pulse { 50% { background: color-mix(in srgb, var(--accent) 40%, transparent); } }
 @media (max-width: 860px) { .itb-win .itb-title, .itb-clock span:last-child { display: none; } }
+
+/* Scorpion's own music player: a small pill that floats over everything (the orb too); drag it by its title. */
+.music-bar { position: fixed; top: 64px; right: 16px; z-index: 90; display: flex; align-items: center; gap: 6px; max-width: min(460px, calc(100vw - 24px)); padding: 5px 8px 5px 12px; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--panel, #120d08) 92%, transparent); box-shadow: 0 6px 24px rgba(0, 0, 0, .45); backdrop-filter: blur(8px); color: var(--text); font-size: 13px; }
+.music-bar.hidden { display: none; }
+.music-note { color: var(--accent); }
+.music-title { flex: 1 1 auto; min-width: 60px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: grab; touch-action: none; user-select: none; }
+.music-title:active { cursor: grabbing; }
+.music-btn { flex: none; width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; }
+.music-btn:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.music-vol { flex: none; width: 64px; accent-color: var(--accent); }
+
+/* Tracking without showing it: the camera views and the status stay on, out of sight (so the tracking still sees); an error still shows. */
+body.tracking-hidden .ix-cam:not([data-error]), body.tracking-hidden .ix-facecam, body.tracking-hidden .hand-cam:not([data-error]) { position: fixed; left: 0; top: 0; right: auto; bottom: auto; width: 2px; height: 2px; max-height: 2px; overflow: hidden; opacity: .01; border: 0; pointer-events: none; z-index: -1; }
+body.tracking-hidden .ix-facecam * { pointer-events: none; }

@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { matchByName, copyPath, ACTIONS, actionRisk, isRunnable as winRunnable } from './windows-control.js';
+import { parseToggle, macToggle } from './toggles.js';
 
 export { matchByName, copyPath, ACTIONS, actionRisk };
 export const supported = process.platform === 'darwin';
@@ -280,6 +281,8 @@ const setVolume = (n) => osa([`set volume output volume ${Math.max(0, Math.min(1
 
 export async function systemControl(action, amount) {
   if (!ACTIONS.includes(action)) throw new Error(`Unknown action. Use one of: ${ACTIONS.join(', ')}`);
+  const toggle = parseToggle(action);
+  if (toggle) return macToggle(toggle.setting, toggle.on, { run, osa, openSettings, release: os.release() });
   switch (action) {
     case 'volume_up': case 'volume_down': {
       const step = Math.max(1, Math.min(100, Math.round(Number(amount) || 10)));

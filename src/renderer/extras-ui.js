@@ -253,9 +253,9 @@ If I write in Haitian Creole, answer in Haitian Creole.`;
       ${X.editingMcp ? mcpForm() : '<div class="row"><button class="btn" data-mcp="add">Add an MCP server</button></div>'}
 
       <h2>Scorpion's browser</h2>
-      <label class="toggle"><input type="checkbox" data-br="enabled"${s.browserEnabled ? ' checked' : ''}><span>In Online mode, let the agent use its own browser window</span></label>
-      <p class="muted small">For sites that need clicking, forms or a login, the agent opens pages in a separate Scorpion browser window (its own cookies and logins, never your normal browser). You can watch it and take over. Typing into a site, and buttons like Buy, Send, Delete or Sign up, ask you first. Downloads and pop-ups are blocked.${s.online ? '' : ' Online mode is off, so it is not used now.'}</p>
-      <div class="row"><button class="btn small" data-br="show">Show the browser</button><button class="btn small" data-br="close">Close it</button><button class="btn small" data-br="clear">Sign out of everything in it</button></div>
+      <label class="toggle"><input type="checkbox" data-br="enabled"${s.browserEnabled ? ' checked' : ''}><span>In Online mode, let the agent use Scorpion's browser</span></label>
+      <p class="muted small">For sites that need clicking, forms or a login, the agent opens pages in Scorpion's own browser, the panel beside the chat (in the orb, the chat's tile): never a window of its own, and never your normal browser. You can watch it and take over. Typing into a site, and buttons like Buy, Send, Delete or Sign up, ask you first. Downloads and pop-ups are blocked.${s.online ? '' : ' Online mode is off, so it is not used now.'}</p>
+      <div class="row"><button class="btn small" data-br="show">Show the browser</button><button class="btn small" data-br="close">Close the panel</button><button class="btn small" data-br="clear">Sign out of everything in it</button></div>
 
       ${telegramSection()}
 

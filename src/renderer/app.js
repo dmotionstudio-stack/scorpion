@@ -18,6 +18,7 @@ import { initPanelResize } from './panel-resize.js';
 import { initPalette } from './palette.js';
 import { initSystemSettings } from './settings-system.js';
 import { initAppUpdates } from './settings-app-updates.js';
+import { initMusicPlayer } from './music-player.js';
 import { initClockSettings } from './settings-clock.js';
 import { createOrbSounds, soundFor } from './orb-sounds.js';
 import { SoundWake } from './clap-detector.js';
@@ -171,6 +172,7 @@ let lookSettings = null; // Settings → General: Performance, the orb's look (s
 let interactBar = null; // Scorpion's taskbar inside the orb's screen (interact-taskbar.js)
 let palette = null; // the command palette, Ctrl+K (palette.js)
 let systemSettings = null; // Settings → This computer on Scorpion OS (settings-system.js)
+let musicPlayer = null; // Scorpion's own music player (music-player.js)
 let appUpdatesUi = null; // Settings → Updates on Windows and macOS (settings-app-updates.js)
 let clockUi = null; // Settings → Date and time (settings-clock.js)
 let buildDock = null; // Build's side panel: Preview and Terminal, and the Trust chip (build-dock.js)
@@ -791,7 +793,7 @@ async function listen(onText) {
     if (!(await api.micAccess())) throw Object.assign(new Error('Microphone access denied'), { name: 'NotAllowedError' });
     // Scorpion waits until you have finished (voice.js endPause): a pause to think does not end your turn. What was heard so far is
     // transcribed at each pause, which also tells it whether the sentence is finished.
-    await recorder.start({ vad: true, voiceFocus: S.settings.blockNoise !== false, onEnd: heard, onLevel: (l) => { V.micLevel = l; }, onPause: speculate, hint: () => V.specText ?? null });
+    await recorder.start({ vad: true, voiceFocus: S.settings.blockNoise !== false, onEnd: heard, onLevel: (l) => { V.micLevel = l; }, onPause: speculate, hint: () => V.specText ?? null, pauseMs: talkPauseMs() });
   } catch (err) {
     micError(err);
     return;
@@ -1080,6 +1082,8 @@ speaker.onNoVoice = (lang) => {
   toast(`Your computer has no voice for this language, so replies are shown but not spoken. Windows: Settings → Time & language → Speech → Add voices.`, 9000);
 };
 
+// How long you must be quiet before Scorpion answers while you talk with it (Settings → Voice and hands): 2.5 s unless changed; 0 is automatic.
+const talkPauseMs = () => { const s = Number(S.settings.talkPauseSec ?? 2.5); return Number.isFinite(s) && s > 0 ? Math.round(Math.min(10, s) * 1000) : 0; };
 function renderVoiceSettings() {
   const v = S.voice || {};
   const d = V.download;
@@ -1105,6 +1109,7 @@ function renderVoiceSettings() {
   const listenNow = S.settings.listenQuality === 'small' && v.listeners?.small?.ready ? 'small' : 'base';
   $('#voice-listen').value = V.listenDownload ? 'small' : listenNow;
   $('#voice-listen').disabled = Boolean(V.listenDownload);
+  { const sel = $('#voice-pause'); const want = String(Number(S.settings.talkPauseSec ?? 2.5)); sel.value = [...sel.options].some((o) => o.value === want) ? want : '2.5'; }
   $('#voice-listen-note').textContent = V.listenDownload
     ? `Downloading the better listener… ${gb(V.listenDownload.loaded || 0)} of about ${gb(V.listenDownload.total || v.listeners?.small?.bytes || 0)}`
     : listenNow === 'small' ? 'Better listening is on: fewer mistakes, in every language, and about three times as long to understand a sentence.' : 'Standard listening is quick. Better listening makes fewer mistakes, most of all in Haitian Creole, French and Spanish.';
@@ -1162,6 +1167,7 @@ function wireVoice() {
     S.settings = await api.updateSettings({ voiceSpeak: e.target.checked });
     renderVoiceButtons();
   };
+  $('#voice-pause').onchange = async (e) => { S.settings = await api.updateSettings({ talkPauseSec: Number(e.target.value) }); };
   $('#voice-listen').onchange = async (e) => {
     const level = e.target.value;
     if (level === 'small' && !S.voice?.listeners?.small?.ready) {
@@ -1297,6 +1303,11 @@ const SWITCHES = {
     plural: true,
     get: () => S.settings.orbSounds !== false,
     set: async (on) => { S.settings = await api.updateSettings({ orbSounds: on }); },
+  },
+  camview: {
+    name: 'The camera view',
+    get: () => S.settings.trackingShown !== false,
+    set: async (on) => { S.settings = await api.updateSettings({ trackingShown: on }); applyTrackingView(); renderAll(); },
   },
   claps: {
     name: 'Waking by claps and snaps',
@@ -1576,6 +1587,7 @@ function renderInteract() {
   talk.textContent = V.talk ? `■ ${ot('stop')}` : S.voice?.installed ? `● ${ot('talk')}` : d ? ot('installing') : ot('install');
   applyOrbText();
   talk.disabled = Boolean(d);
+  musicPlayer?.duck(state === 'listening' || state === 'speaking'); // the music goes quiet while Scorpion listens or speaks
   renderOrbControls();
   if (FX.on && FX.speaker && !V.download && !V.langDownload) $('#ix-model').textContent = '· with ' + FX.speaker.name + ($('#ix-model').textContent ? ' ' + $('#ix-model').textContent : '');
 }
@@ -1585,6 +1597,7 @@ function renderOrbControls() {
   set('#orb-face', FX.on);
   set('#orb-hands', G.on);
   set('#orb-wake', S.settings.wakeWord);
+  set('#orb-camview', S.settings.trackingShown !== false);
 }
 
 // Hand tracking (gestures.js): on Windows, gestures on means the hand is the
@@ -1741,7 +1754,14 @@ function handAsMouse(r) {
   } else HM.zoom = 0;
 }
 
+// Hand gestures and face tracking can run without showing anything: the camera view and the status stay on, out of sight, so the
+// tracking still sees (Settings → General → Orb). An error still shows, so a camera that does not work is not a silent failure.
+function applyTrackingView() {
+  document.body.classList.toggle('tracking-hidden', S.settings.trackingShown === false);
+}
+document.addEventListener('settings-saved', () => applyTrackingView());
 function renderGestures() {
+  applyTrackingView();
   applyOrbCap();
   renderOrbControls();
   const cam = $('#ix-cam');
@@ -1778,6 +1798,7 @@ function wireInteract() {
   // The orb's own settings live in Settings → General → Orb.
   for (const [id, key] of [['#orb-captions', 'orbCaptions'], ['#orb-title', 'orbTitle'], ['#orb-tiles', 'orbTiles'], ['#orb-thinking', 'orbThinking']]) $(id).onchange = async (e) => { await setSetting({ [key]: e.target.value }); orbSys?.refreshShortcuts(); };
   $('#orb-hands').onchange = (e) => toggleHands(e.target.checked);
+  $('#orb-camview').onchange = async (e) => { await setSetting({ trackingShown: e.target.checked }); applyTrackingView(); };
   const viewControl = (what) => () => { if (IX.orb) IX.orb[what]?.(); else toast('Open the orb first: the view applies to the orb on its screen.'); };
   $('#orb-zoom-in').onclick = viewControl('zoomIn');
   $('#orb-zoom-out').onclick = viewControl('zoomOut');
@@ -2544,10 +2565,15 @@ function wire() {
   lookSettings = initLookSettings({ $, api, S, setSetting, toast, IX, startWelcome: () => welcome.start({ force: true }) });
   systemSettings = initSystemSettings({ $, esc, api, toast, errText });
   appUpdatesUi = initAppUpdates({ $, api, S, toast, errText });
+  musicPlayer = initMusicPlayer({ api });
   clockUi = initClockSettings({ $, api, toast, errText });
   buildDock = initBuildDock({ $, api, S, toast, errText, setSetting });
   // A web link opened from anywhere (a chat, the orb, the taskbar) shows in Scorpion's own browser: the chat view has its place.
-  api.onPreviewOpen?.(() => { if (S.view === 'chat') return; if (IX.open) orbSys?.place('home'); setView('chat'); });
+  // The agent's browser opens here too, so the chat has to be showing: in the orb, as its tile.
+  api.onPreviewOpen?.(() => {
+    if (IX.open && !orbSys?.away) { if (!orbSys.pageOpen || S.view !== 'chat') orbSys.leave(() => setView('chat')); return; }
+    if (S.view !== 'chat') setView('chat');
+  });
   modelScanUi = initModelScan({ api, $, esc, toast, errText, refresh });
   // The taskbar's buttons and folders opened while Scorpion is the Windows desktop.
   const onNav = ({ view, dir, select, signin, search, talk, query, section }) => {

@@ -156,9 +156,25 @@ internet connection to chat.
   (stored encrypted), with a fallback model if the chosen one fails.
 - **MCP tool servers**: plug in tools from other programs (stdio, Streamable HTTP or
   SSE). Read-only tools run freely; the others ask first unless you trust the server.
-- **Scorpion's browser**: in Online mode the agent can use its own separate browser
-  window to click, type and fill forms. Typing, and buttons like Buy, Send or Delete,
+- **Scorpion's browser**: in Online mode the agent can use Scorpion's own browser (the
+  panel beside the chat, or the chat's tile in the orb; never a window of its own) to click,
+  type and fill forms. Typing, and buttons like Buy, Send or Delete,
   ask you first; downloads and pop-ups are blocked.
+- **Its own music player**: Scorpion plays the music files on your computer (the Library and
+  your Music folder) inside Scorpion, with a small player on the screen (in the orb too: drag it
+  by its title). Say or type "play some music", "play Bob Marley", "play some jazz", "pause the
+  music", "next song", "stop the music", "what song is this", "shuffle on". The agent can do the
+  same (the music_player tool), and it goes quiet while Scorpion listens or speaks. Nothing is
+  streamed and nothing leaves the computer.
+- **Switches by command**: "turn off the camera", "turn on Wi-Fi", "Bluetooth off", "turn on
+  airplane mode", "do not disturb on", "night light off", "turn off the microphone" (the agent's
+  system_control tool, the command palette, or your voice in the orb). Windows flips camera and
+  microphone access, Wi-Fi, Bluetooth, airplane mode and do not disturb itself; a Mac does Wi-Fi,
+  the microphone's input level and (with blueutil) Bluetooth; Scorpion OS does Wi-Fi, Bluetooth,
+  airplane mode, the microphone and do not disturb. A switch a system gives Scorpion no way to flip
+  (the Mac's camera, night light on Windows) is said plainly, with its Settings page opened. Turning
+  the camera or microphone back on, or Wi-Fi, Bluetooth or airplane mode off or on in a way that
+  could cut you off, asks first when the agent does it.
 - **Chat from your phone**: through your own Telegram bot, by text or voice message.
   Strangers must be approved with a pairing code, and changes and commands ask with
   Allow / Deny buttons on the phone.

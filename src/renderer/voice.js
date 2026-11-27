@@ -34,10 +34,11 @@ export class Recorder {
   // endMs: how long a pause ends your turn (a short turn, under ~3 s, gets endShortMs: quick commands and questions).
   // onPause(pcm): called once per pause (after specMs of quiet) with the speech so far, a copy; the recording goes on.
   // voiceFocus: only a human voice starts a turn and keeps it going (fans, keyboards, hiss and hum do not); see voice-focus.js.
+  // pauseMs: a fixed time of quiet that ends the turn (2.5 s: Settings → Voice and hands); 0: it decides, as follows.
   // patient (the default): the turn ends after endPause() of quiet, which waits for you to finish; hint() gives what was heard so
   // far (the speculative transcript) so a sentence that trails off is given more time. Without it, endMs/endShortMs as before.
   // onEnd(pcm, { specOk }): specOk is true when nothing but quiet followed the last onPause snapshot (so its transcript stands).
-  async start({ vad = true, onEnd, onLevel, keepOpen = false, endMs = 800, endShortMs = endMs, onPause = null, specMs = 320, voiceFocus = true, patient = true, hint = null } = {}) {
+  async start({ vad = true, onEnd, onLevel, keepOpen = false, endMs = 800, endShortMs = endMs, onPause = null, specMs = 320, voiceFocus = true, patient = true, hint = null, pauseMs = 0 } = {}) {
     if (this.ctx) return;
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -100,7 +101,7 @@ export class Recorder {
       if (loud) { if (paused) specOk = false; paused = false; }
       else if (onPause && !paused && quietMs >= specMs && spokenMs - quietMs > 500) { paused = true; specOk = true; onPause(this.snapshot()); }
       // A pause ends your turn: quick, like a person waiting for you to finish (a little shorter after a short sentence).
-      const wait = patient ? endPause(spokenMs - quietMs, hint?.() ?? null) : spokenMs < 3000 ? endShortMs : endMs;
+      const wait = pauseMs > 0 ? pauseMs : patient ? endPause(spokenMs - quietMs, hint?.() ?? null) : spokenMs < 3000 ? endShortMs : endMs;
       if (quietMs > wait || spokenMs > 90000) {
         const meta = { specOk: paused && specOk };
         if (!keepOpen) { onEnd?.(this.stop(), meta); return; }
