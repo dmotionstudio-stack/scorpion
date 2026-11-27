@@ -11,7 +11,9 @@ const MAX_QUEUE = 300;
 
 // "03 - Redemption_Song.mp3" → "Redemption Song"
 export function titleOf(file) {
-  return path.basename(file, path.extname(file)).replace(/^\s*\d{1,3}\s*[-._)]\s*/, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim() || path.basename(file);
+  // The last part of the path, whichever way its separators lean (a Windows path read on a Mac, or the other way round).
+  const base = String(file).split(/[\\/]/).pop();
+  return base.replace(/\.[^.]+$/, '').replace(/^\s*\d{1,3}\s*[-._)]\s*/, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim() || base;
 }
 
 const clean = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
