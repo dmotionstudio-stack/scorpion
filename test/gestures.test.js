@@ -240,3 +240,41 @@ test('the pointer keeps moving when a ring or little finger flickers in and out'
   assert.ok(r.pointer, 'index and little finger: still pointing');
   assert.equal(step(g, shape(0.48, 0.5, { up: ['index', 'middle'], thumb: 'out' }), 66).pointer, null, 'two fingers: that is scrolling');
 });
+
+test('a fist thrown at the screen swaps the orb and the humanoid, and nothing else does', () => {
+  const FIST = { s: 1 };
+  // thrown: it looks bigger, fast, staying put
+  const g = createGestures();
+  step(g, shape(0.5, 0.5, { ...FIST, s: 1 }), 0);
+  step(g, shape(0.5, 0.5, { ...FIST, s: 1.15 }), 150);
+  assert.equal(step(g, shape(0.5, 0.5, { ...FIST, s: 1.5 }), 300).throw, true);
+  assert.equal(step(g, shape(0.5, 0.5, { ...FIST, s: 1.9 }), 400).throw, false, 'once per throw');
+  // opening the hand after the throw is not a "zoom in"
+  assert.equal(step(g, shape(0.5, 0.5, { ...OPEN, s: 1.9 }), 520).bloom, null);
+  // as many times as you like: a second throw after the cooldown
+  step(g, shape(0.5, 0.5, { ...FIST, s: 1 }), 2000);
+  step(g, shape(0.5, 0.5, { ...FIST, s: 1.15 }), 2150);
+  assert.equal(step(g, shape(0.5, 0.5, { ...FIST, s: 1.5 }), 2300).throw, true);
+  // slowly closer is not a throw
+  const slow = createGestures();
+  step(slow, shape(0.5, 0.5, { ...FIST, s: 1 }), 0);
+  step(slow, shape(0.5, 0.5, { ...FIST, s: 1.15 }), 500);
+  assert.equal(step(slow, shape(0.5, 0.5, { ...FIST, s: 1.5 }), 1000).throw, false);
+  // a fist swung sideways is not a throw
+  const side = createGestures();
+  step(side, shape(0.8, 0.5, { ...FIST, s: 1 }), 0);
+  assert.equal(step(side, shape(0.2, 0.5, { ...FIST, s: 1.4 }), 200).throw, false);
+  // an open hand pushed forward is "back", not a throw
+  const open = createGestures();
+  step(open, shape(0.5, 0.5, { ...OPEN, s: 1 }), 0);
+  step(open, shape(0.5, 0.5, { ...OPEN, s: 1.2 }), 150);
+  const pushed = step(open, shape(0.5, 0.5, { ...OPEN, s: 1.6 }), 300);
+  assert.equal(pushed.throw, false);
+  assert.equal(pushed.push, true);
+  // a held fist still pauses
+  const hold = createGestures();
+  step(hold, shape(0.5, 0.5), 0);
+  const held = step(hold, shape(0.5, 0.5), 1600);
+  assert.equal(held.hold, 'fist');
+  assert.equal(held.throw, false);
+});

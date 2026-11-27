@@ -20,6 +20,7 @@
 //   Thumb + little finger out        talk / stop talking
 //   Open palm held still             stop (Scorpion stops speaking)
 //   Fist held                        pause / resume the hand controls
+//   Fist, thrown toward the screen   swap the orb and the humanoid (any number of times)
 //   Point at a shortcut and hold     open it (on the orb)
 
 // Landmark indices of MediaPipe's hand model.
@@ -73,6 +74,9 @@ const PALM_HOLD_MS = 1000;
 const STILL_MOVE = 0.03;
 const SCROLL_SPEED = 12; // notches per hand-height of movement
 const COOLDOWN_MS = 900;
+const THROW_MS = 450; // a fist that looks this much bigger within this long is thrown at the screen
+const THROW_GROWTH = 1.3;
+const THROW_COOLDOWN_MS = 1100;
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -118,7 +122,7 @@ export function handPose(lm) {
 }
 
 export function createGestures() {
-  return { hands: new Map(), mode: 'idle', spinGrab: null, zoomDist: null, spinSince: 0, lastSwipe: -Infinity, lastPush: -Infinity, lastBloom: -Infinity };
+  return { hands: new Map(), mode: 'idle', spinGrab: null, zoomDist: null, spinSince: 0, lastSwipe: -Infinity, lastPush: -Infinity, lastBloom: -Infinity, lastThrow: -Infinity };
 }
 
 // One video frame: the landmarks of each hand and its "Left"/"Right" label.
@@ -129,12 +133,12 @@ export function createGestures() {
 //   pointer: {x, y} | null           tap / rightTap / bloom: {x, y} | null
 //   drag: { phase: 'start'|'move'|'end', x, y } | null
 //   scroll: lines (up positive) | null
-//   swipe: 'left'|'right'|'up'|'down'|null   push: boolean   thumb: 'up'|'down'|null
+//   swipe: 'left'|'right'|'up'|'down'|null   push: boolean   throw: boolean   thumb: 'up'|'down'|null
 //   sign: 'three'|'shaka'|null (held briefly)   hold: 'palm'|'fist'|null (held still)
 export function stepGestures(g, landmarks, labels, now = performance.now()) {
   const pinched = [];
   const seen = new Set();
-  const r = { pointer: null, tap: null, rightTap: null, bloom: null, drag: null, scroll: null, swipe: null, push: false, thumb: null, sign: null, hold: null, pose: null };
+  const r = { pointer: null, tap: null, rightTap: null, bloom: null, drag: null, scroll: null, swipe: null, push: false, throw: false, thumb: null, sign: null, hold: null, pose: null };
   landmarks.forEach((lm, i) => {
     // Hand state is kept per label so it survives hands swapping order;
     // two hands given the same label still get one each.
@@ -207,6 +211,18 @@ export function stepGestures(g, landmarks, labels, now = performance.now()) {
       hand.fistRun = { start: hand.fistStart, end: hand.fistAt, held: hand.fistHeld };
       hand.fistStart = null;
       hand.fistHeld = false;
+    }
+    // A closed hand thrown forward: it looks bigger, quickly, and stays about where it is. It swaps the orb and the humanoid. (The
+    // fist that follows, opening again, is not a "zoom in".)
+    hand.fistHist = pose === 'fist' ? [...(hand.fistHist || []).filter((h) => now - h.t <= THROW_MS), { t: now, size, x: palm.x, y: palm.y }] : [];
+    if (single && pose === 'fist' && now - g.lastThrow > THROW_COOLDOWN_MS) {
+      const first = hand.fistHist[0];
+      if (first && size > first.size * THROW_GROWTH && dist(palm, first) < SWIPE_DX) {
+        r.throw = true;
+        g.lastThrow = now;
+        g.lastBloom = now;
+        hand.fistHist = [];
+      }
     }
     const run = hand.fistRun;
     if (single && pose === 'open' && run && !run.held && now - run.end < BLOOM_MS && run.end - run.start < BLOOM_FIST_MS && now - g.lastBloom > COOLDOWN_MS) {

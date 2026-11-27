@@ -10,22 +10,39 @@ touch this site.
 
 | Page | What it is |
 |---|---|
-| `index.html` | Home: features, privacy, pricing, latest updates |
+| `index.html` | Home: the hero (the orb that turns into the humanoid and back), what the humanoid can do, ways to run it, pricing, latest updates |
 | `download.html` | The free Windows and Mac downloads (always the newest release), the editions, comparison, USB sticks, checkout dialog |
-| `features.html`, `orb.html`, `os.html` | What Scorpion does, the ORB (with the live orb), and Scorpion OS |
+| `features.html`, `orb.html`, `os.html` | What Scorpion does, the ORB (the live orb, the humanoid and the transformation between them), and Scorpion OS |
 | `account.html` | My downloads: sign in with an email and a code to see paid orders and download again (see *Customer sign-in*) |
 | `usb.html` | The USB stick product page: images, both sizes side by side, what is on it, ordering. `assets/usb-*.svg` are the product images; `usb-*-listing.svg` are the same on white for marketplace listings |
 | `updates.html` | News and release notes, filterable |
 | `guide.html` | Install steps (Windows, Mac, USB), requirements, FAQ |
 | `success.html` | Where Stripe sends buyers back: their download links and USB status |
 
-## The ORB
+## The ORB and the humanoid
 
-The home page shows the real Interact orb from the app. `assets/orb/orb.js` is
-an exact copy of `src/renderer/orb.js` (a test fails if they differ, so copy it
-again after changing the app's orb), and `assets/orb-site.js` puts it on the
-page. three.js 0.186.1, the same version the app uses, loads from jsDelivr.
-Each orb renders only while it's on screen.
+The site shows the real Interact orb and the real orb humanoid from the app, running live in the page. three.js 0.186.1, the same
+version the app uses, loads from jsDelivr (the pages that show them have an import map). Each one renders only while it is on screen,
+and visitors who prefer reduced motion get the quiet version.
+
+| File | What it is |
+|---|---|
+| `assets/orb/orb.js` | An exact copy of `src/renderer/orb.js`, the orb sphere. A test fails if they differ: copy it again after changing the app's orb. |
+| `assets/orb/humanoid.js` | An exact copy of `src/renderer/humanoid.js`, the humanoid, kept the same way by a test. |
+| `assets/forms-core.js` | One orb or humanoid in a box, and the **slow transformation** between them (the app's `switchLook`: the orb folds into a point of light and the humanoid grows from it, and back). It also gives them states, the voice level, the gaze and a pointer. |
+| `assets/forms-site.js` | The "orb or humanoid" section: state buttons (Standby, Listening, Thinking, Speaking), a Transform button, a replay of the humanoid's random entrance, a caption and the voice commands that do the same in the app. It follows the pointer. |
+| `assets/orb-site.js` | The **home page hero** and the **ORB page demo**. The hero's orb rises over the horizon, drifts through its states, and now and then turns into the humanoid standing on the horizon, and back. The demo is the orb with the apps ring: pick a state, spin it, click a shortcut. |
+| `assets/orb-shortcuts.js` | The apps that orbit the orb (Chat, Agent, Voice, Documents, Memory, Agents, Schedule, People), used by the demo and by the orb in the "orb or humanoid" section. The humanoid has none. They are left out on phone widths. |
+
+Where it appears: the home page (hero, then "What the humanoid can do": listens, talks, sees you, follows your hands, reacts, does as
+you say) and the ORB page (the state demo, the orb or humanoid section, what each state means, the gesture table, the orb as the system).
+
+## Languages and voice on the site
+
+The pages say what the app does, so they change when it does: the Guide's FAQ lists the languages (38: natural built-in voices for
+English, French, Spanish, Italian, Portuguese, Hindi and Haitian Creole; small downloads for German, Russian, Arabic, Vietnamese,
+Korean, Romanian and Yoruba; the computer's own voice for the rest), better listening, waking by claps and snaps, and the voice
+commands that switch things. `assets/orb-shortcuts.js` carries the language count too.
 
 ## Change prices, editions or USB sticks
 

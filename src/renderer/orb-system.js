@@ -525,6 +525,11 @@ export function initOrbSystem(ctx) {
   function handleGesture(r) {
     if (!IX.orb) return {};
     // The humanoid answers the hands: an open palm shown after none was a hello, a thumbs-up a nod.
+    // A closed hand thrown forward swaps the orb and the humanoid, as many times as you like.
+    if (r.throw && !O.handsPaused && !O.away && ctx.switchLook) {
+      flash(S.settings.orbLook === 'humanoid' ? 'Back to the orb' : 'Transform into the humanoid');
+      ctx.switchLook(S.settings.orbLook === 'humanoid' ? 'classic' : 'humanoid').catch(() => {});
+    }
     if (IX.orb.react) {
       const at = performance.now();
       if (r.pose === 'open' && !O.openSeen && at - (O.lastWave || 0) > 6000) { O.lastWave = at; IX.orb.react('wave'); }

@@ -566,7 +566,9 @@ pointer over the whole screen; a quick pinch clicks, thumb + middle right-clicks
 fist then open hand double-clicks, a held pinch drags, two fingers up scroll, and both
 hands spreading or closing zoom (Ctrl + wheel). This works in every app, in Scorpion
 and on its taskbar. Sweeps, push, thumbs and signs keep their meanings below, and a
-**held fist pauses** everything until you hold a fist again. Turn the camera off with
+**held fist pauses** everything until you hold a fist again. A **closed hand thrown forward**, toward the screen (it looks bigger,
+fast, staying about where it is), **swaps the orb and the humanoid**, as many times as you like, in the same slow transformation as
+the voice command. Turn the camera off with
 **G** in the orb, **Off** by the status line, or the switch in Settings. Your hand
 isn't drawn on screen; a small status line says how many hands it sees and names each
 gesture as it happens. With no hand in view the tracker checks only every third camera
