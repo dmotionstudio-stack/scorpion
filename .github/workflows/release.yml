@@ -229,6 +229,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run website.yml --ref main
+      # Says which of the four is missing (only names, never values): a secret with a slightly different name, or kept as an environment
+      # secret or a variable instead of a repository secret, looks the same as not set.
+      - name: Which Cloudflare R2 secrets are missing
+        if: env.HAS_R2 != 'true'
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          for n in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET; do
+            if [ -z "${!n}" ]; then echo "::error title=Missing secret::$n is empty or not set: it has to be a repository secret with exactly this name (Settings, Secrets and variables, Actions)"; else echo "$n is set"; fi
+          done
       - name: The website was not updated (no Cloudflare R2 secrets)
         if: env.HAS_R2 != 'true'
         run: echo "::warning title=Website not updated::The R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET secrets are not set, so the installers were not copied to the website's bucket and the site was not redeployed. See docs/cloudflare-downloads.md. (The free downloads on the Download page still follow this GitHub release.)"
