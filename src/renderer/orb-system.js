@@ -13,6 +13,7 @@
 import { instantCommand, parseAction, parseLook, parseSwitch, parseSoundCheck, bestApp, parseWake, parseYesNo, matchShortcut, nextIndex, callGreeting } from './orb-commands.js';
 import { intentsFor, matchSpoken } from '/shared/intents.js';
 import { PLATFORM } from './palette.js';
+import { orbT, orbHint } from './orb-text.js';
 import { bubbleItems, ringLook, siteUrl } from './orb-bubbles.js';
 import { arrange, ensureWeights, resizeWeights, insertApp, removeApp, moveItem, swapItems, cellAt, sideOfRect, modeOf, MODES, GAP } from '/shared/tiles.js';
 
@@ -35,6 +36,8 @@ const lowerFirst = (s) => (s ? s[0].toLowerCase() + s.slice(1) : s);
 
 export function initOrbSystem(ctx) {
   const { voiceBusy, orbThread, api, $, S, IX, V, speaker, toast, errText, listen, sendMessage, setView, closeInteract, startFace, stopFace, FX, desktopUi, renderInteract } = ctx;
+  // What the orb's screen says about itself follows the language chosen for Scorpion's voice (orb-text.js).
+  const ot = (key, vars) => orbT(S.settings.voiceLanguage, key, vars);
   const O = { desktop: false, away: false, framed: null, windows: [], winIndex: -1, lastFocused: null, approval: null, asking: false, wakeListening: false, wakeTimer: 0, pollTimer: 0, eventTimer: 0, greetTimer: 0, pointer: null };
 
   // ---------- shortcuts ----------
@@ -53,8 +56,7 @@ export function initOrbSystem(ctx) {
     const on = voiceOnly();
     document.body.classList.toggle('ix-voice-only', on);
     const hint = $('#ix-hint');
-    if (hint && !hint.dataset.full) hint.dataset.full = hint.innerHTML; // the usual hint, kept for when voice-only is off
-    if (hint) hint.innerHTML = on ? '<span class="key">Say</span> “Scorpion” and ask <span class="key">Space</span> talk / interrupt <span class="key">Esc</span> leave' : hint.dataset.full;
+    if (hint) hint.innerHTML = orbHint(S.settings.voiceLanguage, on);
     if (IX.open) showShortcuts();
   }
 
@@ -76,11 +78,11 @@ export function initOrbSystem(ctx) {
     if (item.kind === 'window') {
       O.winIndex = O.windows.findIndex((w) => w.hwnd === item.hwnd);
       O.lastFocused = item.hwnd;
-      caption(`Switching to ${item.label}`);
+      caption(ot('switching', { x: item.label }));
       await show(item.hwnd);
       return;
     }
-    caption(`Opening ${item.label}`);
+    caption(ot('opening', { x: item.label }));
     if (item.custom) { openOwn(item.custom); return; }
     leaveOrb(() => {
       if (item.id === 'apps') desktopUi.showApps();
@@ -398,7 +400,7 @@ export function initOrbSystem(ctx) {
   // "Back" / push: return from a place, or put the window you switched to away.
   async function goBack() {
     if (returnToOrb()) return;
-    if (O.framed) { caption('Putting the app away'); await appAction('minimize', O.tiles.focus); return; }
+    if (O.framed) { caption(ot('away')); await appAction('minimize', O.tiles.focus); return; }
     const front = O.windows.find((w) => w.active) || O.windows.find((w) => w.hwnd === O.lastFocused);
     if (front) {
       await api.shellWindow({ hwnd: front.hwnd, action: 'minimize' }).catch(() => {});
@@ -411,7 +413,7 @@ export function initOrbSystem(ctx) {
     O.winIndex = nextIndex(O.winIndex, O.windows.length, direction);
     const w = O.windows[O.winIndex];
     O.lastFocused = w.hwnd;
-    caption(`Switching to ${w.title}`);
+    caption(ot('switching', { x: w.title }));
     await show(w.hwnd);
   }
 
@@ -510,24 +512,24 @@ export function initOrbSystem(ctx) {
   function handleGlobals(r) {
     if (r.hold === 'fist') togglePause();
     if (O.handsPaused) return false;
-    if (r.swipe === 'up') { flash('Home'); goHome(); }
-    else if (r.swipe === 'down') { flash('Apps'); activate(PLACES.find((p) => p.id === 'apps') || PLACES[0]); }
-    else if (r.swipe) { flash(r.swipe === 'left' ? 'Previous app' : 'Next app'); swipe(r.swipe); }
-    if (r.push) { flash('Back'); goBack(); }
+    if (r.swipe === 'up') { flash(ot('home')); goHome(); }
+    else if (r.swipe === 'down') { flash(ot('apps')); activate(PLACES.find((p) => p.id === 'apps') || PLACES[0]); }
+    else if (r.swipe) { flash(r.swipe === 'left' ? ot('prev') : ot('next')); swipe(r.swipe); }
+    if (r.push) { flash(ot('back')); goBack(); }
     if (r.thumb) thumb(r.thumb);
-    if (r.sign === 'three') { const files = PLACES.find((p) => p.id === 'files'); if (files) { flash('Files'); activate(files); } }
-    if (r.sign === 'shaka') { flash(V.talk ? 'Stop talking' : 'Talk'); $('#ix-talk').click(); }
-    if (r.hold === 'palm') { flash('Stop'); speaker.stop(); toggleGuide(false); }
+    if (r.sign === 'three') { const files = PLACES.find((p) => p.id === 'files'); if (files) { flash(ot('files')); activate(files); } }
+    if (r.sign === 'shaka') { flash(V.talk ? ot('stopTalking') : ot('talk')); $('#ix-talk').click(); }
+    if (r.hold === 'palm') { flash(ot('stop')); speaker.stop(); toggleGuide(false); }
     return true;
   }
-  function togglePause() { O.handsPaused = !O.handsPaused; flash(O.handsPaused ? 'Hands paused' : 'Hands on'); }
+  function togglePause() { O.handsPaused = !O.handsPaused; flash(O.handsPaused ? ot('handsPaused') : ot('handsOn')); }
 
   function handleGesture(r) {
     if (!IX.orb) return {};
     // The humanoid answers the hands: an open palm shown after none was a hello, a thumbs-up a nod.
     // A closed hand thrown forward swaps the orb and the humanoid, as many times as you like.
     if (r.throw && !O.handsPaused && !O.away && ctx.switchLook) {
-      flash(S.settings.orbLook === 'humanoid' ? 'Back to the orb' : 'Transform into the humanoid');
+      flash(S.settings.orbLook === 'humanoid' ? ot('toOrb') : ot('toHumanoid'));
       ctx.switchLook(S.settings.orbLook === 'humanoid' ? 'classic' : 'humanoid').catch(() => {});
     }
     if (IX.orb.react) {
@@ -563,7 +565,7 @@ export function initOrbSystem(ctx) {
     if (pick) {
       const id = IX.orb.pick(...toView(pick));
       const item = id && items().find((i) => i.id === id);
-      if (item) { flash(r.bloom ? `Zoom into ${item.label}` : item.label); activate(item); }
+      if (item) { flash(r.bloom ? ot('zoomInto', { x: item.label }) : item.label); activate(item); }
     }
     if (r.scroll) IX.orb.spinRings(r.scroll * 0.25);
     // Both hands, spreading, right after pointing at a shortcut: fly into it
@@ -577,7 +579,7 @@ export function initOrbSystem(ctx) {
         if (O.zoomIn.acc >= 0.5) {
           const item = items().find((i) => i.id === O.zoomIn.target);
           O.zoomIn.target = null;
-          if (item) { flash(`Zoom into ${item.label}`); activate(item); }
+          if (item) { flash(ot('zoomInto', { x: item.label })); activate(item); }
           setTimeout(() => IX.orb?.zoomToward(null), 400);
         }
       }
@@ -595,9 +597,9 @@ export function initOrbSystem(ctx) {
     const send = (cmd) => api.orbMouse(cmd).catch(() => {});
     // Every frame's move (orb-frame.js sends only the newest one waiting).
     if (r.pointer && performance.now() - (O.lastMove || 0) > 12) { O.lastMove = performance.now(); send({ move: r.pointer }); }
-    if (r.tap) { flash('Click'); send({ click: 'left', at: r.tap }); }
-    if (r.rightTap) { flash('Right-click'); send({ click: 'right', at: r.rightTap }); }
-    if (r.bloom) { flash('Open'); send({ click: 'double', at: r.bloom }); }
+    if (r.tap) { flash(ot('click')); send({ click: 'left', at: r.tap }); }
+    if (r.rightTap) { flash(ot('rightClick')); send({ click: 'right', at: r.rightTap }); }
+    if (r.bloom) { flash(ot('open')); send({ click: 'double', at: r.bloom }); }
     if (r.drag) send({ drag: r.drag.phase, at: r.drag });
     if (r.scroll) {
       O.wheel = (O.wheel || 0) + r.scroll;
@@ -608,16 +610,16 @@ export function initOrbSystem(ctx) {
       // Spreading the hands (factor below 1) zooms the app in: Ctrl + wheel.
       O.zoomAcc = (O.zoomAcc || 0) - Math.log(r.zoom) * 8;
       const n = Math.trunc(O.zoomAcc);
-      if (n) { O.zoomAcc -= n; flash(n > 0 ? 'Zoom in' : 'Zoom out'); send({ wheel: n, ctrl: true }); }
+      if (n) { O.zoomAcc -= n; flash(n > 0 ? ot('zoomIn') : ot('zoomOut')); send({ wheel: n, ctrl: true }); }
     }
     return { rotate: true, zoom: true };
   }
 
   // Thumb up or down: the answer to a question; otherwise start or stop talking.
   function thumb(dir) {
-    if (O.approval) { flash(dir === 'up' ? 'Yes' : 'No'); answer(dir === 'up'); return; }
-    if (dir === 'up' && !V.talk) { flash('Talk'); $('#ix-talk').click(); }
-    else if (dir === 'down' && (V.talk || speaker.busy)) { flash('Stop'); if (V.talk) $('#ix-talk').click(); else speaker.stop(); }
+    if (O.approval) { flash(dir === 'up' ? ot('yes') : ot('no')); answer(dir === 'up'); return; }
+    if (dir === 'up' && !V.talk) { flash(ot('talk')); $('#ix-talk').click(); }
+    else if (dir === 'down' && (V.talk || speaker.busy)) { flash(ot('stop')); if (V.talk) $('#ix-talk').click(); else speaker.stop(); }
   }
 
   // Home: everything back to the orb (apps wait, minimized).
@@ -625,7 +627,7 @@ export function initOrbSystem(ctx) {
     returnToOrb();
     if (O.framed) await appAction('minimizeAll');
     IX.orb?.resetView();
-    caption('Home');
+    caption(ot('home'));
   }
 
   function toggleGuide(on) {
@@ -703,7 +705,7 @@ export function initOrbSystem(ctx) {
     api.approve({ id: ev.id, approved: yes });
     S.pending.delete(ev.id);
     clearApproval();
-    caption(yes ? 'OK.' : 'Cancelled.');
+    caption(yes ? ot('ok') : ot('cancelled'));
   }
 
   function clearApproval(id) {

@@ -18,6 +18,7 @@ import crypto from 'node:crypto';
 import { execFile as execFileCb } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as store from './store.js';
+import { desktopSwitchItem } from './power-menu.js';
 import * as models from './models.js';
 import * as engine from './engine-client.js';
 import * as rag from './rag.js';
@@ -1696,6 +1697,7 @@ async function powerAction(action) {
   if (action === 'lock' || action === 'sleep') return winctl.systemControl(action);
   if (action === 'signout') return winctl.signOut();
   if (action === 'restart' || action === 'shutdown') return winctl.powerNow(action);
+  if (action === 'hide') { if (process.platform === 'darwin') app.hide(); return; } // the Mac desktop shows; the Dock brings Scorpion back
   if (action === 'explorer') { await desktop.stopShell(); return winctl.explorerRunning().then((on) => on || winctl.startExplorer()); }
   throw new Error('Unknown power action');
 }
@@ -1719,7 +1721,7 @@ function registerSummon(accel) {
 // 'orbit' (the edge rail) or 'bar'.
 function taskbarSettings() {
   const t = store.getSettings().taskbar || {};
-  return { pinned: [], links: [], groups: [], combine: true, groupTray: false, labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, ...t, show: { home: true, apps: true, files: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(t.show || {}) } };
+  return { pinned: [], links: [], groups: [], combine: true, groupTray: false, labels: true, center: false, size: 'normal', style: 'holo', layout: 'orbit', autoHide: false, ...t, show: { home: true, apps: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(t.show || {}) } };
 }
 function setTaskbarLook(t) {
   // Groups hold only apps that are still pinned.
@@ -2626,8 +2628,7 @@ function registerIpc() {
         ...(shown('chat') ? [item('Chat with Scorpion', glance('chat'))] : []),
         ...(shown('volume') ? [item('Sound: mute or unmute', () => handlers['shell:volume']('mute'))] : []),
         // every icon that went into the dropdown, USB drives included (even when none is plugged in)
-        ...(shown('drives') ? [{ type: 'separator' }, { label: 'USB and external drives', enabled: false }, ...(list.length ? driveItems(list) : [{ label: 'None connected', enabled: false }])] : []),
-        ...(shown('settings') ? [{ type: 'separator' }, item('Orb settings', () => showView('settings', { section: 'orb' }))] : [])];
+        ...(shown('drives') ? [{ type: 'separator' }, { label: 'USB and external drives', enabled: false }, ...(list.length ? driveItems(list) : [{ label: 'None connected', enabled: false }])] : [])];
     } else if (kind === 'group') {
       // A group's dropdown: its apps (one that's open comes to the front), then the group itself.
       const t = taskbarSettings();
@@ -2656,7 +2657,7 @@ function registerIpc() {
       // Customizing the taskbar (right-click on an empty part of it).
       const t = taskbarSettings();
       const set = (patch) => setTaskbarLook({ ...t, ...patch });
-      const show = (k) => ({ label: { home: 'Scorpion button', apps: 'Apps button', files: 'Files button', power: 'Power button', network: 'Network', battery: 'Battery', volume: 'Volume', clock: 'Clock', notifications: 'Notifications', mail: 'Mail', chat: 'Chat with Scorpion', drives: 'USB and external drives', settings: 'Orb settings button' }[k], type: 'checkbox', checked: t.show[k] !== false, click: () => set({ show: { ...t.show, [k]: t.show[k] === false } }) });
+      const show = (k) => ({ label: { home: 'Scorpion button', apps: 'Apps button', settings: 'Settings button', power: 'Power button', network: 'Network', battery: 'Battery', volume: 'Volume', clock: 'Clock', notifications: 'Notifications', mail: 'Mail', chat: 'Chat with Scorpion', drives: 'USB and external drives' }[k], type: 'checkbox', checked: t.show[k] !== false, click: () => set({ show: { ...t.show, [k]: t.show[k] === false } }) });
       const autoHide = { label: 'Hide automatically', type: 'checkbox', checked: t.autoHide === true, click: () => set({ autoHide: t.autoHide !== true }) };
       const edges = [['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']];
       const here = desktop.railEdge();
@@ -2670,7 +2671,7 @@ function registerIpc() {
         { label: "Combine an app's windows", type: 'checkbox', checked: t.combine !== false, click: () => set({ combine: t.combine === false }) },
         { label: 'Size', submenu: ['small', 'normal', 'large'].map((v) => ({ label: v[0].toUpperCase() + v.slice(1), type: 'radio', checked: t.size === v, click: () => set({ size: v }) })) },
         { label: 'Look', submenu: [['holo', 'Holographic'], ['neon', 'Neon'], ['glass', 'Glass'], ['solid', 'Solid']].map(([v, l]) => ({ label: l, type: 'radio', checked: t.style === v, click: () => set({ style: v }) })) },
-        { label: 'Show', submenu: [...['home', 'apps', 'files', 'power'].map(show), { type: 'separator' }, ...['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume', 'drives', 'settings'].map(show)] },
+        { label: 'Show', submenu: [...['home', 'apps', 'settings', 'power'].map(show), { type: 'separator' }, ...['clock', 'network', 'battery', 'notifications', 'mail', 'chat', 'volume', 'drives'].map(show)] },
         item('Add a folder or file…', async () => {
           desktop.holdRail(true);
           const r = await dialog.showOpenDialog(owner, { title: 'Add to the taskbar', properties: ['openFile', 'openDirectory', 'multiSelections'] }).finally(() => desktop.holdRail(false));
@@ -2705,12 +2706,10 @@ function registerIpc() {
         item('Set the date and time…', () => showView('settings', { section: 'clock' })),
         item(process.platform === 'win32' ? 'Windows date and time settings' : 'Date and time settings', () => winctl.openSettings('time'))];
     } else {
-      const m = desktop.shellMode();
+      const sw = desktopSwitchItem(process.platform, desktop.shellMode());
       template = [item('Lock', () => powerAction('lock')), item('Sleep', () => powerAction('sleep')),
         item('Sign out', () => powerAction('signout')), item('Restart', () => powerAction('restart')), item('Shut down', () => powerAction('shutdown')),
-        { type: 'separator' },
-        m === 'bar' ? item('Back to the Windows taskbar', () => setTaskbarAlwaysOn(false))
-          : item('Switch to the Windows desktop', () => powerAction('explorer'))];
+        ...(sw ? [{ type: 'separator' }, item(sw.label, () => (sw.action === 'taskbar-off' ? setTaskbarAlwaysOn(false) : powerAction(sw.action)))] : [])];
     }
     return template;
   }

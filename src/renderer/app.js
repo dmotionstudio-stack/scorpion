@@ -8,6 +8,7 @@ import { initExtras } from './extras-ui.js';
 import { initHome } from './home-ui.js';
 import { initDesktop } from './desktop-ui.js';
 import { initOrbSystem } from './orb-system.js';
+import { orbT, orbHint } from './orb-text.js';
 import { initHandControl } from './hand-control.js';
 import { HandTracker, cameraError, pointFilter } from './gestures.js';
 import { initWelcome } from './welcome.js';
@@ -1224,7 +1225,20 @@ const accentColor = () => {
   const [r, g, b] = accentProbe.getImageData(0, 0, 1, 1).data;
   return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 };
-const STATE_LABEL = { standby: 'Standby', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', acting: 'Working', waiting: 'Waiting for you' };
+// The orb screen's own words follow the language chosen for Scorpion's voice (orb-text.js).
+const ot = (key, vars) => orbT(S.settings.voiceLanguage, key, vars);
+const STATE_LABEL = { standby: 'standby', listening: 'listening', thinking: 'thinking', speaking: 'speaking', acting: 'working', waiting: 'waiting' };
+function applyOrbText() {
+  const input = $('#ix-input');
+  if (input) input.placeholder = ot('placeholder');
+  const send = document.querySelector('#ix-ask .ix-send');
+  if (send) send.textContent = ot('send');
+  const hint = $('#ix-hint');
+  const voiceOnly = document.body.classList.contains('ix-voice-only');
+  const stamp = `${S.settings.voiceLanguage}|${voiceOnly}`;
+  if (hint && hint.dataset.lang !== stamp) { hint.innerHTML = orbHint(S.settings.voiceLanguage, voiceOnly); hint.dataset.lang = stamp; }
+  for (const id of ['#ix-you', '#ix-reply', '#ix-hint']) $(id)?.setAttribute('dir', 'auto');
+}
 
 // The orb and the humanoid are two forms of one thing: switch between them while the orb is open (a spoken "transform
 // into the humanoid" / "show me the orb"). The new one is made on top of the old, the old fades out as it fades in.
@@ -1553,13 +1567,14 @@ function renderInteract() {
   const state = $('#interact').dataset.state || 'standby';
   const d = V.download;
   $('#ix-state').textContent = d
-    ? `Downloading voice ${Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100))}%`
-    : state === 'standby' && V.talk ? 'Ready' : state === 'standby' && orbSys?.wakeListening ? 'Say “Scorpion”' : STATE_LABEL[state] || 'Standby';
+    ? ot('downloading', { n: Math.min(100, Math.round(((d.loaded || 0) / (d.total || 1)) * 100)) })
+    : state === 'standby' && V.talk ? ot('ready') : state === 'standby' && orbSys?.wakeListening ? ot('sayName') : ot(STATE_LABEL[state] || 'standby');
   $('#ix-model').textContent = S.engine?.chatModelName ? `· ${S.engine.chatModelName}` : '';
-  if (V.langDownload) $('#ix-state').textContent = `Downloading voice ${Math.min(100, Math.round(((V.langDownload.loaded || 0) / (V.langDownload.total || 1)) * 100))}%`;
+  if (V.langDownload) $('#ix-state').textContent = ot('downloading', { n: Math.min(100, Math.round(((V.langDownload.loaded || 0) / (V.langDownload.total || 1)) * 100)) });
   const talk = $('#ix-talk');
   talk.setAttribute('aria-pressed', String(V.talk));
-  talk.textContent = V.talk ? '■ Stop' : S.voice?.installed ? '● Talk' : d ? 'Installing…' : 'Install voice';
+  talk.textContent = V.talk ? `■ ${ot('stop')}` : S.voice?.installed ? `● ${ot('talk')}` : d ? ot('installing') : ot('install');
+  applyOrbText();
   talk.disabled = Boolean(d);
   renderOrbControls();
   if (FX.on && FX.speaker && !V.download && !V.langDownload) $('#ix-model').textContent = '· with ' + FX.speaker.name + ($('#ix-model').textContent ? ' ' + $('#ix-model').textContent : '');

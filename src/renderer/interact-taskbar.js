@@ -59,7 +59,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
     <div class="itb-start">
       <button class="itb-btn" id="itb-home" title="Scorpion: Home">${ICON.logo}</button>
       <button class="itb-btn" id="itb-apps" title="Apps">${ICON.apps}</button>
-      <button class="itb-btn" id="itb-files" title="Files">${ICON.files}</button>
+      <button class="itb-btn" id="itb-settings" title="Settings (General → Orb)">${ICON.settings}</button>
     </div>
     <div class="itb-apps" id="itb-apps-area"><nav class="itb-pinned" id="itb-pinned" aria-label="Pinned apps"></nav><nav class="itb-pinned itb-links" id="itb-links" aria-label="Folders and files"></nav><span class="itb-sep" id="itb-sep" hidden></span><nav class="itb-windows" id="itb-windows" aria-label="Open windows"></nav></div>
     <div class="itb-tray">
@@ -73,7 +73,6 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
       <button class="itb-btn itb-item" id="itb-volume" title="Volume: click to mute, scroll to change">${ICON.volume}</button>
       <button class="itb-btn itb-clock" id="itb-clock" title="Calendar"><span id="itb-time"></span><span id="itb-date"></span></button>
       <button class="itb-btn" id="itb-edit" title="Customize the taskbar: show, hide, add or remove icons" aria-label="Customize the taskbar">${ICON.edit}</button>
-      <button class="itb-btn" id="itb-settings" title="Orb settings (General → Orb)">${ICON.settings}</button>
       <button class="itb-btn" id="itb-power" title="Power">${ICON.power}</button>
     </div>`;
   const snap = document.createElement('div');
@@ -106,7 +105,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
 
   function apply(settings) {
     const s = settings || S.settings || {};
-    look = { labels: true, size: 'normal', style: 'holo', layout: 'orbit', ...(s.taskbar || {}), show: { home: true, apps: true, files: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(s.taskbar?.show || {}) } };
+    look = { labels: true, size: 'normal', style: 'holo', layout: 'orbit', ...(s.taskbar || {}), show: { home: true, apps: true, settings: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, drives: true, settings: true, ...(s.taskbar?.show || {}) } };
     const edge = edgeOf(look);
     for (const c of [...root.classList]) if (/^itb-(at|style|size)-/.test(c)) root.classList.remove(c);
     root.classList.add(`itb-at-${edge}`, `itb-style-${['holo', 'neon', 'glass', 'solid'].includes(look.style) ? look.style : 'holo'}`, `itb-size-${['small', 'normal', 'large'].includes(look.size) ? look.size : 'normal'}`);
@@ -119,7 +118,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
     for (const [k, el] of [['network', '#itb-net'], ['volume', '#itb-volume'], ['clock', '#itb-clock'], ['notifications', '[data-glance="notifications"]'], ['mail', '[data-glance="mail"]'], ['chat', '[data-glance="chat"]']]) q(el).hidden = look.show[k] === false;
     q('#itb-battery').dataset.off = look.show.battery === false ? '1' : '';
     q('#itb-settings').hidden = look.show.settings === false; // the Orb settings button
-    for (const k of ['home', 'apps', 'files', 'power']) q(`#itb-${k}`).hidden = look.show[k] === false; // the buttons at the ends
+    for (const k of ['home', 'apps', 'settings', 'power']) q(`#itb-${k}`).hidden = look.show[k] === false; // the buttons at the ends
     showDrives(lastDrives);
     place();
   }
@@ -191,7 +190,6 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
   const hold = (ms = 5000) => { holdUntil = Date.now() + ms; };
   q('#itb-home').onclick = () => go.home();
   q('#itb-apps').onclick = () => go.apps();
-  q('#itb-files').onclick = () => go.files();
   q('#itb-settings').onclick = () => go.settings();
   q('#itb-power').onclick = () => { hold(); api.shellMenu({ kind: 'power' }); };
   q('#itb-clock').onclick = () => { hold(); api.shellMenu({ kind: 'clock' }); };
@@ -244,7 +242,7 @@ export function initInteractTaskbar({ api, $, S, isOpen, go, openWindow, onChang
   });
 
   // ---- Customize: a panel in the orb to show or hide any icon, remove the apps, folders and files on the bar, and add more.
-  const SHOW = [['home', 'Scorpion button'], ['apps', 'Apps button'], ['files', 'Files button'], ['power', 'Power button'], ['network', 'Network'], ['battery', 'Battery'], ['volume', 'Volume'], ['clock', 'Clock'], ['notifications', 'Notifications'], ['mail', 'Mail'], ['chat', 'Chat with Scorpion'], ['drives', 'USB and external drives'], ['settings', 'Orb settings button']];
+  const SHOW = [['home', 'Scorpion button'], ['apps', 'Apps button'], ['settings', 'Settings button'], ['power', 'Power button'], ['network', 'Network'], ['battery', 'Battery'], ['volume', 'Volume'], ['clock', 'Clock'], ['notifications', 'Notifications'], ['mail', 'Mail'], ['chat', 'Chat with Scorpion'], ['drives', 'USB and external drives']];
   const panel = document.createElement('div');
   panel.className = 'itb-edit';
   panel.hidden = true;

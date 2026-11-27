@@ -23,7 +23,7 @@ async function applySettings(settings) {
   const s = settings || (await api.state().catch(() => null))?.settings;
   if (!s) return;
   if (s.theme) document.documentElement.dataset.theme = s.theme;
-  look = { labels: true, center: false, size: 'normal', style: 'holo', ...(s.taskbar || {}), show: { home: true, apps: true, files: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(s.taskbar?.show || {}) } };
+  look = { labels: true, center: false, size: 'normal', style: 'holo', ...(s.taskbar || {}), show: { home: true, apps: true, settings: true, power: true, network: true, battery: true, volume: true, clock: true, notifications: true, mail: true, chat: true, ...(s.taskbar?.show || {}) } };
   const b = document.body.classList;
   for (const c of [...b]) if (/^tb-(style|size)-/.test(c)) b.remove(c);
   b.add(`tb-style-${look.style}`, `tb-size-${look.size}`);
@@ -38,7 +38,7 @@ async function applySettings(settings) {
   $('#tb-battery').dataset.off = look.show.battery === false ? '1' : '';
   showDrives(lastDrives);
   refreshTray();
-  for (const k of ['home', 'apps', 'files', 'power']) { const b = document.getElementById(`tb-${k}`); if (b) b.hidden = look.show[k] === false; } // the buttons at the ends
+  for (const k of ['home', 'apps', 'settings', 'power']) { const b = document.getElementById(`tb-${k}`); if (b) b.hidden = look.show[k] === false; } // the buttons at the ends
   pinned = await api.shellPinned().catch(() => pinned);
   const l = await (api.shellLinks?.() ?? Promise.resolve(links)).catch(() => links);
   links = Array.isArray(l) ? l : [];
@@ -103,7 +103,7 @@ async function refreshTray() {
 
 $('#tb-home').addEventListener('click', () => api.shellShow('desktop'));
 $('#tb-apps').addEventListener('click', () => api.shellShow('apps'));
-$('#tb-files').addEventListener('click', () => api.shellShow('files'));
+$('#tb-settings').addEventListener('click', () => api.shellShow('settings'));
 $('#tb-power').addEventListener('click', () => api.shellMenu({ kind: 'power' }));
 for (const b of document.querySelectorAll('[data-glance]')) b.addEventListener('click', () => api.shellGlance(b.dataset.glance).catch(() => {}));
 $('#tb-clock').addEventListener('click', () => api.shellMenu({ kind: 'clock' }));

@@ -81,6 +81,10 @@ version, with no update to the site needed:
   (`assets/latest.js`) draws a card for each, with its size. If GitHub cannot be reached it shows a link to the release page.
 - `GET /dl/win`, `/dl/mac-arm`, `/dl/mac-intel` send the visitor to the file: from our own bucket when the release workflow
   has copied it there (streamed by the Worker), from the GitHub release otherwise.
+- The Mac installers from 0.1.65 on are signed with an Apple Developer ID and notarized, so they open without the "unidentified
+  developer" warning, and installed Mac copies update themselves like Windows ones (the release carries the `.zip` files and
+  `latest-mac.yml` for that; see `docs/signing-mac.md` in the app's repo). The Install guide's Mac steps say so; the "Open Anyway"
+  steps are kept for older versions.
 - Only these three are free. The OS image, the model pack, Linux packages and USB sticks are in the editions (`/dl/os`
   and the rest answer 404).
 

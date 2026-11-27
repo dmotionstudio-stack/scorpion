@@ -49,11 +49,12 @@
             <ol class="steps">
               <li>Double-click the <b>.dmg</b> for your Mac: <code>Scorpion-x.y.z-arm64.dmg</code> for Apple Silicon, <code>Scorpion-x.y.z.dmg</code> for Intel (x.y.z is the version number). (Apple menu, About This Mac: <b>Chip</b> means Apple Silicon, <b>Processor</b> means Intel.)</li>
               <li>Drag <b>Scorpion</b> onto the <b>Applications</b> folder.</li>
-              <li>Open Scorpion from Applications. The first time, macOS says it could not verify Scorpion. Click <b>Done</b>, not Move to Trash.</li>
+              <li>Open Scorpion from Applications. Version 0.1.65 and newer is signed and notarized by Apple, so it just opens. (If it is an older version, macOS says it could not verify Scorpion: click <b>Done</b>, not Move to Trash, and follow the next two steps.)</li>
               <li>Open <b>System Settings, Privacy &amp; Security</b>, scroll to Security, click <b>Open Anyway</b> next to "Scorpion" was blocked, and enter your Mac password.</li>
               <li>Open Scorpion again and click <b>Open Anyway</b>. From now on it opens normally.</li>
             </ol>
-            <p class="muted">On macOS 14 or older it's simpler: right-click Scorpion in Applications, choose <b>Open</b>, then <b>Open</b>. If macOS says the app "is damaged", run this once in Terminal:</p>
+            <p class="muted">After that, Scorpion on a Mac updates itself like on Windows: new versions download in the background and install when Scorpion restarts. If you have a version older than 0.1.65, install the newest one by hand once, and updates are automatic from then on.</p>
+            <p class="muted">For an older version on macOS 14 or older it's simpler: right-click Scorpion in Applications, choose <b>Open</b>, then <b>Open</b>. If macOS says the app "is damaged", run this once in Terminal:</p>
             <p><code>xattr -dr com.apple.quarantine /Applications/Scorpion.app</code></p>
           </div>
 
@@ -154,7 +155,7 @@
         <details class="faq"><summary>Can I tell Scorpion to turn things off?</summary><p>Yes, in the orb: "turn off hand gestures", "turn on face tracking", "turn off talk mode", "turn off spoken replies", "turn off text", "turn the wake word on", "turn off soft sounds", "disable the background lines" or "block background noises". It says what it did, or what it needs first.</p></details>
         <details class="faq"><summary>Can I wake it without saying its name?</summary><p>Yes. With the orb open, clap twice in a row, or snap your fingers once, and the humanoid sways its head hello, greets you and listens. Speech, fans, music and typing do not wake it, and one clap alone does not. It needs the voice installed, and you can turn it off by saying "turn off clapping".</p></details>
         <details class="faq"><summary>Does background noise confuse it?</summary><p>Much less: a turn of listening only starts on a human voice, so fans, keyboards and hum are ignored, and Scorpion waits until you have finished talking before it answers. Ask "what's that noise?" and it listens to the room for a few seconds and says what it hears. Music and a TV can still get through.</p></details>
-        <details class="faq"><summary>How do updates work?</summary><p>Standard and Complete keep the version you bought, forever. Lifetime gets every new version through the same download link. Scorpion OS gets signed updates through Settings. See what's new on the <a href="updates.html">Updates</a> page.</p></details>
+        <details class="faq"><summary>How do updates work?</summary><p>Standard and Complete keep the version you bought, forever. Lifetime gets every new version through the same download link. Scorpion OS gets signed updates through Settings. The Windows and Mac apps update themselves (Settings, General, Updates, Check now looks right away). See what's new on the <a href="updates.html">Updates</a> page.</p></details>
       </div>
     </section>
   </main>
