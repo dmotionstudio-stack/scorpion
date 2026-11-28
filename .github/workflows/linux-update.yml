@@ -1,17 +1,19 @@
 # Scorpion OS gets new versions of Scorpion from Scorpion's own apt repository (GitHub Pages), through Software Updater.
-# This builds Scorpion for Linux and publishes it there, without the (hours-long) ISO: it runs on every release tag (v0.1.71), and on
-# a tag like apt-v1 when only the update repository needs publishing. (The Scorpion OS workflow also publishes it, with the ISO.)
+# This builds Scorpion for Linux and publishes it there, without the (hours-long) ISO. It runs when package.json changes on main (every
+# release bumps the version there), when the repository's own files change, and from the Actions tab (Run workflow). It runs from the
+# branch, not from a tag: the github-pages environment lets main deploy, and a tag only if a tag rule was added to the environment.
+# (The Scorpion OS workflow also publishes it, with the ISO.)
 #
 # One-time setup in GitHub (otherwise the deploy is refused):
 #   Settings → Pages → Build and deployment → Source: GitHub Actions
-#   Settings → Environments → github-pages → Deployment branches and tags: add the tag rules v*, os-v* and apt-v* (or no restriction)
 # and the secret APT_SIGNING_KEY (the repository's private signing key).
 name: Linux update
 
 on:
   workflow_dispatch:
   push:
-    tags: ["v*", "apt-v*"]
+    branches: [main]
+    paths: ['package.json', 'os/apt/**', 'os/rootfs/etc/apt/**', '.github/workflows/linux-update.yml']
 
 jobs:
   linux-app:

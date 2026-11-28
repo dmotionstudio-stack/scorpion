@@ -9,10 +9,11 @@ import yaml from 'js-yaml';
 const root = path.resolve(import.meta.dirname, '..');
 const load = (n) => yaml.load(fs.readFileSync(path.join(root, '.github/workflows', n), 'utf8'));
 
-test('a release tag publishes the update repository by itself, without building the ISO', () => {
+test('a release publishes the update repository by itself, from main (which the github-pages environment allows), without building the ISO', () => {
   const w = load('linux-update.yml');
-  const tags = w.on.push.tags;
-  assert.ok(tags.includes('v*') && tags.includes('apt-v*'));
+  assert.deepEqual(w.on.push.branches, ['main']);
+  assert.ok(w.on.push.paths.includes('package.json')); // every release bumps the version there
+  assert.ok(!w.on.push.tags, 'a tag is refused unless the environment has a tag rule');
   assert.deepEqual(Object.keys(w.jobs), ['linux-app', 'apt-repo']);
   const repo = w.jobs['apt-repo'];
   assert.equal(repo.needs, 'linux-app');
