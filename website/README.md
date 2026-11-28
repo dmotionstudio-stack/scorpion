@@ -173,8 +173,8 @@ The site runs as a Docker Space: `Dockerfile` starts `dev-server.mjs` on port
 In the Stripe dashboard, turn on **Settings → Customer emails → Successful
 payments** so buyers get the receipt the site mentions.
 
-Before going live, replace the placeholder support address
-(`support@scorpion.app`) in `assets/site.js` and `success.html`, and check the
+The support address is `support@scorpionai.tech` (a Zoho Mail mailbox) in `assets/site.js`, `success.html` and `lib/mailer.js`
+(where it is also the Reply-To of the sign-in code emails, which are sent from `login@scorpionai.tech`). Before going live, check the
 refund promise in the Download page FAQ matches your policy.
 
 ## Photo credit

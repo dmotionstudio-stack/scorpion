@@ -68,7 +68,7 @@ function footer() {
           <h4>Help</h4>
           <ul>
             <li><a href="guide.html#requirements">System requirements</a></li>
-            <li><a href="mailto:support@scorpion.app">support@scorpion.app</a></li>
+            <li><a href="mailto:support@scorpionai.tech">support@scorpionai.tech</a></li>
           </ul>
         </div>
       </div>
