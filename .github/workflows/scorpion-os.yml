@@ -61,12 +61,13 @@ jobs:
           app=release/linux-unpacked
           test -x "$app/resources/node/node"
           cd "$app/resources/app" && "../node/node" -e "import('./src/main/engine.js').then(async (e) => { const hw = await e.hardwareInfo(); console.log('engine ok', hw.gpu); await e.shutdown(); })"
-      # Each build is a newer package than the last (VERSION-RUN), so
-      # Software Updater offers it.
-      - name: Stamp the build number on the .deb
+      # Each build is a newer package than the last (VERSION-TIME), so
+      # Software Updater offers it. The time, not a run number: this workflow and Linux update (linux-update.yml)
+      # count their runs separately, and the newest package must always win.
+      - name: Stamp the build time on the .deb
         run: |
           deb=$(ls release/*.deb)
-          v="$(node -p "require('./package.json').version")-${{ github.run_number }}"
+          v="$(node -p "require('./package.json').version")-$(date -u +%Y%m%d%H%M%S)"
           sudo dpkg-deb -R "$deb" pkg
           sudo sed -i "s/^Version: .*/Version: $v/" pkg/DEBIAN/control
           rm -f "$deb"

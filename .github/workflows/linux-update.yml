@@ -1,0 +1,96 @@
+# Scorpion OS gets new versions of Scorpion from Scorpion's own apt repository (GitHub Pages), through Software Updater.
+# This builds Scorpion for Linux and publishes it there, without the (hours-long) ISO: it runs on every release tag (v0.1.71), and on
+# a tag like apt-v1 when only the update repository needs publishing. (The Scorpion OS workflow also publishes it, with the ISO.)
+#
+# One-time setup in GitHub (otherwise the deploy is refused):
+#   Settings → Pages → Build and deployment → Source: GitHub Actions
+#   Settings → Environments → github-pages → Deployment branches and tags: add the tag rules v*, os-v* and apt-v* (or no restriction)
+# and the secret APT_SIGNING_KEY (the repository's private signing key).
+name: Linux update
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*", "apt-v*"]
+
+jobs:
+  linux-app:
+    name: Scorpion for Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+        env:
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip # the CUDA add-on is not used here, and its download is gone (404)
+      - name: Tests (on Linux)
+        run: npm test
+        continue-on-error: true
+      # The model engine runs in plain Node on Linux (src/main/engine-process.js).
+      - name: Node runtime for the model engine
+        run: |
+          v=24.11.0
+          f=node-v$v-linux-x64.tar.xz
+          curl -fsSLO "https://nodejs.org/dist/v$v/$f"
+          curl -fsSL "https://nodejs.org/dist/v$v/SHASUMS256.txt" | grep " $f\$" | sha256sum -c -
+          mkdir -p vendor/linux-node
+          tar -xJf "$f" -C vendor/linux-node --strip-components=1 "node-v$v-linux-x64/LICENSE"
+          tar -xJf "$f" -C vendor/linux-node --strip-components=2 "node-v$v-linux-x64/bin/node"
+          vendor/linux-node/node --version
+      - name: Build .deb and AppImage
+        run: npx electron-builder --linux deb AppImage --x64 --publish never
+      - name: The model engine starts in the packaged app
+        run: |
+          app=release/linux-unpacked
+          test -x "$app/resources/node/node"
+          cd "$app/resources/app" && "../node/node" -e "import('./src/main/engine.js').then(async (e) => { const hw = await e.hardwareInfo(); console.log('engine ok', hw.gpu); await e.shutdown(); })"
+      # Each build is a newer package than the last (VERSION-TIME), so Software Updater offers it. The time, not a run number: the Scorpion
+      # OS workflow and this one count their runs separately, and the newest package must always win.
+      - name: Stamp the build time on the .deb
+        run: |
+          deb=$(ls release/*.deb)
+          v="$(node -p "require('./package.json').version")-$(date -u +%Y%m%d%H%M%S)"
+          sudo dpkg-deb -R "$deb" pkg
+          sudo sed -i "s/^Version: .*/Version: $v/" pkg/DEBIAN/control
+          rm -f "$deb"
+          sudo dpkg-deb -Zxz -b pkg "release/scorpion_${v}_amd64.deb"
+          sudo rm -rf pkg
+          sudo chown "$(id -u):$(id -g)" release/*.deb
+          dpkg-deb -f release/*.deb Package Version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorpion-linux
+          path: |
+            release/*.deb
+            release/*.AppImage
+          retention-days: 14
+
+  apt-repo:
+    name: Update repository (GitHub Pages)
+    needs: linux-app
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}apt/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: scorpion-linux
+          path: app
+      - name: Build the signed repository
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: bash os/apt/make-repo.sh app site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

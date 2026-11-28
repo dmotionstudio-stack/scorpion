@@ -889,6 +889,14 @@ export function initOrbSystem(ctx) {
   $('#ix-approval-no').onclick = () => answer(false);
   $('#orb-wake').onchange = (e) => toggleWake(e.target.checked);
   wireMouse();
+  // The orb as the desktop (Scorpion OS, or the Windows desktop): right-clicking its empty screen opens the desktop's menu, as on any
+  // desktop (New, the Desktop folder, Desktop background…). Not over things that have a menu or a click of their own.
+  $('#interact').addEventListener('contextmenu', (e) => {
+    if (!O.desktop || O.away || !IX.open) return;
+    if (e.target.closest('input, textarea, select, button, a, [contenteditable], .ix-tile:not(.ix-tile-orb), .ix-taskbar, .ix-approval, .ix-guide, .ix-facecam, .ix-cam, .ix-captions')) return;
+    e.preventDefault();
+    api.shellMenu?.({ kind: 'desktop' })?.catch?.(() => {});
+  });
   api.onPcEvent?.(onPcEvent);
   // The orb looks calmer while another window is in front (less graphics work).
   window.addEventListener('blur', () => { if (O.desktop) IX.orb?.setFrameCap(ctx.orbFps?.('away') ?? 12); });

@@ -99,6 +99,15 @@ for p in $(packages "$OS_DIR/config/packages-optional.list"); do
   in_chroot "${APT_INSTALL[@]}" "$p" || echo "(optional package $p skipped)"
 done
 
+# Windows programs (.exe, .msi): Wine, 64-bit and 32-bit (many installers and older programs are 32-bit), with winetricks for the
+# components some of them need. Each package is optional, so a change in Ubuntu's archive never stops the build.
+in_chroot dpkg --add-architecture i386
+in_chroot apt-get update
+for p in $(packages "$OS_DIR/config/packages-windows.list"); do
+  in_chroot "${APT_INSTALL[@]}" "$p" || echo "(Windows support package $p skipped)"
+done
+in_chroot sh -c 'command -v wine >/dev/null' || echo "WARNING: Wine did not install: Windows programs will not run on this image."
+
 # Firefox from Mozilla's own repository (Ubuntu's is a snap, which can't be
 # set up inside an image build).
 install -d -m 755 "$CHROOT/etc/apt/keyrings"
@@ -108,6 +117,7 @@ Types: deb
 URIs: https://packages.mozilla.org/apt
 Suites: mozilla
 Components: main
+Architectures: amd64
 Signed-By: /etc/apt/keyrings/packages.mozilla.org.asc
 EOF
 cat > "$CHROOT/etc/apt/preferences.d/mozilla" <<'EOF'
@@ -135,7 +145,7 @@ rm -f "$CHROOT/tmp/scorpion.deb"
 # make sudo ignore /etc/sudoers.d and leave files writable by user 1001.
 cp -a --no-preserve=ownership "$OS_DIR/rootfs/." "$CHROOT/"
 sh "$OS_DIR/patch-calamares.sh" "$CHROOT" # installs onto Btrfs (see the file)
-chmod 755 "$CHROOT/usr/bin/scorpion-session" "$CHROOT/usr/bin/scorpion-install" "$CHROOT"/usr/lib/scorpion-os/*
+chmod 755 "$CHROOT/usr/bin/scorpion-session" "$CHROOT/usr/bin/scorpion-install" "$CHROOT/usr/bin/scorpion-windows" "$CHROOT"/usr/lib/scorpion-os/*
 chmod 600 "$CHROOT/etc/netplan/01-network-manager-all.yaml"
 # System snapshots: the command, its sudo rule (checked: a broken sudoers file
 # would lock sudo out) and apt's hook (checked: a broken one stops apt).

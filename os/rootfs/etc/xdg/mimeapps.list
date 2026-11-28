@@ -1,0 +1,10 @@
+# What opens which kind of file, for everyone on Scorpion OS (a person's own choice in ~/.config/mimeapps.list wins).
+# Windows programs open with Wine (usr/bin/scorpion-windows).
+[Default Applications]
+application/x-ms-dos-executable=scorpion-windows.desktop
+application/x-msdownload=scorpion-windows.desktop
+application/vnd.microsoft.portable-executable=scorpion-windows.desktop
+application/x-dosexec=scorpion-windows.desktop
+application/x-msi=scorpion-windows.desktop
+application/x-ms-installer=scorpion-windows.desktop
+application/x-msdos-program=scorpion-windows.desktop

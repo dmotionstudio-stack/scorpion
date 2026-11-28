@@ -1,0 +1,27 @@
+# Scorpion OS runs Windows programs (.exe, .msi) with Wine: 64-bit and 32-bit (many installers and older programs are 32-bit).
+# Each package is tried on its own and a missing one is skipped, so a change in Ubuntu's archive never stops the build.
+# build-iso.sh turns on the 32-bit (i386) architecture first.
+
+# --- Wine ---
+wine
+wine64
+libwine
+fonts-wine
+wine32:i386
+libwine:i386
+
+# --- what Windows programs commonly need ---
+winetricks
+cabextract
+unzip
+zenity
+
+# --- sound, graphics and fonts for 32-bit programs ---
+libasound2-plugins:i386
+libpulse0:i386
+libvulkan1:i386
+mesa-vulkan-drivers:i386
+libgl1-mesa-dri:i386
+libgnutls30:i386
+fonts-liberation
+fonts-dejavu-core

@@ -157,6 +157,23 @@ Manager**. To make Windows the default, in Scorpion OS edit `/etc/default/grub`
 - **Customize the session**: copy `/usr/share/scorpion/labwc` to `~/.config/labwc`
   and edit `rc.xml` (keys, window rules), `autostart` and `menu.xml`.
 
+## Windows programs
+
+Scorpion OS runs Windows programs (`.exe` and `.msi`) with **Wine**, 64-bit and 32-bit, with **winetricks** for the extra
+components some of them need. Nothing to set up:
+
+- **Double-click an .exe or .msi** in Files (or open it from Scorpion): it opens with Wine. The first time, Scorpion OS
+  makes the Windows folder (`~/.wine`, "C:" for the programs), which takes a minute. A program that installs itself
+  adds its entries to the apps list.
+- **Ask Scorpion** (online): "install 7-Zip for Windows" or "get Notepad++". It downloads the installer
+  (`download_file`, which asks first) and opens it with `open_path` (which asks again before running a program).
+- **From a terminal:** `scorpion-windows setup.exe`; `scorpion-windows --add vcrun2022` (also `dotnet48`, `corefonts`,
+  `d3dx9`) adds a Windows component for a program that asks for it; `--list` shows what is installed; `--reset` starts over.
+- **What to expect:** Wine runs most everyday programs and many games, not all. Programs that need Windows drivers or kernel
+  parts, games with anti-cheat, and some Microsoft and Adobe suites do not work. A program Wine cannot run fails like it would
+  on any Linux. Running a program from the internet is as safe as running it on Windows: only run ones you trust. The
+  packages are listed in `config/packages-windows.list` (about 0.5 GB more in the image).
+
 ## Keys in the Scorpion session
 
 | Keys | |
@@ -173,7 +190,7 @@ Manager**. To make Windows the default, in Scorpion OS edit `/etc/default/grub`
 ## What isn't there yet
 
 - Scorpion's Windows-only features: taking over the Windows taskbar, apps
-  framed inside the orb, the Windows Settings pages.
+  framed inside the orb, the Windows Settings pages. (Windows programs themselves run, through Wine: see above.)
 - The rail's notification count and per-app mail badges.
 - The installer is in English; Calamares has translations, not yet set up here.
 - Tested by the automatic boot test in QEMU and by installing in VirtualBox. Real

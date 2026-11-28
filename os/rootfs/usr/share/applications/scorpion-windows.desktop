@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Windows program
+Comment=Runs a Windows program (.exe, .msi) with Wine
+Exec=scorpion-windows %f
+Icon=wine
+Terminal=false
+NoDisplay=true
+Categories=Utility;
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/vnd.microsoft.portable-executable;application/x-dosexec;application/x-msi;application/x-ms-installer;application/x-ms-shortcut;application/x-bat;application/x-msdos-program;

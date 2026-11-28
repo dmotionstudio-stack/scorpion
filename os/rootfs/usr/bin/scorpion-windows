@@ -1,0 +1,51 @@
+#!/bin/bash
+# Runs a Windows program on Scorpion OS with Wine, and keeps Windows programs apart from the system in one folder of the
+# user's own (~/.wine, "C:" for the programs). Double-clicking an .exe or .msi in Files, "open" from Scorpion, and a download
+# that finishes all come here (usr/share/applications/scorpion-windows.desktop, etc/xdg/mimeapps.list).
+#
+#   scorpion-windows setup.exe [arguments]   run a program (an .msi is installed with msiexec)
+#   scorpion-windows --add vcrun2022         add a Windows component with winetricks (internet needed): corefonts,
+#                                            vcrun2022, dotnet48, d3dx9, directx9 ...
+#   scorpion-windows --list                  the programs Windows programs have added to the menu
+#   scorpion-windows --reset                 start over with an empty Windows folder (the old one is kept as ~/.wine.old)
+#   scorpion-windows --help
+set -u
+
+export WINEPREFIX="${WINEPREFIX:-$HOME/.wine}"
+export WINEDEBUG="${WINEDEBUG:--all}"
+export WINEARCH="${WINEARCH:-win64}"
+
+say() { command -v notify-send >/dev/null 2>&1 && notify-send -i wine "Windows programs" "$1" 2>/dev/null; echo "$1" >&2; }
+need_wine() { command -v wine >/dev/null 2>&1 || { say "Windows support is not installed on this system (the wine package)."; exit 127; }; }
+
+# The first run makes the Windows folder: it takes a minute. No "install Mono / Gecko?" questions (they need the internet and a
+# click); a program that needs .NET asks for it with --add dotnet48.
+prepare() {
+  [ -d "$WINEPREFIX/drive_c" ] && return 0
+  say "Setting up Windows programs for the first time. This takes a minute."
+  WINEDLLOVERRIDES="mscoree,mshtml=" wineboot -u >/dev/null 2>&1
+  wineserver -w 2>/dev/null
+  [ -d "$WINEPREFIX/drive_c" ] || { say "Could not set up Windows programs."; exit 1; }
+}
+
+case "${1:-}" in
+  ''|-h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  --list)
+    ls -1 "$HOME/.local/share/applications/wine/Programs" 2>/dev/null | sed 's/\.desktop$//' ; exit 0 ;;
+  --reset)
+    pkill -f wineserver 2>/dev/null; rm -rf "$HOME/.wine.old"; [ -d "$WINEPREFIX" ] && mv "$WINEPREFIX" "$HOME/.wine.old"
+    say "Windows programs reset. The old folder is ~/.wine.old."; exit 0 ;;
+  --add)
+    shift; [ $# -gt 0 ] || { echo "Which component? For example: scorpion-windows --add vcrun2022" >&2; exit 2; }
+    need_wine; command -v winetricks >/dev/null 2>&1 || { say "winetricks is not installed."; exit 127; }
+    prepare; exec winetricks -q "$@" ;;
+esac
+
+need_wine
+file="$1"; shift
+[ -e "$file" ] || { say "There is no file $file."; exit 1; }
+prepare
+case "${file,,}" in
+  *.msi) exec wine msiexec /i "$(winepath -w "$file" 2>/dev/null || echo "$file")" "$@" ;;
+  *) exec wine start /unix "$file" "$@" ;;
+esac
