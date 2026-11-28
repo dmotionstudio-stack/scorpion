@@ -137,6 +137,11 @@ npx wrangler deploy                          # once by hand, or let GitHub do it
 npx wrangler secret put STRIPE_SECRET_KEY    # and the other secrets listed under Customer sign-in
 ```
 
+On Windows PowerShell use `npx.cmd` in place of `npx` (a Windows setting blocks `npx.ps1`). The Website workflow deploys by itself whenever
+`website/` changes on `main` (it needs the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`). Secrets saved with
+`wrangler secret put` stay on the Worker; a deploy does not remove them. Stripe keys: the secret key starts `sk_live_` (or a restricted
+`rk_live_` with Checkout Sessions = Write), never the publishable `pk_`; the webhook secret is the endpoint's `whsec_`.
+
 GitHub does the rest when you release (the secrets to set once, and the full picture, are in
 [../docs/cloudflare-downloads.md](../docs/cloudflare-downloads.md)):
 
